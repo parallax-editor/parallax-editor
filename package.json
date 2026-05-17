@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "editor": "echo 'Editor se implementa en Fase 4'",
-    "dev": "echo 'Editor se implementa en Fase 4'"
+    "dev": "echo 'Editor se implementa en Fase 4'",
+    "test": "node tests/smoke.mjs"
   },
   "dependencies": {
     "parallax-engine": "link:../parallax-engine"
