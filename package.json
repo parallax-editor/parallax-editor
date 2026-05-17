@@ -1,0 +1,13 @@
+{
+  "name": "parallax-editor",
+  "version": "0.1.0",
+  "description": "Editor local tipo Illustrator para sitios parallax de Daniela Reyes.",
+  "private": true,
+  "scripts": {
+    "editor": "echo 'Editor se implementa en Fase 4'",
+    "dev": "echo 'Editor se implementa en Fase 4'"
+  },
+  "dependencies": {
+    "parallax-engine": "link:../parallax-engine"
+  }
+}
