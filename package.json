@@ -3,12 +3,25 @@
   "version": "0.1.0",
   "description": "Editor local tipo Illustrator para sitios parallax de Daniela Reyes.",
   "private": true,
+  "type": "module",
   "scripts": {
-    "editor": "echo 'Editor se implementa en Fase 4'",
-    "dev": "echo 'Editor se implementa en Fase 4'",
-    "test": "node tests/smoke.mjs"
+    "editor": "vite --open",
+    "dev": "vite",
+    "build": "vite build",
+    "test": "node tests/editor.test.mjs"
   },
   "dependencies": {
-    "parallax-engine": "link:../parallax-engine"
+    "parallax-engine": "link:../parallax-engine",
+    "vue": "^3.4.38",
+    "vue-router": "^4.4.0",
+    "pinia": "^2.2.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0",
+    "@vitejs/plugin-vue": "^5.1.0",
+    "typescript": "~5.4.5",
+    "chokidar": "^3.6.0",
+    "ws": "^8.18.0",
+    "@types/ws": "^8.5.12"
   }
 }
