@@ -1,11 +1,14 @@
 import chokidar from 'chokidar'
 import { WebSocketServer, WebSocket } from 'ws'
-import type { Server } from 'http'
 
 let wss: WebSocketServer | null = null
 
-export function setupWatcher(httpServer: Server, watchPaths: string[]) {
-  wss = new WebSocketServer({ server: httpServer, path: '/__ws' })
+const WATCHER_PORT = 3001
+
+export function setupWatcher(watchPaths: string[]) {
+  // Use a separate port to avoid conflicting with Vite's HMR WebSocket
+  wss = new WebSocketServer({ port: WATCHER_PORT })
+  console.log(`[editor-watcher] WebSocket on ws://localhost:${WATCHER_PORT}`)
 
   const watcher = chokidar.watch(
     watchPaths.map((p) => `${p}/**/site.json`),

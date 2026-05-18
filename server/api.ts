@@ -29,12 +29,10 @@ function json(res: ServerResponse, data: any, status = 200) {
 }
 
 export function createHandler(server: ViteDevServer) {
-  // Setup file watcher
-  if (server.httpServer) {
-    const eventosRepo = resolve(process.cwd(), '..', 'daniela-reyes-eventos')
-    const siteRepo = resolve(process.cwd(), '..', 'daniela-reyes-site')
-    setupWatcher(server.httpServer, [eventosRepo, siteRepo])
-  }
+  // Setup file watcher on separate port (avoids Vite HMR WebSocket conflict)
+  const eventosRepo = resolve(process.cwd(), '..', 'daniela-reyes-eventos')
+  const siteRepo = resolve(process.cwd(), '..', 'daniela-reyes-site')
+  setupWatcher([eventosRepo, siteRepo])
 
   return async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     const url = req.url || ''

@@ -9,7 +9,6 @@ export default defineConfig({
     {
       name: 'editor-api',
       configureServer(server) {
-        // Load API module async but register middleware sync (before Vite's SPA fallback)
         let apiHandler: ((req: IncomingMessage, res: ServerResponse, next: () => void) => void) | null = null
 
         server.ssrLoadModule('/server/api').then((mod) => {
@@ -19,14 +18,12 @@ export default defineConfig({
           console.error('[editor-api] Failed:', err.message)
         })
 
-        // This middleware runs BEFORE Vite's internal middleware (registered synchronously)
         server.middlewares.use((req, res, next) => {
           const url = req.url || ''
           if (url.startsWith('/api/') || url.match(/^\/content\/(eventos|site)\//)) {
             if (apiHandler) {
               apiHandler(req, res, next)
             } else {
-              // API not loaded yet
               res.writeHead(503, { 'Content-Type': 'application/json' })
               res.end('{"error":"API loading..."}')
             }
@@ -40,10 +37,19 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
+      'parallax-engine/schema': resolve(__dirname, '..', 'parallax-engine', 'dist', 'schema.js'),
+      'parallax-engine': resolve(__dirname, '..', 'parallax-engine', 'dist', 'index.js'),
     },
     dedupe: ['vue'],
   },
+  optimizeDeps: {
+    include: ['vue', 'vue-router', 'pinia'],
+    exclude: ['parallax-engine'],
+  },
   server: {
     port: 3000,
+    hmr: {
+      overlay: false,
+    },
   },
 })
