@@ -1,6 +1,6 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 
-const WATCHER_PORT = 3001
+const WS_PATH = '/__ws'
 
 export function useWebSocket(onMessage: (data: any) => void) {
   const connected = ref(false)
@@ -9,7 +9,8 @@ export function useWebSocket(onMessage: (data: any) => void) {
 
   function connect() {
     try {
-      ws = new WebSocket(`ws://${location.hostname}:${WATCHER_PORT}`)
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+      ws = new WebSocket(`${proto}//${location.host}${WS_PATH}`)
 
       ws.onopen = () => { connected.value = true }
       ws.onclose = () => {

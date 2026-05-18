@@ -19,6 +19,16 @@ export const projectsApi = {
     api(`/projects/${type}/${slug}/duplicate`, { method: 'POST' }),
   delete: (type: string, slug: string) =>
     api(`/projects/${type}/${slug}`, { method: 'DELETE' }),
+  // Upload an image / video / audio (picked from anywhere / drag&drop) into
+  // the project's content dir (images/ | video/ | audio/, routed by mime).
+  // dataUrl = FileReader.readAsDataURL result.
+  // Returns { ok, src, filename, bytes, kind, warning? } — src is
+  // "<subdir>/<file>" (e.g. "images/foo.png", "video/clip.mp4").
+  uploadAsset: (type: string, slug: string, filename: string, dataUrl: string) =>
+    api<{ ok?: boolean; src?: string; filename?: string; bytes?: number; kind?: string; warning?: string; error?: string }>(
+      `/projects/${type}/${slug}/assets`,
+      { method: 'POST', body: JSON.stringify({ filename, dataUrl }) },
+    ),
 }
 
 export const gitApi = {

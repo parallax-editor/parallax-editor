@@ -79,10 +79,28 @@ onMounted(loadProject)
 
 <style scoped>
 .loading-screen { display: flex; align-items: center; justify-content: center; height: 100vh; color: #888; }
-.editor-layout { display: flex; flex-direction: column; height: 100vh; }
-.editor-body { display: flex; flex: 1; overflow: hidden; }
-.panel-left { width: 240px; border-right: 1px solid #333; overflow-y: auto; }
-.panel-right { width: 280px; border-left: 1px solid #333; overflow-y: auto; }
-.canvas-area { flex: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+/* Root is a fixed-height column: 100dvh (falls back to vh) so the whole
+   layout is height-bounded. min-height:0 lets the flex children actually
+   shrink instead of growing to content. */
+.editor-layout { display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-height: 0; }
+/* The body row must (a) be height-bounded and (b) stretch its children to
+   that height so each panel gets a DEFINITE height to scroll within.
+   align-items:stretch is the default but is stated explicitly because the
+   panel's own internal scroll depends on this constraint propagating. */
+.editor-body { display: flex; flex: 1 1 0; min-height: 0; overflow: hidden; align-items: stretch; }
+/* Panels manage their own internal scroll (fixed header + scrollable body),
+   so the outer container must NOT scroll — otherwise the header scrolls away
+   and a double scrollbar appears. flex:0 0 <w> fixes the width on the main
+   axis; align-self:stretch + min-height:0 + height:100% guarantees the panel
+   root resolves to the body's height (so its .panel-body overflow triggers). */
+.panel-left {
+  flex: 0 0 240px; width: 240px; border-right: 1px solid #333;
+  overflow: hidden; align-self: stretch; height: 100%; min-height: 0;
+}
+.panel-right {
+  flex: 0 0 280px; width: 280px; border-left: 1px solid #333;
+  overflow: hidden; align-self: stretch; height: 100%; min-height: 0;
+}
+.canvas-area { flex: 1 1 0; display: flex; flex-direction: column; position: relative; overflow: hidden; min-height: 0; min-width: 0; }
 .bottom-panel { height: 200px; border-top: 1px solid #333; overflow-y: auto; flex-shrink: 0; }
 </style>

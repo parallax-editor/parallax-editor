@@ -1,55 +1,92 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { state, getAtPath, setAtPath } from '../../stores/editor'
+import { state, getAtPath, setAtPath, isPathLocked, VIEWPORTS, GRID_PERCENT } from '../../stores/editor'
 
 const props = defineProps<{
   canvasRef: HTMLElement | null
   zoom: number
+  scrollKey?: number
 }>()
 
-const bounds = ref<DOMRect | null>(null)
+// Box in CANVAS-LOCAL coordinates (relative to the .editor-canvas element),
+// so the overlay is correct regardless of the pan-wrapper transform.
+const bounds = ref<{ left: number; top: number; width: number; height: number } | null>(null)
 const isDragging = ref(false)
 const dragType = ref<'move' | 'resize' | 'rotate' | null>(null)
 const dragStart = ref({ x: 0, y: 0 })
 const dragOriginal = ref<any>({})
 const activeHandle = ref<string | null>(null)
-
-function updateBounds() {
-  if (!state.selectedPath) { bounds.value = null; return }
-  const el = state.site ? findDomElement() : null
-  if (el) {
-    bounds.value = el.getBoundingClientRect()
-  } else {
-    bounds.value = null
-  }
-}
+let rafId = 0
 
 function findDomElement(): HTMLElement | null {
-  const selected = getAtPath(state.selectedPath!)
+  if (!state.selectedPath) return null
+  const selected = getAtPath(state.selectedPath)
   if (!selected?.id) return null
   return document.querySelector(`[data-parallax-id="${selected.id}"]`)
 }
 
-// Update bounds when selection or site changes
-watch(() => [state.selectedPath, state.site], () => {
-  requestAnimationFrame(updateBounds)
-}, { deep: true })
+/**
+ * Derive the selection rect from the ACTUAL rendered DOM element, expressed
+ * relative to the canvas container. We do NOT recompute from JSON position,
+ * so this stays correct at any zoom / artboard offset / device-frame size,
+ * and once the engine positioning fix lands it tracks automatically.
+ */
+function updateBounds() {
+  if (!state.selectedPath || !props.canvasRef) { bounds.value = null; return }
+  const el = state.site ? findDomElement() : null
+  if (!el) { bounds.value = null; return }
+  const elRect = el.getBoundingClientRect()
+  const canvasRect = props.canvasRef.getBoundingClientRect()
+  bounds.value = {
+    left: elRect.left - canvasRect.left,
+    top: elRect.top - canvasRect.top,
+    width: elRect.width,
+    height: elRect.height,
+  }
+}
+
+function scheduleUpdate() {
+  if (rafId) cancelAnimationFrame(rafId)
+  rafId = requestAnimationFrame(updateBounds)
+}
+
+// Re-measure when selection, site, zoom, pan, device or preview scroll change.
+watch(
+  () => [state.selectedPath, state.site, state.canvasZoom, state.canvasPan.x, state.canvasPan.y, state.deviceMode, props.scrollKey],
+  scheduleUpdate,
+  { deep: true },
+)
+
+let ro: ResizeObserver | null = null
 
 onMounted(() => {
-  updateBounds()
+  scheduleUpdate()
   window.addEventListener('mousemove', onMouseMove)
   window.addEventListener('mouseup', onMouseUp)
+  window.addEventListener('resize', scheduleUpdate)
+  if (props.canvasRef && 'ResizeObserver' in window) {
+    ro = new ResizeObserver(scheduleUpdate)
+    ro.observe(props.canvasRef)
+  }
 })
 
 onUnmounted(() => {
   window.removeEventListener('mousemove', onMouseMove)
   window.removeEventListener('mouseup', onMouseUp)
+  window.removeEventListener('resize', scheduleUpdate)
+  if (ro) ro.disconnect()
+  if (rafId) cancelAnimationFrame(rafId)
 })
 
 // ─── Drag handlers ──────────────────────────────────────────
 
+// A locked node can't be moved/resized/rotated on the canvas. We block the
+// drag at its start (the overlay still shows so the user sees it's selected,
+// but the box reads as locked and no handle does anything).
+const isLocked = computed(() => isPathLocked(state.selectedPath))
+
 function startMove(e: MouseEvent) {
-  if (state.tool !== 'select' || !state.selectedPath) return
+  if (state.tool !== 'select' || !state.selectedPath || isLocked.value) return
   e.stopPropagation()
   isDragging.value = true
   dragType.value = 'move'
@@ -62,6 +99,7 @@ function startMove(e: MouseEvent) {
 }
 
 function startResize(e: MouseEvent, handle: string) {
+  if (isLocked.value) return
   e.stopPropagation()
   isDragging.value = true
   dragType.value = 'resize'
@@ -75,6 +113,7 @@ function startResize(e: MouseEvent, handle: string) {
 }
 
 function startRotate(e: MouseEvent) {
+  if (isLocked.value) return
   e.stopPropagation()
   isDragging.value = true
   dragType.value = 'rotate'
@@ -86,19 +125,21 @@ function startRotate(e: MouseEvent) {
 function onMouseMove(e: MouseEvent) {
   if (!isDragging.value || !state.selectedPath) return
 
+  // Screen px → artboard px: divide by the live zoom factor.
   const dx = (e.clientX - dragStart.value.x) / props.zoom
   const dy = (e.clientY - dragStart.value.y) / props.zoom
 
+  const vp = VIEWPORTS[state.deviceMode]
+
   if (dragType.value === 'move') {
-    // Convert px delta to % of viewport
-    const vw = state.deviceMode === 'desktop' ? 1440 : 375
-    const vh = state.deviceMode === 'desktop' ? 900 : 667
-    let newX = dragOriginal.value.x + (dx / vw) * 100
-    let newY = dragOriginal.value.y + (dy / vh) * 100
+    let newX = dragOriginal.value.x + (dx / vp.width) * 100
+    let newY = dragOriginal.value.y + (dy / vp.height) * 100
 
     if (state.snapToGrid) {
-      newX = Math.round(newX / state.gridSize) * state.gridSize
-      newY = Math.round(newY / state.gridSize) * state.gridSize
+      // Snap to the SAME % step the visual grid overlay draws (GRID_PERCENT),
+      // so the element lands exactly on the lines Daniela sees.
+      newX = Math.round(newX / GRID_PERCENT) * GRID_PERCENT
+      newY = Math.round(newY / GRID_PERCENT) * GRID_PERCENT
     }
 
     setAtPath(`${state.selectedPath}.position`, {
@@ -108,21 +149,25 @@ function onMouseMove(e: MouseEvent) {
   }
 
   if (dragType.value === 'resize') {
-    const vw = state.deviceMode === 'desktop' ? 1440 : 375
     const scaleX = activeHandle.value?.includes('e') ? 1 : activeHandle.value?.includes('w') ? -1 : 0
     const scaleY = activeHandle.value?.includes('s') ? 1 : activeHandle.value?.includes('n') ? -1 : 0
 
-    let newW = dragOriginal.value.width + (dx / vw) * 100 * scaleX
-    let newH = dragOriginal.value.height + (dy / vw) * 100 * scaleY
+    let newW = dragOriginal.value.width + (dx / vp.width) * 100 * scaleX
+    let newH = dragOriginal.value.height + (dy / vp.height) * 100 * scaleY
 
     if (e.shiftKey) {
-      // Maintain aspect ratio
       const ratio = dragOriginal.value.width / (dragOriginal.value.height || 1)
       if (Math.abs(dx) > Math.abs(dy)) {
         newH = newW / ratio
       } else {
         newW = newH * ratio
       }
+    }
+
+    if (state.snapToGrid && !e.shiftKey) {
+      // Snap size to the same % grid step (skip while constraining ratio).
+      newW = Math.round(newW / GRID_PERCENT) * GRID_PERCENT
+      newH = Math.round(newH / GRID_PERCENT) * GRID_PERCENT
     }
 
     const size: any = {}
@@ -134,16 +179,18 @@ function onMouseMove(e: MouseEvent) {
   }
 
   if (dragType.value === 'rotate') {
-    if (!bounds.value) return
-    const cx = bounds.value.left + bounds.value.width / 2
-    const cy = bounds.value.top + bounds.value.height / 2
+    if (!bounds.value || !props.canvasRef) return
+    const canvasRect = props.canvasRef.getBoundingClientRect()
+    // Box center in screen coords (bounds are canvas-local).
+    const cx = canvasRect.left + bounds.value.left + bounds.value.width / 2
+    const cy = canvasRect.top + bounds.value.top + bounds.value.height / 2
     const startAngle = Math.atan2(dragStart.value.y - cy, dragStart.value.x - cx)
     const currentAngle = Math.atan2(e.clientY - cy, e.clientX - cx)
     const delta = ((currentAngle - startAngle) * 180) / Math.PI
     setAtPath(`${state.selectedPath}.rotation`, Math.round(dragOriginal.value.rotation + delta))
   }
 
-  requestAnimationFrame(updateBounds)
+  scheduleUpdate()
 }
 
 function onMouseUp() {
@@ -157,7 +204,7 @@ const handles = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
 const boxStyle = computed(() => {
   if (!bounds.value) return { display: 'none' }
   return {
-    position: 'fixed' as const,
+    position: 'absolute' as const,
     left: `${bounds.value.left}px`,
     top: `${bounds.value.top}px`,
     width: `${bounds.value.width}px`,
@@ -168,31 +215,43 @@ const boxStyle = computed(() => {
 </script>
 
 <template>
-  <div v-if="bounds" :style="boxStyle" class="selection-box">
+  <div v-if="bounds" :style="boxStyle" class="selection-box" :class="{ locked: isLocked }">
     <!-- Border -->
     <div class="selection-border" />
 
-    <!-- Move area -->
-    <div class="move-area" @mousedown="startMove" />
+    <!-- Locked badge: makes it obvious why nothing drags. -->
+    <div v-if="isLocked" class="lock-badge" data-test="overlay-locked">🔒 Bloqueado</div>
 
-    <!-- Resize handles -->
-    <div
-      v-for="h in handles"
-      :key="h"
-      :class="['handle', `handle-${h}`]"
-      @mousedown="(e) => startResize(e, h)"
-    />
+    <!-- Move area: disabled (no pointer events) while locked so a drag never
+         starts and the canvas hit-test stays clean. -->
+    <div v-if="!isLocked" class="move-area" @mousedown="startMove" />
 
-    <!-- Rotate handle -->
-    <div class="rotate-handle" @mousedown="startRotate">
-      <div class="rotate-icon">&#x21BB;</div>
-    </div>
+    <!-- Resize + rotate handles only when unlocked. -->
+    <template v-if="!isLocked">
+      <div
+        v-for="h in handles"
+        :key="h"
+        :class="['handle', `handle-${h}`]"
+        @mousedown="(e) => startResize(e, h)"
+      />
+      <div class="rotate-handle" @mousedown="startRotate">
+        <div class="rotate-icon">&#x21BB;</div>
+      </div>
+    </template>
   </div>
 </template>
 
 <style scoped>
 .selection-box { z-index: 10000; }
 .selection-border { position: absolute; inset: 0; border: 2px solid #0099ff; pointer-events: none; }
+.selection-box.locked .selection-border { border-color: #e0a52a; border-style: dashed; }
+.lock-badge {
+  position: absolute; top: -22px; left: 0;
+  background: #e0a52a; color: #1a1a1a;
+  font-size: 11px; font-weight: 600;
+  padding: 1px 6px; border-radius: 3px;
+  white-space: nowrap; pointer-events: none;
+}
 .move-area { position: absolute; inset: 0; cursor: move; pointer-events: auto; }
 .handle { position: absolute; width: 8px; height: 8px; background: #fff; border: 1px solid #0099ff; pointer-events: auto; z-index: 1; }
 .handle-nw { top: -4px; left: -4px; cursor: nw-resize; }

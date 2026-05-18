@@ -1,14 +1,25 @@
+import type { HttpServer } from 'vite'
+import type { IncomingMessage } from 'http'
+import type { Socket } from 'net'
 import chokidar from 'chokidar'
 import { WebSocketServer, WebSocket } from 'ws'
 
 let wss: WebSocketServer | null = null
 
-const WATCHER_PORT = 3001
+const WS_PATH = '/__ws'
 
-export function setupWatcher(watchPaths: string[]) {
-  // Use a separate port to avoid conflicting with Vite's HMR WebSocket
-  wss = new WebSocketServer({ port: WATCHER_PORT })
-  console.log(`[editor-watcher] WebSocket on ws://localhost:${WATCHER_PORT}`)
+export function setupWatcher(httpServer: HttpServer, watchPaths: string[]) {
+  // Ride on the existing Vite dev server via an HTTP upgrade on WS_PATH —
+  // no separate port (avoids colliding with sibling dev servers).
+  wss = new WebSocketServer({ noServer: true })
+
+  httpServer.on('upgrade', (request: IncomingMessage, socket: Socket, head: Buffer) => {
+    if (request.url !== WS_PATH) return
+    wss!.handleUpgrade(request, socket, head, (client) => {
+      wss!.emit('connection', client, request)
+    })
+  })
+  console.log(`[editor-watcher] WebSocket on ${WS_PATH} (shared Vite server)`)
 
   const watcher = chokidar.watch(
     watchPaths.map((p) => `${p}/**/site.json`),

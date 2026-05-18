@@ -1,5 +1,17 @@
 import { onMounted, onUnmounted } from 'vue'
-import { state, undo, redo, deleteSelected, duplicateSelected } from '../stores/editor'
+import {
+  state,
+  undo,
+  redo,
+  deleteSelected,
+  duplicateSelected,
+  zoomIn,
+  zoomOut,
+  zoomToFit,
+  copySelected,
+  cutSelected,
+  pasteClipboard,
+} from '../stores/editor'
 
 export function useShortcuts(onSave: () => void) {
   function handleKey(e: KeyboardEvent) {
@@ -22,19 +34,35 @@ export function useShortcuts(onSave: () => void) {
       if (e.key === 'Z') { redo(); e.preventDefault(); return }
       if (e.key === 's') { onSave(); e.preventDefault(); return }
       if (e.key === 'd') { duplicateSelected(); e.preventDefault(); return }
+      // Tree clipboard: copy / cut / paste (within & across views). Only act
+      // when something is selected (copy/cut) or always (paste handles empty
+      // clipboard with a hint), so it never clobbers a native field copy —
+      // typing-in-input is already excluded above.
+      if (e.key === 'c' && !e.shiftKey) {
+        if (state.selectedPath) { copySelected(); e.preventDefault() }
+        return
+      }
+      if (e.key === 'x' && !e.shiftKey) {
+        if (state.selectedPath) { cutSelected(); e.preventDefault() }
+        return
+      }
+      if (e.key === 'v' && !e.shiftKey) {
+        if (state.clipboard) { pasteClipboard(); e.preventDefault() }
+        return
+      }
       if (e.key === '0') {
-        state.canvasZoom = 0.5
-        state.canvasPan = { x: 0, y: 0 }
+        const canvas = document.querySelector('.editor-canvas') as HTMLElement | null
+        zoomToFit(canvas?.clientWidth || 0, canvas?.clientHeight || 0)
         e.preventDefault()
         return
       }
       if (e.key === '=' || e.key === '+') {
-        state.canvasZoom = Math.min(3, state.canvasZoom + 0.1)
+        zoomIn()
         e.preventDefault()
         return
       }
-      if (e.key === '-') {
-        state.canvasZoom = Math.max(0.1, state.canvasZoom - 0.1)
+      if (e.key === '-' || e.key === '_') {
+        zoomOut()
         e.preventDefault()
         return
       }
