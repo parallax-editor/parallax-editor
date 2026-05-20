@@ -171,6 +171,19 @@ export function getRepoPath(type: string): string {
   return REPO_MAP[type] || ''
 }
 
+/**
+ * The active site's content directory expressed RELATIVE to its repo root —
+ * `content/<slug>` for eventos, `content/portafolio/<slug>` for site. Used by
+ * the scoped save commit (`server/git.ts` → `gitCommit`) so a "Guardar" stages
+ * ONLY that one site's files (security: never sweep in other sites / unrelated
+ * repo changes). Returns '' for an unknown type so the caller can refuse.
+ */
+export function getContentRelPath(type: string, slug: string): string {
+  const repo = REPO_MAP[type]
+  if (!repo) return ''
+  return relative(repo, resolve(contentDir(type), slug))
+}
+
 export function getAssetPath(type: string, slug: string, assetPath: string): string {
   return resolve(contentDir(type), slug, assetPath)
 }

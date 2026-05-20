@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { nextTick } from 'vue'
 import {
   state,
@@ -12,11 +12,59 @@ import {
   setOverview,
   consumePreOverviewScroll,
   setAutosave,
-  persistPrefs,
   restartPreview,
 } from '../../stores/editor'
 import { openLivePreview } from '../../composables/useLivePreview'
+import { claudeApi, gitApi } from '../../composables/useApi'
 import MobileSizeControl from './MobileSizeControl.vue'
+import GridGuidesControl from './GridGuidesControl.vue'
+
+// ── Claude button availability ───────────────────────────────────────────────
+// The "Claude" button is only usable when the `claude` CLI is installed on this
+// machine. We fetch the server-cached status once on mount; while unknown the
+// button stays enabled (optimistic, current behavior), and is disabled only if
+// the server reports it's missing (with a clear Spanish tooltip).
+const claudeAvailable = ref(true)
+const claudeTitle = computed(() =>
+  claudeAvailable.value
+    ? 'Preguntarle a Claude'
+    : 'Claude no está instalado en este equipo',
+)
+
+// ── Publicar (git) button state ──────────────────────────────────────────────
+// "Publicar" is enabled ONLY when there are local commits ahead of origin
+// (something to push). We fetch the count on mount and refresh after every save
+// (state.gitLogNonce bumps in EditorView.save).
+const gitAhead = ref(0)
+const publishTitle = computed(() =>
+  gitAhead.value > 0
+    ? 'Publicar los cambios pendientes al sitio'
+    : 'No hay cambios pendientes por publicar',
+)
+
+async function refreshGitStatus() {
+  if (!state.projectType) return
+  try {
+    const s = await gitApi.status(state.projectType)
+    gitAhead.value = s?.ahead || 0
+  } catch {
+    gitAhead.value = 0
+  }
+}
+
+onMounted(async () => {
+  try {
+    const s = await claudeApi.status()
+    claudeAvailable.value = !!s?.available
+  } catch {
+    // Status endpoint unreachable → leave the button enabled (optimistic).
+    claudeAvailable.value = true
+  }
+  refreshGitStatus()
+})
+
+// Refresh the publish state after each save/commit (nonce bumped on save).
+watch(() => state.gitLogNonce, refreshGitStatus)
 
 const emit = defineEmits<{
   save: []
@@ -29,12 +77,8 @@ function onToggleAutosave(e: Event) {
   setAutosave((e.target as HTMLInputElement).checked)
 }
 
-// Grid is a plain boolean; mutate the store then write the pref through so it
-// survives a reload (same namespace as Autosave / Vista completa).
-function onToggleGrid(e: Event) {
-  state.snapToGrid = (e.target as HTMLInputElement).checked
-  persistPrefs()
-}
+// Grid / guías ahora viven en su propio popover (GridGuidesControl), que
+// muta el store y persiste cada cambio.
 
 const zoomPercent = computed(() => Math.round(state.canvasZoom * 100))
 
@@ -142,8 +186,20 @@ function onEnableIndependent() {
           </svg>
           <span class="live-label">Vista en vivo</span>
         </button>
-        <button class="tool-btn" data-test="toggle-claude" @click="emit('toggle-claude')" title="Preguntarle a Claude">Claude</button>
-        <button class="tool-btn" data-test="toggle-git" @click="emit('toggle-git')" title="Git / Publicar">Git</button>
+        <button
+          class="tool-btn"
+          data-test="toggle-claude"
+          @click="emit('toggle-claude')"
+          :disabled="!claudeAvailable"
+          :title="claudeTitle"
+        >Claude</button>
+        <button
+          class="tool-btn"
+          data-test="toggle-git"
+          @click="emit('toggle-git')"
+          :disabled="gitAhead === 0"
+          :title="publishTitle"
+        >Publicar{{ gitAhead > 0 ? ` (${gitAhead})` : '' }}</button>
         <button class="save-btn" data-test="save" @click="emit('save')" :disabled="!isDirty" title="Guardar (Cmd+S)">Guardar</button>
       </div>
     </div>
@@ -289,15 +345,7 @@ function onEnableIndependent() {
           Vista completa
         </label>
 
-        <label class="snap-toggle">
-          <input
-            type="checkbox"
-            :checked="state.snapToGrid"
-            @change="onToggleGrid"
-            data-test="grid-toggle"
-          />
-          Grid
-        </label>
+        <GridGuidesControl />
 
         <label
           class="snap-toggle"
@@ -337,7 +385,8 @@ function onEnableIndependent() {
 .project-name { font-weight: 600; }
 .dirty-dot { color: #f90; font-size: 18px; }
 .tool-btn { background: #333; border: 1px solid #444; color: #ccc; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: background .12s ease, border-color .12s ease; }
-.tool-btn:hover { background: #444; }
+.tool-btn:hover:not(:disabled) { background: #444; }
+.tool-btn:disabled { opacity: 0.4; cursor: default; }
 .tool-btn.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 .tool-btn.active:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .tool-btn.active:active { background: var(--accent); }

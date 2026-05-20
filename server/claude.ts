@@ -1,5 +1,29 @@
-import { spawn, type ChildProcess } from 'child_process'
+import { spawn, execSync, type ChildProcess } from 'child_process'
 import { createHash } from 'crypto'
+
+// ── Is the `claude` CLI usable on this machine? ──────────────────────────────
+// The toolbar's "Claude" button is only enabled when this returns true (a
+// non-technical user on a machine WITHOUT claude installed should see it
+// disabled with a clear Spanish tooltip, not get a cryptic spawn error).
+// The check is CACHED at module level: `command -v claude` is shelled at most
+// ONCE per server process (not on every /api/claude/status request), since the
+// CLI's presence on PATH does not change while the server is running.
+let claudeAvailableCache: boolean | null = null
+
+export function isClaudeAvailable(): boolean {
+  if (claudeAvailableCache !== null) return claudeAvailableCache
+  try {
+    // `command -v claude` exits 0 and prints the path when claude is on PATH,
+    // exits non-zero (throws here) otherwise. Short timeout so a weird PATH
+    // can't hang the first status request. stdio piped so nothing leaks to the
+    // server console.
+    execSync('command -v claude', { timeout: 3000, stdio: 'pipe' })
+    claudeAvailableCache = true
+  } catch {
+    claudeAvailableCache = false
+  }
+  return claudeAvailableCache
+}
 
 // ── Continuous Claude session per site slug (TASK 1) ────────────────────────
 // Every "Hablar con Claude" / "Analizar con Claude" call used to spawn a

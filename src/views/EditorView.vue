@@ -151,7 +151,9 @@ async function save() {
     // manual Cmd+S, the Guardar button and autosave (all funnel here).
     const commitMsg = buildCommitMessage(state.slug, state.originalSite, state.site)
     await projectsApi.save(state.projectType, state.slug, state.site)
-    await gitApi.commit(state.projectType, commitMsg)
+    // Pass the slug so the server scopes the commit to ONLY this site's content
+    // dir (security: never `git add -A` the whole content repo).
+    await gitApi.commit(state.projectType, commitMsg, state.slug)
     state.originalSite = JSON.stringify(state.site)
     // Let an open GitPanel refresh its log so history isn't stale (GAP7).
     state.gitLogNonce++
@@ -261,7 +263,7 @@ onMounted(loadProject)
                  a full loadProject() here was wiping the selection, preview
                  scroll and context every time a reply landed in the chat. -->
             <ClaudePanel v-if="bottomPanel === 'claude'" @reload="applyExternalChange" />
-            <GitPanel v-if="bottomPanel === 'git'" @reload="loadProject" />
+            <GitPanel v-if="bottomPanel === 'git'" @reload="loadProject" @close="bottomPanel = null" />
           </div>
         </template>
       </div>

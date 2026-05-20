@@ -111,17 +111,36 @@ export const componentsApi = {
   list: (type: string) => api<ComponentRegistry>(`/components/${type}`),
 }
 
+// One commit row in the Publicar status (pending + origin/main listings).
+export interface GitStatusCommit {
+  hash: string
+  message: string
+  date: string
+}
+export interface GitStatus {
+  ahead: number
+  pending: GitStatusCommit[]
+  originRecent: GitStatusCommit[]
+}
+
 export const gitApi = {
   log: (type: string) => api(`/git/${type}/log`),
-  commit: (type: string, message: string) =>
-    api(`/git/${type}/commit`, { method: 'POST', body: JSON.stringify({ message }) }),
+  // Publicar status: ahead-count + pending-to-push commits + last 5 on
+  // origin/main. Best-effort server-side (no upstream / offline → empty/0).
+  status: (type: string) => api<GitStatus>(`/git/${type}/status`),
+  // SECURITY: the save commit MUST be scoped to the active site's content dir.
+  // The `slug` is sent so the server stages ONLY content/<slug> (eventos) or
+  // content/portafolio/<slug> (site) — never a repo-wide `git add -A`.
+  commit: (type: string, message: string, slug: string) =>
+    api(`/git/${type}/commit`, { method: 'POST', body: JSON.stringify({ message, slug }) }),
   push: (type: string) =>
     api(`/git/${type}/push`, { method: 'POST' }),
-  revert: (type: string, hash: string) =>
-    api(`/git/${type}/revert/${hash}`, { method: 'POST' }),
 }
 
 export const claudeApi = {
+  // Is the `claude` CLI installed/usable on this machine? The toolbar disables
+  // the "Claude" button (with a Spanish tooltip) when this is false.
+  status: () => api<{ available: boolean }>('/claude/status'),
   // `runId` (optional) lets the caller cancel this run via cancel(runId).
   // The server keys the spawned child by runId and kills it on cancel,
   // resolving this same call with { canceled:true } (no hang).

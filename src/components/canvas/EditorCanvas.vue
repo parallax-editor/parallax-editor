@@ -84,7 +84,6 @@ function remapElementUnits(el: any): void {
 import { useCanvas } from '../../composables/useCanvas'
 import { handleCanvasClick } from '../../composables/useSelection'
 import { usePreviewHitTargets } from '../../composables/usePreviewHitTargets'
-import { GRID_PERCENT } from '../../stores/editor'
 import SelectionOverlay from './SelectionOverlay.vue'
 import SectionLayerHighlight from './SectionLayerHighlight.vue'
 import SmartGuides from './SmartGuides.vue'
@@ -134,19 +133,32 @@ const components = computed<Record<string, Component>>(() => {
   return map
 })
 
-// Grid overlay: drawn at GRID_PERCENT of the artboard so the lines match the
-// snap step exactly (snap rounds position.x/y — which are % of the artboard —
-// to GRID_PERCENT increments). The whole layer lives INSIDE the scaled
-// preview-frame so it scales 1:1 with zoom and the device artboard.
+// Grid overlay: drawn at state.gridPercent of the artboard so the lines match
+// the snap step exactly (snap rounds position.x/y — which are % of the artboard
+// — to the same step). The whole layer lives INSIDE the scaled preview-frame so
+// it scales 1:1 with zoom and the device artboard. Reads state.gridPercent
+// directly so changing the cell size in the toolbar repaints the grid live.
+//
+// Zoom fix: the frame is `transform: scale(zoom)`, so a 1px line drawn here
+// renders at `zoom`px on screen — at the default 0.5 zoom (and below) the lines
+// become sub-pixel and visually vanish ("grid only shows when zoomed in"). We
+// counter-scale the line width to `1/zoom`px so on screen it stays ~1px at any
+// zoom, and bump the opacity so it reads clearly even when zoomed out.
 const gridStyle = computed(() => {
   const vp = viewport()
-  const stepX = (vp.width * GRID_PERCENT) / 100
-  const stepY = (vp.height * GRID_PERCENT) / 100
+  const pct = state.gridPercent
+  const stepX = (vp.width * pct) / 100
+  const stepY = (vp.height * pct) / 100
+  const zoom = state.canvasZoom || 1
+  // Line thickness in artboard px so it paints ~1px once scaled by zoom (clamped
+  // so it never collapses or gets absurdly fat at extreme zooms).
+  const line = Math.min(8, Math.max(1, 1 / zoom))
+  const color = 'rgba(0,153,255,0.5)'
   return {
     backgroundSize: `${stepX}px ${stepY}px`,
     backgroundImage:
-      'linear-gradient(to right, rgba(0,153,255,0.28) 0, rgba(0,153,255,0.28) 1px, transparent 1px),' +
-      'linear-gradient(to bottom, rgba(0,153,255,0.28) 0, rgba(0,153,255,0.28) 1px, transparent 1px)',
+      `linear-gradient(to right, ${color} 0, ${color} ${line}px, transparent ${line}px),` +
+      `linear-gradient(to bottom, ${color} 0, ${color} ${line}px, transparent ${line}px)`,
   }
 })
 
@@ -388,12 +400,33 @@ watch(fontFaceKey, () => {
     .forEach((n) => n.parentNode?.removeChild(n))
 })
 
+// Zoom is a pure CSS `transform: scale()` — it does NOT fire a window 'resize'.
+// The engine measures section/element geometry via getBoundingClientRect and
+// only re-measures on window 'resize' (ParallaxSite.updateViewport,
+// useScrollProgress). So after an extreme zoom-out → zoom-in (esp. in Vista
+// completa) the engine keeps stale, scale-distorted geometry and the section/
+// layer sizes "se descuadran"; toggling overview only fixed it because the
+// layout change happened to trigger a reflow. After a zoom settles, dispatch a
+// synthetic resize so the engine re-measures at the current scale. Debounced so
+// a zoom gesture doesn't thrash.
+let zoomResizeTimer: ReturnType<typeof setTimeout> | null = null
+watch(
+  () => state.canvasZoom,
+  () => {
+    if (zoomResizeTimer) clearTimeout(zoomResizeTimer)
+    zoomResizeTimer = setTimeout(() => {
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('resize'))
+    }, 120)
+  },
+)
+
 onMounted(() => {
   frameRef.value?.addEventListener('scroll', onFrameScroll, { passive: true })
   nextTick(frameInitial)
 })
 
 onBeforeUnmount(() => {
+  if (zoomResizeTimer) clearTimeout(zoomResizeTimer)
   frameRef.value?.removeEventListener('scroll', onFrameScroll)
   setPreviewFrame(null)
 })
@@ -479,12 +512,13 @@ defineExpose({ scrollToElement })
           </div>
         </div>
 
-        <!-- Grid overlay: lines every GRID_PERCENT of the artboard so what
-             Daniela sees lines up with snap-to-grid. Inside the scaled
-             preview-frame → scales with zoom. Pointer-events:none so it
-             never blocks selection / pan / scroll. Edición mode only. -->
+        <!-- Grid overlay: lines every state.gridPercent of the artboard. Now
+             driven by gridVisible (INDEPENDENT of snap). Inside the scaled
+             preview-frame → scales with zoom (line width is counter-scaled in
+             gridStyle so it stays visible at low zoom). Pointer-events:none so
+             it never blocks selection / pan / scroll. Edición mode only. -->
         <div
-          v-if="state.snapToGrid && state.previewMode === 'edit'"
+          v-if="state.gridVisible && state.previewMode === 'edit'"
           class="grid-overlay"
           data-test="grid-overlay"
           :style="gridStyle"
@@ -522,7 +556,7 @@ defineExpose({ scrollToElement })
          from the active view's rendered rects → view-aware by construction.
          pointer-events:none → never touches selection/grid/pan/clamp. -->
     <SmartGuides
-      v-if="state.selectedPath && state.site && state.previewMode === 'edit'"
+      v-if="state.smartGuides && state.selectedPath && state.site && state.previewMode === 'edit'"
       :canvas-ref="canvasRef"
       :scroll-key="scrollTick"
     />

@@ -77,7 +77,19 @@ export interface EditorState {
   undoStack: string[]
   redoStack: string[]
   isClaudeLoading: boolean
+  // Grid OVERLAY visibility — INDEPENDENT of snapping. The visible blue grid
+  // can be on without snap, and snap can be on without the overlay drawn.
+  gridVisible: boolean
+  // "Ajustar a la grid": snap moved/resized elements to the grid step. Used to
+  // mean both visibility AND snap; now ONLY the snap.
   snapToGrid: boolean
+  // Grid cell size as a PERCENT of the artboard (drives both the overlay
+  // density and the snap step). Sensible range ~2–25%. The exported
+  // GRID_PERCENT getter mirrors this so existing importers stay reactive.
+  gridPercent: number
+  // Smart alignment guides (the purple relation lines vs other elements) — on by
+  // default in Edición; toggled like the grid.
+  smartGuides: boolean
   gridSize: number
   errors: string[]
   // Tree clipboard (copy/cut/paste in CAPAS, within and across views).
@@ -152,7 +164,10 @@ export const state = reactive<EditorState>({
   undoStack: [],
   redoStack: [],
   isClaudeLoading: false,
+  gridVisible: false,
   snapToGrid: false,
+  gridPercent: 5,
+  smartGuides: true,
   gridSize: 10,
   errors: [],
   clipboard: null,
@@ -223,8 +238,9 @@ export const prefsWantOverview = { value: false }
 
 interface PersistedPrefs {
   autosave?: boolean
-  snapToGrid?: boolean
   overviewMode?: boolean
+  // NOTE: grid/guías settings (gridVisible, snapToGrid, gridPercent,
+  // smartGuides) are NOT here — they are PER-PROJECT (see GridGuias* below).
   // Configurable artboard sizes (#90): both mobile and desktop are
   // user-configurable and persisted.
   mobileWidth?: number
@@ -263,7 +279,6 @@ function writePrefs(prefs: PersistedPrefs) {
 export function hydratePrefs() {
   const p = readPrefs()
   if (typeof p.autosave === 'boolean') state.autosave = p.autosave
-  if (typeof p.snapToGrid === 'boolean') state.snapToGrid = p.snapToGrid
   prefsWantOverview.value = p.overviewMode === true
   // Mobile artboard size (#90): hydrate the reactive viewport so the saved
   // device size survives reloads. Validated/clamped to a sane range.
@@ -287,7 +302,6 @@ export function hydratePrefs() {
 export function persistPrefs() {
   writePrefs({
     autosave: state.autosave,
-    snapToGrid: state.snapToGrid,
     overviewMode: state.overviewMode,
     mobileWidth: mobileViewport.width,
     mobileHeight: mobileViewport.height,
@@ -319,6 +333,52 @@ export const collapsedNodes = reactive<Record<string, true>>({})
 function treeCollapseKey(): string | null {
   if (!state.projectType || !state.slug) return null
   return `${TREE_COLLAPSE_PREFIX}:${state.projectType}:${state.slug}`
+}
+
+// ── Grid & guías settings — PER PROJECT (user decision) ──────────────────────
+// Grid visibility / snap / cell-size and the smart (purple) guides are
+// remembered PER SITE — like the tree-collapse state and Claude history — NOT
+// in the global editor prefs. Keyed by type:slug; hydrated when a project opens
+// (loadSite) and written on every change (GridGuidesControl → persistGridGuias).
+const GRID_GUIAS_PREFIX = 'parallax-editor:grid-guias'
+function gridGuiasKey(): string | null {
+  if (!state.projectType || !state.slug) return null
+  return `${GRID_GUIAS_PREFIX}:${state.projectType}:${state.slug}`
+}
+export function hydrateGridGuias() {
+  // Reset to defaults FIRST so one project's grid never bleeds into the next.
+  state.gridVisible = false
+  state.snapToGrid = false
+  state.gridPercent = 5
+  state.smartGuides = true
+  const key = gridGuiasKey()
+  if (!key) return
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return
+    const p = JSON.parse(raw) || {}
+    if (typeof p.gridVisible === 'boolean') state.gridVisible = p.gridVisible
+    if (typeof p.snapToGrid === 'boolean') state.snapToGrid = p.snapToGrid
+    if (typeof p.smartGuides === 'boolean') state.smartGuides = p.smartGuides
+    if (isFinitePositive(p.gridPercent)) {
+      state.gridPercent = Math.min(GRID_PERCENT_MAX, Math.max(GRID_PERCENT_MIN, p.gridPercent))
+    }
+  } catch { /* corrupt entry → keep defaults */ }
+}
+export function persistGridGuias() {
+  const key = gridGuiasKey()
+  if (!key) return
+  try {
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        gridVisible: state.gridVisible,
+        snapToGrid: state.snapToGrid,
+        gridPercent: state.gridPercent,
+        smartGuides: state.smartGuides,
+      }),
+    )
+  } catch { /* quota / unavailable — non-fatal */ }
 }
 
 export function hydrateTreeCollapse() {
@@ -453,12 +513,27 @@ export function enableIndependentViews() {
 
 // Grid step, expressed as a PERCENT of the artboard (position.x/y and
 // size.width/height are %-of-artboard in the schema). The visual grid overlay
-// in EditorCanvas and the snap math in SelectionOverlay BOTH use this single
-// constant so what Daniela sees lines up exactly with where elements land.
-// 5% → a 20×N grid on the artboard: fine enough to be useful, coarse enough
-// to read. Kept in sync with state.gridSize (legacy field still consumed by
-// SelectionOverlay's snap rounding).
-export const GRID_PERCENT = 5
+// in EditorCanvas and the snap math in SelectionOverlay BOTH use this so what
+// Daniela sees lines up exactly with where elements land.
+//
+// The cell size is now user-configurable (state.gridPercent, default 5%). This
+// is a LIVE export binding kept mirrored to state.gridPercent by a watcher:
+// SelectionOverlay reads it imperatively at drag time, so it always sees the
+// current value WITHOUT us editing SelectionOverlay (not in scope). EditorCanvas
+// reads state.gridPercent directly for its reactive overlay style.
+export let GRID_PERCENT = state.gridPercent
+watch(
+  () => state.gridPercent,
+  (v) => {
+    GRID_PERCENT = v
+  },
+  { immediate: true },
+)
+
+// Allowed cell-size range (% of artboard). Kept here so the toolbar control and
+// any clamping share one source of truth.
+export const GRID_PERCENT_MIN = 2
+export const GRID_PERCENT_MAX = 25
 
 // A canvas move/resize/rotate drag ends with a `mouseup` that the browser
 // turns into a `click` bubbling to the canvas. Without this guard that click
@@ -526,6 +601,8 @@ export function loadSite(site: Site, projectType: 'eventos' | 'site', slug: stri
   state.lockedIds = Array.isArray(persisted) ? persisted.filter((x: any) => typeof x === 'string') : []
   // Restore the per-project CAPAS tree collapse state (#77).
   hydrateTreeCollapse()
+  // Restore this project's own Grid & guías settings (per-project decision).
+  hydrateGridGuias()
 }
 
 export function closeSite() {

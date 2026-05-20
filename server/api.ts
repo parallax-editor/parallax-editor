@@ -2,9 +2,9 @@ import type { ViteDevServer } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'http'
 import { createReadStream, existsSync } from 'fs'
 import { resolve, extname } from 'path'
-import { listProjects, readProject, writeProject, createProject, duplicateProject, deleteProject, getRepoPath, getAssetPath, saveProjectAsset, assetKindFromMime, listProjectAssets, deleteProjectAsset } from './projects'
-import { gitLog, gitCommit, gitPush, gitRevert } from './git'
-import { runClaude, cancelClaude } from './claude'
+import { listProjects, readProject, writeProject, createProject, duplicateProject, deleteProject, getRepoPath, getContentRelPath, getAssetPath, saveProjectAsset, assetKindFromMime, listProjectAssets, deleteProjectAsset } from './projects'
+import { gitLog, gitCommit, gitPush, gitPendingCommits, gitOriginRecent, gitAheadCount } from './git'
+import { runClaude, cancelClaude, isClaudeAvailable } from './claude'
 import { setupWatcher } from './watcher'
 import { loadComponentRegistry } from './components'
 
@@ -253,10 +253,35 @@ export function createHandler(server: ViteDevServer) {
         return json(res, gitLog(getRepoPath(glmatch[1])))
       }
 
+      // Publicar status: how many commits are pending (ahead of upstream), the
+      // pending commits themselves and the last 5 commits on origin/main. Drives
+      // the toolbar "Publicar" enabled state and the GitPanel listings. All
+      // best-effort (no upstream / offline are handled inside the helpers).
+      const gsmatch = url.match(/^\/api\/git\/(eventos|site)\/status$/)
+      if (gsmatch && method === 'GET') {
+        const repo = getRepoPath(gsmatch[1])
+        return json(res, {
+          ahead: gitAheadCount(repo),
+          pending: gitPendingCommits(repo),
+          originRecent: gitOriginRecent(repo, 5),
+        })
+      }
+
       const gcmatch = url.match(/^\/api\/git\/(eventos|site)\/commit$/)
       if (gcmatch && method === 'POST') {
-        const { message } = await parseBody(req)
-        return json(res, { ok: true, result: gitCommit(getRepoPath(gcmatch[1]), message || 'Auto-save') })
+        const { message, slug } = await parseBody(req)
+        // SECURITY: scope the save commit to ONLY this site's content dir
+        // (content/<slug> | content/portafolio/<slug>). Without a slug we
+        // refuse to commit rather than fall back to a repo-wide `git add -A`,
+        // which could sweep in other sites / unrelated changes.
+        const relPath = slug ? getContentRelPath(gcmatch[1], String(slug)) : ''
+        if (!relPath) {
+          return json(res, { ok: true, result: 'Nothing to commit' })
+        }
+        return json(res, {
+          ok: true,
+          result: gitCommit(getRepoPath(gcmatch[1]), message || 'Auto-save', relPath),
+        })
       }
 
       const gpmatch = url.match(/^\/api\/git\/(eventos|site)\/push$/)
@@ -264,12 +289,13 @@ export function createHandler(server: ViteDevServer) {
         return json(res, { ok: true, result: gitPush(getRepoPath(gpmatch[1])) })
       }
 
-      const grmatch = url.match(/^\/api\/git\/(eventos|site)\/revert\/([a-f0-9]+)$/)
-      if (grmatch && method === 'POST') {
-        return json(res, { ok: true, result: gitRevert(getRepoPath(grmatch[1]), grmatch[2]) })
+      // ─── Claude ──────────────────────────────────────
+      // Is the `claude` CLI installed/usable on this machine? Drives the
+      // toolbar "Claude" button enabled state (cached server-side).
+      if (url === '/api/claude/status' && method === 'GET') {
+        return json(res, { available: isClaudeAvailable() })
       }
 
-      // ─── Claude ──────────────────────────────────────
       // Cancel a running `claude -p` (GAP3 / PLAN §16). The client sends the
       // same `runId` it used to start the run; cancelClaude kills the child
       // and the original /api/claude promise resolves with { canceled:true }
