@@ -13,12 +13,37 @@ import {
   pasteClipboard,
 } from '../stores/editor'
 
+// True when the event originates from a text-entry control (or any
+// contenteditable). Shared by the keydown handler AND the Space modifier so
+// neither hijacks typing.
+function isTypingTarget(t: EventTarget | null): boolean {
+  const el = t as HTMLElement | null
+  if (!el) return false
+  return (
+    el.tagName === 'INPUT' ||
+    el.tagName === 'TEXTAREA' ||
+    el.tagName === 'SELECT' ||
+    el.isContentEditable === true
+  )
+}
+
 export function useShortcuts(onSave: () => void) {
   function handleKey(e: KeyboardEvent) {
     const meta = e.metaKey || e.ctrlKey
     const target = e.target as HTMLElement
     // Don't capture when typing in inputs
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return
+    if (isTypingTarget(target)) return
+
+    // ── Space = temporary pan modifier (GAP9) ────────────────────────────
+    // Hold Space → canvas pans like the Mano tool (cursor grab, drag pans);
+    // release restores the prior tool. state.tool is intentionally NOT
+    // changed (V/H/Z stay intact). Swallow Space so the page never scrolls
+    // and a focused button isn't "clicked". Ignore auto-repeat.
+    if (e.code === 'Space' || e.key === ' ') {
+      if (!e.repeat) state.spacePanning = true
+      e.preventDefault()
+      return
+    }
 
     // Tool shortcuts (single key, no modifier)
     if (!meta && !e.shiftKey) {
@@ -74,6 +99,28 @@ export function useShortcuts(onSave: () => void) {
     }
   }
 
-  onMounted(() => window.addEventListener('keydown', handleKey))
-  onUnmounted(() => window.removeEventListener('keydown', handleKey))
+  // Release the Space pan modifier. Also cleared on window blur / tab hide so
+  // it can never get "stuck" if the keyup is missed (alt-tab, devtools, etc.).
+  function handleKeyUp(e: KeyboardEvent) {
+    if (e.code === 'Space' || e.key === ' ') {
+      state.spacePanning = false
+    }
+  }
+  function clearSpace() {
+    state.spacePanning = false
+  }
+
+  onMounted(() => {
+    window.addEventListener('keydown', handleKey)
+    window.addEventListener('keyup', handleKeyUp)
+    window.addEventListener('blur', clearSpace)
+    document.addEventListener('visibilitychange', clearSpace)
+  })
+  onUnmounted(() => {
+    window.removeEventListener('keydown', handleKey)
+    window.removeEventListener('keyup', handleKeyUp)
+    window.removeEventListener('blur', clearSpace)
+    document.removeEventListener('visibilitychange', clearSpace)
+    state.spacePanning = false
+  })
 }

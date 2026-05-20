@@ -66,7 +66,24 @@ function update(val: any) {
 .field-label { font-size: 11px; color: #999; min-width: 70px; flex-shrink: 0; }
 .field-control { flex: 1 1 auto; min-width: 0; }
 .field-input { width: 100%; box-sizing: border-box; background: #2a2a2a; border: 1px solid #444; border-radius: 4px; color: #e0e0e0; padding: 4px 8px; font-size: 12px; font-family: inherit; }
-.field-input:focus { outline: 1px solid #0066cc; border-color: #0066cc; }
+.field-input:focus { outline: 1px solid var(--accent-strong); border-color: var(--accent-strong); }
+/* Custom dropdown arrow with breathing room on the right (the native arrow sat
+   flush against the border). appearance:none + a chevron SVG positioned with a
+   10px gap, and extra padding-right so the value never runs under it. */
+select.field-input {
+  -webkit-appearance: none; -moz-appearance: none; appearance: none;
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'><path d='M1 1l4 4 4-4' fill='none' stroke='%23999' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+/* Hide the native number spinner (#109): the vertical up/down arrows render
+   mid-height and look misaligned in the slim panel rows. Daniela edits via
+   typing + arrow-key nudge, so the spinner is pure noise — drop it everywhere
+   number fields appear, consistent with NumberSlider/RangeSlider. */
+.field-input[type='number'] { -moz-appearance: textfield; }
+.field-input[type='number']::-webkit-outer-spin-button,
+.field-input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .input-wrap { position: relative; display: flex; align-items: center; }
 .field-unit {
   position: absolute; right: 8px; pointer-events: none;
@@ -76,5 +93,5 @@ function update(val: any) {
 .input-wrap .field-input { padding-right: 30px; }
 .field-color { width: 32px; height: 24px; flex: 0 0 32px; border: 1px solid #444; border-radius: 4px; padding: 0; cursor: pointer; }
 .checkbox-wrap { display: flex; flex: 0 0 auto; }
-.checkbox-wrap input { accent-color: #0066cc; }
+.checkbox-wrap input { accent-color: var(--accent-strong); }
 </style>

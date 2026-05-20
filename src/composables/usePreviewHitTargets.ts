@@ -176,8 +176,15 @@ export function usePreviewHitTargets(rootRef: { value: HTMLElement | null }) {
   // Re-stamp / re-apply when the site, edit/preview mode, or the ACTIVE
   // viewport changes (switching desktop↔mobile in independent mode swaps the
   // rendered tree, so ids must be re-stamped against the new tree).
+  //
+  // TASK #111: deliberately NOT watching state.selectedPath. Selection never
+  // adds/removes/re-renders a media host, so re-stamping on every selection was
+  // pure churn — and it issued setAttribute() DOM writes into the engine's
+  // subtree while enter/split animations were mid-flight. The MutationObserver
+  // above already re-syncs whenever the engine actually mutates its DOM (e.g.
+  // a video host mounting), so selection has nothing to do here.
   watch(
-    () => [state.site, state.previewMode, state.selectedPath, state.deviceMode],
+    () => [state.site, state.previewMode, state.deviceMode],
     sync,
     { deep: true },
   )

@@ -11,7 +11,12 @@ import {
   enableIndependentViews,
   setOverview,
   consumePreOverviewScroll,
+  setAutosave,
+  persistPrefs,
+  restartPreview,
 } from '../../stores/editor'
+import { openLivePreview } from '../../composables/useLivePreview'
+import MobileSizeControl from './MobileSizeControl.vue'
 
 const emit = defineEmits<{
   save: []
@@ -19,6 +24,17 @@ const emit = defineEmits<{
   'toggle-claude': []
   'toggle-git': []
 }>()
+
+function onToggleAutosave(e: Event) {
+  setAutosave((e.target as HTMLInputElement).checked)
+}
+
+// Grid is a plain boolean; mutate the store then write the pref through so it
+// survives a reload (same namespace as Autosave / Vista completa).
+function onToggleGrid(e: Event) {
+  state.snapToGrid = (e.target as HTMLInputElement).checked
+  persistPrefs()
+}
 
 const zoomPercent = computed(() => Math.round(state.canvasZoom * 100))
 
@@ -59,6 +75,30 @@ async function onToggleOverview(e: Event) {
   }
 }
 
+// ── Vista en vivo ───────────────────────────────────────────────────────────
+// Opens a NEW SAME-ORIGIN tab (the editor's own /live route on :3000) that
+// renders the REAL engine <ParallaxSite> of the CURRENT project — INCLUDING
+// unsaved in-memory changes — at full screen with NO editor chrome and NO
+// save/commit. Zero dependency on the eventos/site dev servers: the doc is
+// handed over tab→tab (localStorage snapshot for first paint + per-project
+// BroadcastChannel for live updates) and assets come from the editor's own
+// /content route. See composables/useLivePreview.ts + views/LivePreview.vue.
+const livePreviewEnabled = computed(
+  () => !!state.projectType && !!state.slug,
+)
+
+const livePreviewTitle = computed(() =>
+  livePreviewEnabled.value
+    ? 'Abre una demo en vivo del proyecto actual en una pestaña nueva, a ' +
+      'pantalla completa — incluye los cambios sin guardar. No necesitas ' +
+      'guardar ni publicar.'
+    : 'Abre un proyecto para ver la vista en vivo',
+)
+
+function onOpenLivePreview() {
+  openLivePreview()
+}
+
 function onEnableIndependent() {
   if (isIndependent.value) return
   const ok = window.confirm(
@@ -73,142 +113,235 @@ function onEnableIndependent() {
 
 <template>
   <div class="toolbar">
-    <div class="toolbar-left">
-      <button class="tool-btn" @click="emit('close')" title="Volver a proyectos">&larr;</button>
-      <span class="project-name">{{ state.slug }}</span>
-      <span v-if="isDirty" class="dirty-dot" title="Cambios sin guardar">*</span>
+    <!-- Row 1 — identidad + acciones -->
+    <div class="toolbar-row toolbar-row-top">
+      <div class="row-group identity">
+        <button class="tool-btn" @click="emit('close')" title="Volver a proyectos">&larr;</button>
+        <span class="project-name">{{ state.slug }}</span>
+        <span v-if="isDirty" class="dirty-dot" title="Cambios sin guardar">*</span>
+      </div>
+
+      <div class="row-group actions">
+        <button
+          class="live-btn"
+          data-test="live-preview"
+          :disabled="!livePreviewEnabled"
+          :title="livePreviewTitle"
+          aria-label="Vista en vivo (demo en vivo del proyecto actual, incluye cambios sin guardar, en una pestaña nueva)"
+          @click="onOpenLivePreview"
+        >
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <path
+              d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span class="live-label">Vista en vivo</span>
+        </button>
+        <button class="tool-btn" data-test="toggle-claude" @click="emit('toggle-claude')" title="Preguntarle a Claude">Claude</button>
+        <button class="tool-btn" data-test="toggle-git" @click="emit('toggle-git')" title="Git / Publicar">Git</button>
+        <button class="save-btn" data-test="save" @click="emit('save')" :disabled="!isDirty" title="Guardar (Cmd+S)">Guardar</button>
+      </div>
     </div>
 
-    <div class="toolbar-center">
-      <button
-        :class="['tool-btn', 'icon-btn', { active: state.tool === 'select' }]"
-        @click="state.tool = 'select'"
-        title="Seleccionar (V)"
-        aria-label="Seleccionar (V)"
-      >
-        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-          <path
-            d="M5 3l13 7-5.5 1.5L9.5 18 5 3z"
-            fill="currentColor"
-            stroke="currentColor"
-            stroke-width="1"
-            stroke-linejoin="round"
-          />
-        </svg>
-        <span class="tool-label">Seleccionar</span>
-      </button>
-      <button
-        :class="['tool-btn', 'icon-btn', { active: state.tool === 'hand' }]"
-        @click="state.tool = 'hand'"
-        title="Mano (H)"
-        aria-label="Mano (H)"
-      >
-        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-          <path
-            d="M8 11V5.5a1.5 1.5 0 0 1 3 0V10m0 0V4.5a1.5 1.5 0 0 1 3 0V10m0 0V5.5a1.5 1.5 0 0 1 3 0V13m0-2.5a1.5 1.5 0 0 1 3 0V16a6 6 0 0 1-6 6h-2a6 6 0 0 1-5.3-3.2l-2.4-4.4a1.6 1.6 0 0 1 2.7-1.7L8 13.5"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.6"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-        <span class="tool-label">Mano</span>
-      </button>
-
-      <span class="separator" />
-
-      <button
-        :class="['device-btn', { active: state.deviceMode === 'desktop' }]"
-        @click="state.deviceMode = 'desktop'"
-        :title="isIndependent ? 'Editar configuración de Escritorio' : 'Escritorio'"
-        data-test="device-desktop"
-      >&#x1F4BB;</button>
-      <button
-        :class="['device-btn', { active: state.deviceMode === 'mobile' }]"
-        @click="state.deviceMode = 'mobile'"
-        :title="isIndependent ? 'Editar configuración de Móvil' : 'Móvil'"
-        data-test="device-mobile"
-      >&#x1F4F1;</button>
-
-      <!-- Mode + active-view indicator. Compartido = one shared tree (legacy);
-           Independiente = two separate trees, the device toggle picks which
-           one you edit. -->
-      <span
-        v-if="isIndependent"
-        class="view-badge view-badge-indep"
-        data-test="view-mode-indicator"
-        :data-active-view="state.deviceMode"
-        :title="`Configuración independiente — editando ${state.deviceMode === 'mobile' ? 'Móvil' : 'Escritorio'}`"
-      >Independiente · {{ state.deviceMode === 'mobile' ? 'Móvil' : 'Escritorio' }}</span>
-      <button
-        v-else
-        class="view-badge view-badge-shared"
-        data-test="enable-independent-views"
-        title="Separar escritorio y móvil en configuraciones independientes"
-        @click="onEnableIndependent"
-      >Compartido — Separar móvil/escritorio</button>
-
-      <span class="separator" />
-
-      <div class="zoom-control">
-        <button class="zoom-btn" @click="zoomOut" title="Alejar (Cmd -)" aria-label="Alejar">&minus;</button>
-        <button class="zoom-label" @click="fit" title="Ajustar a la pantalla (Cmd 0)" aria-label="Ajustar a la pantalla">{{ zoomPercent }}%</button>
-        <button class="zoom-btn" @click="zoomIn" title="Acercar (Cmd +)" aria-label="Acercar">+</button>
+    <!-- Row 2 — herramientas del lienzo -->
+    <div class="toolbar-row toolbar-row-tools">
+      <div class="row-group">
+        <button
+          :class="['tool-btn', 'icon-btn', { active: state.tool === 'select' }]"
+          @click="state.tool = 'select'"
+          title="Seleccionar (V)"
+          aria-label="Seleccionar (V)"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <path
+              d="M5 3l13 7-5.5 1.5L9.5 18 5 3z"
+              fill="currentColor"
+              stroke="currentColor"
+              stroke-width="1"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span class="tool-label">Seleccionar</span>
+        </button>
+        <button
+          :class="['tool-btn', 'icon-btn', { active: state.tool === 'hand' }]"
+          @click="state.tool = 'hand'"
+          title="Mano (H)"
+          aria-label="Mano (H)"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <path
+              d="M8 11V5.5a1.5 1.5 0 0 1 3 0V10m0 0V4.5a1.5 1.5 0 0 1 3 0V10m0 0V5.5a1.5 1.5 0 0 1 3 0V13m0-2.5a1.5 1.5 0 0 1 3 0V16a6 6 0 0 1-6 6h-2a6 6 0 0 1-5.3-3.2l-2.4-4.4a1.6 1.6 0 0 1 2.7-1.7L8 13.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span class="tool-label">Mano</span>
+        </button>
       </div>
 
       <span class="separator" />
 
-      <div class="mode-toggle" role="group" aria-label="Modo de vista">
+      <div class="row-group">
         <button
-          :class="['mode-btn', { active: state.previewMode === 'edit' }]"
-          @click="state.previewMode = 'edit'"
-          title="Edicion: mover elementos, animaciones en pausa"
-        >Edicion</button>
+          :class="['device-btn', { active: state.deviceMode === 'desktop' }]"
+          @click="state.deviceMode = 'desktop'"
+          :title="isIndependent ? 'Editar configuración de Escritorio' : 'Escritorio'"
+          data-test="device-desktop"
+        >&#x1F4BB;</button>
         <button
-          :class="['mode-btn', { active: state.previewMode === 'preview' }]"
-          @click="state.previewMode = 'preview'"
-          title="Preview: reproduce animaciones y parallax"
-        >Preview</button>
+          :class="['device-btn', { active: state.deviceMode === 'mobile' }]"
+          @click="state.deviceMode = 'mobile'"
+          :title="isIndependent ? 'Editar configuración de Móvil' : 'Móvil'"
+          data-test="device-mobile"
+        >&#x1F4F1;</button>
+
+        <!-- Tamaño del lienzo móvil configurable (#90). Solo afecta a móvil;
+             se habilita cuando el dispositivo activo es Móvil. -->
+        <MobileSizeControl :disabled="state.deviceMode !== 'mobile'" />
+
+        <!-- Mode + active-view indicator. Compartido = one shared tree (legacy);
+             Independiente = two separate trees, the device toggle picks which
+             one you edit. -->
+        <span
+          v-if="isIndependent"
+          class="view-badge view-badge-indep"
+          data-test="view-mode-indicator"
+          :data-active-view="state.deviceMode"
+          :title="`Configuración independiente — editando ${state.deviceMode === 'mobile' ? 'Móvil' : 'Escritorio'}`"
+        >Independiente · {{ state.deviceMode === 'mobile' ? 'Móvil' : 'Escritorio' }}</span>
+        <button
+          v-else
+          class="view-badge view-badge-shared"
+          data-test="enable-independent-views"
+          title="Separar escritorio y móvil en configuraciones independientes"
+          @click="onEnableIndependent"
+        >Compartido — Separar móvil/escritorio</button>
       </div>
 
       <span class="separator" />
 
-      <label
-        class="snap-toggle"
-        title="Ver toda la composición de una vez, a escala (sin desplazarte por las secciones)"
-      >
-        <input
-          type="checkbox"
-          :checked="state.overviewMode"
-          @change="onToggleOverview"
-          data-test="overview-toggle"
-        />
-        Vista completa
-      </label>
+      <div class="row-group">
+        <div class="zoom-control">
+          <button class="zoom-btn" @click="zoomOut" title="Alejar (Cmd -)" aria-label="Alejar">&minus;</button>
+          <button class="zoom-label" @click="fit" title="Ajustar a la pantalla (Cmd 0)" aria-label="Ajustar a la pantalla">{{ zoomPercent }}%</button>
+          <button class="zoom-btn" @click="zoomIn" title="Acercar (Cmd +)" aria-label="Acercar">+</button>
+        </div>
+      </div>
 
-      <label class="snap-toggle">
-        <input type="checkbox" v-model="state.snapToGrid" />
-        Grid
-      </label>
-    </div>
+      <span class="separator" />
 
-    <div class="toolbar-right">
-      <button class="tool-btn" @click="emit('toggle-claude')" title="Preguntarle a Claude">Claude</button>
-      <button class="tool-btn" @click="emit('toggle-git')" title="Git / Publicar">Git</button>
-      <button class="save-btn" @click="emit('save')" :disabled="!isDirty" title="Guardar (Cmd+S)">Guardar</button>
+      <div class="row-group">
+        <div class="mode-toggle" role="group" aria-label="Modo de vista">
+          <button
+            :class="['mode-btn', { active: state.previewMode === 'edit' }]"
+            @click="state.previewMode = 'edit'"
+            title="Edicion: mover elementos, animaciones en pausa"
+          >Edicion</button>
+          <button
+            :class="['mode-btn', { active: state.previewMode === 'preview' }]"
+            @click="state.previewMode = 'preview'"
+            title="Preview: reproduce animaciones y parallax"
+          >Preview</button>
+        </div>
+
+        <button
+          class="restart-btn"
+          @click="restartPreview"
+          title="Reiniciar animaciones"
+          aria-label="Reiniciar animaciones"
+          data-test="preview-restart"
+        >
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+            <path
+              d="M20 11a8 8 0 1 0-.6 3M20 5v6h-6"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <span class="separator" />
+
+      <div class="row-group">
+        <label
+          class="snap-toggle"
+          title="Ver toda la composición de una vez, a escala (sin desplazarte por las secciones)"
+        >
+          <input
+            type="checkbox"
+            :checked="state.overviewMode"
+            @change="onToggleOverview"
+            data-test="overview-toggle"
+          />
+          Vista completa
+        </label>
+
+        <label class="snap-toggle">
+          <input
+            type="checkbox"
+            :checked="state.snapToGrid"
+            @change="onToggleGrid"
+            data-test="grid-toggle"
+          />
+          Grid
+        </label>
+
+        <label
+          class="snap-toggle"
+          title="Guarda automáticamente los cambios (no necesitas pulsar Guardar)"
+        >
+          <input
+            type="checkbox"
+            :checked="state.autosave"
+            @change="onToggleAutosave"
+            data-test="autosave-toggle"
+          />
+          Autosave
+        </label>
+        <span
+          v-if="state.autosave && state.autosaveStatus !== 'idle'"
+          class="autosave-status"
+          :data-state="state.autosaveStatus"
+          data-test="autosave-status"
+        >{{ state.autosaveStatus === 'saving' ? 'Guardando…' : 'Guardado' }}</span>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.toolbar { display: flex; align-items: center; justify-content: space-between; height: 40px; padding: 0 12px; background: #252525; border-bottom: 1px solid #333; font-size: 13px; flex-shrink: 0; }
-.toolbar-left, .toolbar-center, .toolbar-right { display: flex; align-items: center; gap: 8px; }
+/* Two-row toolbar: Row 1 = identidad + acciones, Row 2 = herramientas. The
+   editor layout is a flex column, so a taller toolbar is fine. */
+/* position+z-index so toolbar dropdowns (size menu, etc.) paint ABOVE the
+   canvas and its guides/selection overlay (a later sibling that would otherwise
+   cover a dropdown opening down into the canvas — Image #65). */
+.toolbar { display: flex; flex-direction: column; background: #252525; border-bottom: 1px solid #333; font-size: 13px; flex-shrink: 0; position: relative; z-index: 100; }
+.toolbar-row { display: flex; align-items: center; gap: 8px; padding: 0 12px; min-height: 40px; }
+.toolbar-row-top { justify-content: space-between; border-bottom: 1px solid #2f2f2f; }
+.toolbar-row-tools { flex-wrap: wrap; padding-top: 6px; padding-bottom: 6px; row-gap: 6px; }
+.row-group { display: flex; align-items: center; gap: 8px; }
+.row-group.actions { gap: 8px; }
 .project-name { font-weight: 600; }
 .dirty-dot { color: #f90; font-size: 18px; }
-.tool-btn { background: #333; border: 1px solid #444; color: #ccc; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; }
+.tool-btn { background: #333; border: 1px solid #444; color: #ccc; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: background .12s ease, border-color .12s ease; }
 .tool-btn:hover { background: #444; }
-.tool-btn.active { background: #0066cc; border-color: #0066cc; color: #fff; }
+.tool-btn.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.tool-btn.active:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.tool-btn.active:active { background: var(--accent); }
+.tool-btn.active:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 1px; }
 .icon-btn { display: inline-flex; align-items: center; gap: 6px; }
 .icon-btn svg { display: block; }
 .tool-label { font-size: 12px; font-weight: 600; }
@@ -229,8 +362,21 @@ function onEnableIndependent() {
 .mode-btn + .mode-btn { border-left: 1px solid #444; }
 .mode-btn:hover { background: #3d3d3d; color: #ddd; }
 .mode-btn.active { background: #2a7d2a; color: #fff; }
+.restart-btn { background: #333; border: 1px solid #444; color: #ccc; width: 26px; height: 24px; border-radius: 4px; cursor: pointer; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.restart-btn:hover { background: #444; color: #fff; }
+.restart-btn svg { display: block; }
+.live-btn { display: inline-flex; align-items: center; gap: 6px; background: #333; border: 1px solid #444; color: #ccc; height: 24px; padding: 0 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; }
+.live-btn:hover:not(:disabled) { background: #444; color: #fff; }
+.live-btn:disabled { opacity: 0.4; cursor: default; }
+.live-btn svg { display: block; }
+.live-label { font-size: 12px; font-weight: 600; }
 .snap-toggle { display: flex; align-items: center; gap: 4px; color: #888; cursor: pointer; font-size: 12px; }
-.snap-toggle input { accent-color: #0066cc; }
-.save-btn { background: #0066cc; border: none; color: #fff; padding: 4px 14px; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 12px; }
+.snap-toggle input { accent-color: var(--accent-strong); }
+.autosave-status { font-size: 11px; color: #2a7d2a; min-width: 64px; }
+.autosave-status[data-state='saving'] { color: #c9a227; }
+.save-btn { background: var(--accent); border: none; color: var(--accent-fg); padding: 5px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px; transition: background .12s ease; }
+.save-btn:hover:not(:disabled) { background: var(--accent-hover); }
+.save-btn:active:not(:disabled) { background: var(--accent); }
+.save-btn:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 1px; }
 .save-btn:disabled { opacity: 0.4; cursor: default; }
 </style>

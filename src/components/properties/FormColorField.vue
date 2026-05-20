@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import HelpHint from './HelpHint.vue'
+import { resolvedThemeColor } from '../../stores/editor'
 
 // Friendly color control for FormBlock styling values.
 // Daniela never types raw CSS: she clicks a theme swatch (stored as the
@@ -20,20 +21,26 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 
 // Theme tokens the site exposes (see parallax-engine ParallaxSite.vue:
-// --color-ink/paper/accent). Stored verbatim as CSS so the form inherits
-// the site theme automatically.
-const SWATCHES = [
-  { token: 'paper', label: 'Papel (claro)', css: 'var(--color-paper)', preview: '#ffffff' },
-  { token: 'ink', label: 'Tinta (oscuro)', css: 'var(--color-ink)', preview: '#1a1a1a' },
-  { token: 'accent', label: 'Acento', css: 'var(--color-accent)', preview: '#c8a04b' },
-]
+// --color-ink/paper/accent). The STORED value stays the CSS token
+// (`var(--color-paper|ink|accent)`) so the form inherits the site theme
+// automatically — but the swatch must PREVIEW the project's REAL resolved
+// theme color, not a hardcoded palette. We read state.site.theme.colors
+// (via resolvedThemeColor, which falls back to neutral defaults when the
+// site has no theme) so the "accent" swatch reflects the actual accent,
+// not a fixed café. `computed` so it updates live when the Tema editor
+// changes a color in-memory.
+const SWATCHES = computed(() => [
+  { token: 'paper', label: 'Papel (claro)', css: 'var(--color-paper)', preview: resolvedThemeColor('paper') },
+  { token: 'ink', label: 'Tinta (oscuro)', css: 'var(--color-ink)', preview: resolvedThemeColor('ink') },
+  { token: 'accent', label: 'Acento', css: 'var(--color-accent)', preview: resolvedThemeColor('accent') },
+])
 
 const value = computed(() => props.modelValue || '')
 
 // Which (if any) theme swatch is currently selected — for the active ring.
 const activeToken = computed(() => {
   const v = value.value.trim()
-  const hit = SWATCHES.find((s) => s.css === v)
+  const hit = SWATCHES.value.find((s) => s.css === v)
   return hit ? hit.token : null
 })
 
@@ -120,7 +127,7 @@ function setRaw(raw: string) {
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
 }
 .fc-swatch:hover { border-color: #888; }
-.fc-swatch.is-active { outline: 2px solid #0099ff; outline-offset: 1px; border-color: #0099ff; }
+.fc-swatch.is-active { outline: 2px solid var(--accent-strong); outline-offset: 1px; border-color: var(--accent-strong); }
 .fc-picker {
   width: 32px; height: 24px; flex: 0 0 32px; border: 1px solid #444;
   border-radius: 4px; padding: 0; cursor: pointer; background: #2a2a2a;
@@ -132,5 +139,5 @@ function setRaw(raw: string) {
   background: #242424; border: 1px solid #3a3a3a; border-radius: 4px;
   color: #bbb; padding: 4px 8px; font-size: 11px; font-family: inherit;
 }
-.fc-raw-input:focus { outline: 1px solid #0066cc; border-color: #0066cc; }
+.fc-raw-input:focus { outline: 1px solid var(--accent-strong); border-color: var(--accent-strong); }
 </style>

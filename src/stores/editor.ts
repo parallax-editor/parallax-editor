@@ -1,13 +1,29 @@
-import { reactive, computed } from 'vue'
+import { reactive, computed, watch } from 'vue'
 import type { Site, Section, Layer, AnyElement } from 'parallax-engine/schema'
 import { toViews, resolveSections } from 'parallax-engine'
+import { componentsApi, type ComponentRegistration, type EditablePropSchema } from '../composables/useApi'
+
+export type { ComponentRegistration, EditablePropSchema }
 
 export type Tool = 'select' | 'hand' | 'zoom'
 export type DeviceMode = 'desktop' | 'mobile'
 
 // Clipboard kinds mirror the three tree node levels.
 export type ClipboardKind = 'section' | 'layer' | 'element'
+// One snapshotted node (used for multi-selection copy/cut — task #107). Each
+// node keeps its OWN kind so a mixed-kind multi-selection round-trips faithfully.
+export interface ClipboardItem {
+  kind: ClipboardKind
+  // Deep snapshot taken at copy/cut time (ids regenerated on every paste).
+  data: any
+  // Id the node lived under at copy/cut time (so a 'cut' paste can delete the
+  // original by re-locating it, even after a view switch).
+  sourceId?: string
+}
 export interface Clipboard {
+  // ── Legacy single-node fields (UNCHANGED) ────────────────────────────────
+  // Always mirror items[0] so every existing single-select surface
+  // (clipboardLabel, etc.) keeps working byte-for-byte.
   kind: ClipboardKind
   // Deep snapshot taken at copy/cut time (ids regenerated on every paste).
   data: any
@@ -16,6 +32,10 @@ export interface Clipboard {
   // Path the cut node lived at (so the first paste can delete it). View-aware
   // bookkeeping is unnecessary because cut deletes by re-locating the node id.
   sourceId?: string
+  // ── Multi-selection (task #107) ──────────────────────────────────────────
+  // ALL snapshotted nodes in tree order. Single-select copies a 1-length array;
+  // multi-select copies the whole set. Paste replays every item.
+  items: ClipboardItem[]
 }
 // 'edit'   → elements manipulable, parallax/animations paused (design view)
 // 'preview'→ engine runs animations/parallax so the effect is visible
@@ -27,11 +47,33 @@ export interface EditorState {
   site: Site | null
   originalSite: string | null
   selectedPath: string | null
+  // ── Multi-selection (GAP5) ───────────────────────────────────────────────
+  // `selectedPath` stays the PRIMARY selection — every existing single-select
+  // surface (PROPIEDADES, single-element resize/rotate, CAPAS, animations,
+  // copy/paste, getSelected) keys off it UNCHANGED. `selectedPaths` is the
+  // ADDITIVE multi-set used ONLY by the canvas: shift+click on the canvas
+  // adds/removes element paths here. Invariants:
+  //   • length 0 or 1  → behaves exactly like today (single select). The
+  //     overlay renders the normal box with resize/rotate handles.
+  //   • length ≥ 2     → the overlay renders a GROUP bounding box with a
+  //     move-area only (group resize/rotate intentionally out of scope per
+  //     the plan); a group drag moves EVERY selected element by the same
+  //     delta through the SAME anchor-aware + unit-preserving + clamp logic.
+  // Element-only (sections/layers aren't multi-selectable on the canvas).
+  // Always kept in sync so `selectedPath` is the last entry when non-empty.
+  selectedPaths: string[]
   tool: Tool
   deviceMode: DeviceMode
   previewMode: PreviewMode
   canvasZoom: number
   canvasPan: { x: number; y: number }
+  // ── Space = temporary pan modifier (GAP9) ────────────────────────────────
+  // While Space is held (and not typing in a field) the canvas behaves like
+  // the Mano/hand tool: cursor → grab, drag pans the workspace. Releasing
+  // Space restores whatever tool was active. This is a TRANSIENT modifier, not
+  // a tool: state.tool is untouched (so V/H/Z stay intact) — useCanvas and
+  // EditorCanvas just treat `spacePanning` as "pan like hand right now".
+  spacePanning: boolean
   undoStack: string[]
   redoStack: string[]
   isClaudeLoading: boolean
@@ -50,7 +92,7 @@ export interface EditorState {
   lockedIds: string[]
   // ── "Vista completa" (overview) ──────────────────────────────────────────
   // OFF (default) = today's behavior unchanged: device-proportion artboard
-  // (1440×900 / 375×667) with vertical scroll through the sections.
+  // (1440×900 / 390×844) with vertical scroll through the sections.
   // ON = the whole composition (all stacked sections, full total height) is
   // shown scaled-to-fit at once, no per-screen scrolling. Purely an editor
   // view state — never saved into site.json.
@@ -67,6 +109,31 @@ export interface EditorState {
     scrollTop: number
     scrollLeft: number
   } | null
+  // ── Autosave (UI pref, persisted) ─────────────────────────────────────────
+  // OFF (default) = behavior unchanged: manual "Guardar" only. ON = the editor
+  // debounces a save (~1.5s after the last change) whenever the document is
+  // dirty, reusing the SAME save path as the manual button (EditorView.save()).
+  autosave: boolean
+  // Transient autosave status for the subtle toolbar indicator. 'idle' shows
+  // nothing; 'saving' while the PUT is in flight; 'saved' briefly after.
+  autosaveStatus: 'idle' | 'saving' | 'saved'
+  // Bumped to force EditorCanvas to re-mount the preview ParallaxSite so all
+  // engine animations replay from the start ("Reiniciar mesa"), WITHOUT
+  // reloading the app or losing selection/view/zoom/dirty state.
+  previewNonce: number
+  // ── Custom component registry (GAP1 / PLAN §13) ──────────────────────────
+  // Serializable registry of the active project type's registered custom
+  // components (parallax.config.ts in the neighbor repo), fetched on project
+  // load. Keyed by component name → { name, label, description, editableProps }.
+  // The actual Vue refs are NOT here (stripped server-side); the canvas
+  // dynamically imports the real SFCs. eventos → {} (built-ins only).
+  componentRegistry: Record<string, ComponentRegistration>
+  // Non-fatal: present when the neighbor's parallax.config.ts exists but
+  // failed to load (the editor still works on built-ins). Surfaced subtly.
+  componentRegistryError: string | null
+  // Bumped after every successful save/commit so an open GitPanel can refresh
+  // its log reactively (history was stale after autosave/manual save — GAP7).
+  gitLogNonce: number
 }
 
 export const state = reactive<EditorState>({
@@ -75,11 +142,13 @@ export const state = reactive<EditorState>({
   site: null,
   originalSite: null,
   selectedPath: null,
+  selectedPaths: [],
   tool: 'select',
   deviceMode: 'desktop',
   previewMode: 'edit',
   canvasZoom: 0.5,
   canvasPan: { x: 0, y: 0 },
+  spacePanning: false,
   undoStack: [],
   redoStack: [],
   isClaudeLoading: false,
@@ -92,7 +161,217 @@ export const state = reactive<EditorState>({
   overviewMode: false,
   overviewContentHeight: 0,
   preOverview: null,
+  autosave: false,
+  autosaveStatus: 'idle',
+  previewNonce: 0,
+  componentRegistry: {},
+  componentRegistryError: null,
+  gitLogNonce: 0,
 })
+
+/**
+ * Fetch + cache the custom-component registry for a project `type`
+ * (`eventos` | `site`) from the editor's discovery route. Called on project
+ * load. Resilient: a network/parse failure clears the registry rather than
+ * throwing — the add menu/properties just fall back to built-ins only.
+ */
+export async function fetchComponentRegistry(type: 'eventos' | 'site') {
+  try {
+    const r = await componentsApi.list(type)
+    // Guard against the project being closed/switched mid-flight.
+    if (state.projectType !== type) return
+    state.componentRegistry = r?.components ?? {}
+    state.componentRegistryError = r?.error ?? null
+  } catch {
+    if (state.projectType !== type) return
+    state.componentRegistry = {}
+    state.componentRegistryError = null
+  }
+}
+
+// Custom components registered for the active project (excludes the engine
+// built-in FormBlock, which keeps its dedicated add/edit path). Used by the
+// add menu and the generic properties renderer.
+export const customComponents = computed<ComponentRegistration[]>(() =>
+  Object.values(state.componentRegistry).filter((c) => c.name !== 'FormBlock'),
+)
+
+export function getComponentRegistration(
+  name: string | undefined | null,
+): ComponentRegistration | null {
+  if (!name) return null
+  return state.componentRegistry[name] || null
+}
+
+// ─── Persisted UI preferences (localStorage) ───────────────────────────────────
+//
+// ONLY the three config checkboxes are persisted — Autosave, Grid
+// (snapToGrid) and "Vista completa" (overviewMode) — under a single stable
+// namespace. Transient per-project state (selection, zoom/pan, undo stack,
+// the loaded site) is intentionally NOT persisted. `overviewMode` is restored
+// as a *pending* flag (see prefsWantOverview): the canvas re-enables it via
+// the real enable/fit path once the project + canvas are measured, never by
+// blindly setting state.overviewMode (which would skip the fit math).
+
+const PREFS_KEY = 'parallax-editor:prefs'
+
+// Set true at hydration time when the saved prefs asked for overview. The
+// canvas consumes it after the project + canvas are ready and calls the
+// normal enableOverview/fit path, then clears it. We do NOT set
+// state.overviewMode directly on load.
+export const prefsWantOverview = { value: false }
+
+interface PersistedPrefs {
+  autosave?: boolean
+  snapToGrid?: boolean
+  overviewMode?: boolean
+  // Configurable artboard sizes (#90): both mobile and desktop are
+  // user-configurable and persisted.
+  mobileWidth?: number
+  mobileHeight?: number
+  desktopWidth?: number
+  desktopHeight?: number
+  // Last selected device toggle (Escritorio/Móvil) — remembered across reloads.
+  deviceMode?: DeviceMode
+}
+
+function readPrefs(): PersistedPrefs {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function writePrefs(prefs: PersistedPrefs) {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs))
+  } catch {
+    /* localStorage unavailable / quota — non-fatal, prefs just won't persist */
+  }
+}
+
+/**
+ * Hydrate the persisted UI prefs into the store BEFORE the editor first
+ * renders. Autosave + Grid are plain booleans applied directly. Overview is
+ * recorded as a pending intent only (prefsWantOverview) — the canvas applies
+ * it through the real enable/fit path once it has measurements.
+ */
+export function hydratePrefs() {
+  const p = readPrefs()
+  if (typeof p.autosave === 'boolean') state.autosave = p.autosave
+  if (typeof p.snapToGrid === 'boolean') state.snapToGrid = p.snapToGrid
+  prefsWantOverview.value = p.overviewMode === true
+  // Mobile artboard size (#90): hydrate the reactive viewport so the saved
+  // device size survives reloads. Validated/clamped to a sane range.
+  if (isFinitePositive(p.mobileWidth) && isFinitePositive(p.mobileHeight)) {
+    mobileViewport.width = clampDimension(p.mobileWidth as number)
+    mobileViewport.height = clampDimension(p.mobileHeight as number)
+  }
+  if (isFinitePositive(p.desktopWidth) && isFinitePositive(p.desktopHeight)) {
+    desktopViewport.width = clampDimension(p.desktopWidth as number)
+    desktopViewport.height = clampDimension(p.desktopHeight as number)
+  }
+  if (p.deviceMode === 'mobile' || p.deviceMode === 'desktop') {
+    state.deviceMode = p.deviceMode
+  }
+}
+
+// Write the current value of the persisted prefs through to localStorage.
+// `overviewMode` reflects the LIVE store flag so toggling it in the toolbar
+// persists immediately; on next load it becomes a pending intent. The mobile
+// artboard size persists alongside (#90).
+export function persistPrefs() {
+  writePrefs({
+    autosave: state.autosave,
+    snapToGrid: state.snapToGrid,
+    overviewMode: state.overviewMode,
+    mobileWidth: mobileViewport.width,
+    mobileHeight: mobileViewport.height,
+    desktopWidth: desktopViewport.width,
+    desktopHeight: desktopViewport.height,
+    deviceMode: state.deviceMode,
+  })
+}
+// Persist the device toggle (Escritorio/Móvil) whenever it changes, from any
+// path (toolbar click, enableIndependentViews, …).
+watch(() => state.deviceMode, () => persistPrefs())
+
+export function setAutosave(on: boolean) {
+  state.autosave = on
+  persistPrefs()
+}
+
+// ─── Tree collapse state (TASK #77) ────────────────────────────────────────
+//
+// Which section/layer nodes are collapsed in the CAPAS tree, persisted PER
+// PROJECT under `parallax-editor:tree-collapsed:<type>:<slug>` (same namespace
+// convention as the other persisted prefs, #50). The key is the node's id when
+// it has one, else its view-relative path — so a node with no id yet still
+// collapses, and once it gets an id the state follows it. Reactive so the tree
+// re-renders on toggle; lazily hydrated when a project loads.
+const TREE_COLLAPSE_PREFIX = 'parallax-editor:tree-collapsed'
+export const collapsedNodes = reactive<Record<string, true>>({})
+
+function treeCollapseKey(): string | null {
+  if (!state.projectType || !state.slug) return null
+  return `${TREE_COLLAPSE_PREFIX}:${state.projectType}:${state.slug}`
+}
+
+export function hydrateTreeCollapse() {
+  for (const k of Object.keys(collapsedNodes)) delete collapsedNodes[k]
+  const key = treeCollapseKey()
+  if (!key) return
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      for (const id of parsed) {
+        if (typeof id === 'string') collapsedNodes[id] = true
+      }
+    }
+  } catch {
+    /* corrupt → start expanded */
+  }
+}
+
+function persistTreeCollapse() {
+  const key = treeCollapseKey()
+  if (!key) return
+  try {
+    localStorage.setItem(key, JSON.stringify(Object.keys(collapsedNodes)))
+  } catch {
+    /* quota / disabled — non-fatal */
+  }
+}
+
+// Stable collapse key for a node: prefer its id (survives reorders), else the
+// view-relative path.
+export function collapseKeyFor(nodeId: string | undefined | null, path: string): string {
+  return nodeId ? `id:${nodeId}` : `path:${path}`
+}
+
+export function isCollapsed(nodeId: string | undefined | null, path: string): boolean {
+  return collapsedNodes[collapseKeyFor(nodeId, path)] === true
+}
+
+export function toggleCollapsed(nodeId: string | undefined | null, path: string) {
+  const k = collapseKeyFor(nodeId, path)
+  if (collapsedNodes[k]) delete collapsedNodes[k]
+  else collapsedNodes[k] = true
+  persistTreeCollapse()
+}
+
+// "Reiniciar mesa": bump the nonce so EditorCanvas re-mounts the preview
+// ParallaxSite (engine animations replay from 0). Pure editor view state —
+// never touches site.json, selection, view mode, zoom/pan or dirty state.
+export function restartPreview() {
+  state.previewNonce++
+}
 
 // ─── View model: compartido (legacy) vs independiente (v1.1 views) ─────────────
 //
@@ -181,6 +460,37 @@ export function enableIndependentViews() {
 // SelectionOverlay's snap rounding).
 export const GRID_PERCENT = 5
 
+// A canvas move/resize/rotate drag ends with a `mouseup` that the browser
+// turns into a `click` bubbling to the canvas. Without this guard that click
+// hits handleCanvasClick and — if the pointer was released over the pasteboard
+// or a different element — DESELECTS what was just dragged (selection box
+// vanishes mid-edit). The SelectionOverlay stamps a timestamp on drag end and
+// handleCanvasClick swallows the one click that immediately follows.
+export const dragGuard = { lastDragEnd: 0 }
+export function markDragEnded() {
+  dragGuard.lastDragEnd = Date.now()
+}
+export function shouldSwallowCanvasClick(): boolean {
+  return Date.now() - dragGuard.lastDragEnd < 300
+}
+
+// True while an element move/resize/rotate drag is actively in progress on the
+// canvas. Module-level (NOT in the reactive `state`) so flipping it never
+// triggers reactive watchers / re-renders. Item #2: while "Vista completa"
+// (overview) is ON, dragging an element mutates `state.site` (the element's
+// position), which fires the canvas' deep site watcher → refitOverview →
+// setZoom, RESETTING the zoom/pan mid-drag. The overview-refit watcher consults
+// this flag and skips refitting while a drag is live, so the current zoom/pan
+// stay put. A genuine content-driven height change (section add/edit) still
+// refits because that doesn't happen during a drag.
+export const canvasDrag = { active: false }
+export function setCanvasDragActive(active: boolean) {
+  canvasDrag.active = active
+}
+export function isCanvasDragActive(): boolean {
+  return canvasDrag.active
+}
+
 export const isDirty = computed(() => {
   if (!state.site || !state.originalSite) return false
   return JSON.stringify(state.site) !== state.originalSite
@@ -192,18 +502,30 @@ export function loadSite(site: Site, projectType: 'eventos' | 'site', slug: stri
   state.projectType = projectType
   state.slug = slug
   state.selectedPath = null
+  state.selectedPaths = []
   state.undoStack = []
   state.redoStack = []
   state.errors = []
+  // Reset the custom-component registry for the newly-opened project; the
+  // EditorView kicks off fetchComponentRegistry(type) right after this.
+  state.componentRegistry = {}
+  state.componentRegistryError = null
   state.clipboard = null
   state.pasteHint = null
   state.overviewMode = false
   state.overviewContentHeight = 0
   state.preOverview = null
+  // Re-arm the persisted "Vista completa" intent for THIS project load (the
+  // canvas applies it via the real enable/fit path once measured). Read fresh
+  // so reopening any project — not just the first after a tab reload —
+  // restores the pref.
+  prefsWantOverview.value = readPrefs().overviewMode === true
   // Hydrate editor-local locks from the OPTIONAL additive field if the saved
   // JSON carries one (kept out of the engine schema; sites ignore it).
   const persisted = (site as any).editorLocks
   state.lockedIds = Array.isArray(persisted) ? persisted.filter((x: any) => typeof x === 'string') : []
+  // Restore the per-project CAPAS tree collapse state (#77).
+  hydrateTreeCollapse()
 }
 
 export function closeSite() {
@@ -211,6 +533,7 @@ export function closeSite() {
   state.originalSite = null
   state.slug = null
   state.selectedPath = null
+  state.selectedPaths = []
   state.undoStack = []
   state.redoStack = []
   state.clipboard = null
@@ -219,6 +542,8 @@ export function closeSite() {
   state.overviewMode = false
   state.overviewContentHeight = 0
   state.preOverview = null
+  state.componentRegistry = {}
+  state.componentRegistryError = null
 }
 
 function pushUndo() {
@@ -276,9 +601,139 @@ export function setAtPath(path: string, value: any) {
   }
 }
 
+// ─── Global (site-level) selection: "Sitio" (meta) + "Tema" (theme) ────────────
+//
+// `meta` and `theme` are TOP-LEVEL site config (NOT per section/layer/element
+// and NOT per desktop/mobile view — they're shared regardless of independent-
+// views mode). The CAPAS tree can only select section/layer/element paths, so
+// there was no way to edit them. We model the two global targets as SENTINEL
+// selection paths that aren't real dot-paths into the tree:
+//
+//   GLOBAL_SITE  = '@site'   → PROPIEDADES shows the meta form
+//   GLOBAL_THEME = '@theme'  → PROPIEDADES shows the theme form
+//
+// Why a sentinel and not a path: getSelected() returns null for them (they're
+// not section/layer/element), so the canvas SelectionOverlay (which keys off
+// getAtPath(selectedPath)?.id) naturally renders nothing — no .selection-box,
+// element selection is cleared. The forms read/write the REAL top-level paths
+// ("meta.title", "theme.colors.accent") through getAtPath/setAtPath, which
+// pass non-"sections" paths through verbatim → undo + dirty + view-agnostic
+// (toCanonicalPath only rebases the leading "sections" token).
+export const GLOBAL_SITE = '@site'
+export const GLOBAL_THEME = '@theme'
+// "Recursos" (TASK #85): a THIRD global sentinel, same model as @site/@theme.
+// PROPIEDADES shows a per-project asset browser (images/fonts/audio/video).
+// Assets are per project (NOT per desktop/mobile view) so this is fully
+// view-agnostic, exactly like meta/theme. getSelected() returns null for it
+// (not a tree node) so the canvas overlay hides — element selection cleared.
+export const GLOBAL_RESOURCES = '@resources'
+
+export function isGlobalPath(p: string | null | undefined): p is '@site' | '@theme' | '@resources' {
+  return p === GLOBAL_SITE || p === GLOBAL_THEME || p === GLOBAL_RESOURCES
+}
+
+export const selectedGlobal = computed<'site' | 'theme' | 'resources' | null>(() => {
+  if (state.selectedPath === GLOBAL_SITE) return 'site'
+  if (state.selectedPath === GLOBAL_THEME) return 'theme'
+  if (state.selectedPath === GLOBAL_RESOURCES) return 'resources'
+  return null
+})
+
+// Select a global target. Clearing any element selection is implicit: the
+// sentinel path makes getSelected() null and the overlay hides.
+export function selectGlobal(which: 'site' | 'theme' | 'resources') {
+  state.selectedPath =
+    which === 'theme' ? GLOBAL_THEME : which === 'resources' ? GLOBAL_RESOURCES : GLOBAL_SITE
+}
+
+// Effective theme tokens used to scaffold `site.theme` on a legacy file that
+// has none. We DON'T force-change rendering: this mirrors the engine's own
+// fallbacks (ParallaxSite only applies CSS vars when theme exists; with no
+// theme the page is browser-default black-on-white). Scaffolding only happens
+// when Daniela actively edits a theme value, and seeds sensible neutrals so
+// the very first edit doesn't repaint everything to an arbitrary palette.
+// Exported so color controls (FormColorField) can paint their theme-preset
+// swatches with the real resolved theme, falling back to these neutrals when
+// `state.site.theme` is absent — instead of each control hardcoding a palette
+// (the bug where the "accent" swatch always showed a fixed café).
+export const DEFAULT_THEME = {
+  colors: { ink: '#1a1a1a', paper: '#ffffff', accent: '#c8a04b' },
+  typography: { display: 'Georgia, serif', body: 'system-ui, sans-serif' },
+}
+
+/**
+ * Resolve the current site theme color for a token (ink/paper/accent),
+ * falling back to DEFAULT_THEME when the site has no theme (or that token
+ * is unset). Used by swatch controls to PREVIEW the real palette while the
+ * value they store stays the CSS token (`var(--color-accent)`).
+ */
+export function resolvedThemeColor(token: 'ink' | 'paper' | 'accent'): string {
+  const c = (state.site as any)?.theme?.colors
+  const v = c && typeof c[token] === 'string' ? c[token].trim() : ''
+  return v || DEFAULT_THEME.colors[token]
+}
+
+/**
+ * Ensure `site.theme` exists before writing a theme field on a legacy site.
+ * Additive: absent → cloned from DEFAULT_THEME (neutral, close to the
+ * no-theme browser default). Pushes undo so the scaffold is itself undoable.
+ * No-op when a theme already exists. Returns the (now guaranteed) theme.
+ */
+export function ensureTheme(): any {
+  if (!state.site) return null
+  const s = state.site as any
+  if (!s.theme || typeof s.theme !== 'object') {
+    pushUndo()
+    s.theme = JSON.parse(JSON.stringify(DEFAULT_THEME))
+  }
+  return s.theme
+}
+
+// ─── Cursor (top-level, view-agnostic) ─────────────────────────────────────────
+//
+// `site.cursor` is OPTIONAL & additive (engine cursorSchema). It is NOT written
+// until the user enables the follow-cursor — an untouched legacy file stays
+// byte-identical (no `cursor` key). Mirrors the engine defaults so the saved
+// object is a complete, valid CursorConfig. Shared across desktop/mobile.
+export const DEFAULT_CURSOR = {
+  enabled: true,
+  color: '#000000',
+  size: 20,
+  hoverScale: 2,
+  blendMode: 'difference',
+}
+
+// Toggle the follow-cursor. Enabling on a site with no `cursor` scaffolds the
+// full default object (so color/size/blend controls have something to bind).
+// Disabling just flips `enabled:false` (keeps the user's color/size choices for
+// when they re-enable). pushUndo via setAtPath / here so the scaffold is
+// undoable; setAtPath marks dirty.
+export function setCursorEnabled(on: boolean) {
+  if (!state.site) return
+  const s = state.site as any
+  if (on && (!s.cursor || typeof s.cursor !== 'object')) {
+    pushUndo()
+    s.cursor = JSON.parse(JSON.stringify(DEFAULT_CURSOR))
+    return
+  }
+  setAtPath('cursor.enabled', on)
+}
+
+// Write one cursor sub-field (color/size/blendMode). Only callable while the
+// cursor object exists (the form shows these controls only when enabled).
+export function updateCursor(key: string, value: any) {
+  if (!state.site) return
+  const s = state.site as any
+  if (!s.cursor || typeof s.cursor !== 'object') return
+  setAtPath(`cursor.${key}`, value)
+}
+
 // Get the selected element/layer/section
 export function getSelected(): { type: 'section' | 'layer' | 'element'; data: any; path: string } | null {
   if (!state.selectedPath || !state.site) return null
+  // Global (meta/theme) selection is NOT a tree node — no overlay, no
+  // element/section/layer props.
+  if (isGlobalPath(state.selectedPath)) return null
   const parts = state.selectedPath.split('.')
   const data = getAtPath(state.selectedPath)
   if (!data) return null
@@ -288,6 +743,200 @@ export function getSelected(): { type: 'section' | 'layer' | 'element'; data: an
   if (parts.length === 6) return { type: 'element', data, path: state.selectedPath }
   return null
 }
+
+// ─── Multi-selection helpers (GAP5 + TASK #94) ─────────────────────────────
+//
+// `selectedPath` remains the PRIMARY/last selection so every existing
+// single-select surface is byte-for-byte unchanged. `selectedPaths` is the
+// multi-set. Originally (GAP5) it was canvas-only and element-only. TASK #94
+// extends it so the CAPAS tree can Ctrl/Cmd+click ANY node (section / layer /
+// element) into it — the user wants several nodes selected to feed Claude as
+// context. To NOT break canvas group-move (which is element-only by design),
+// the canvas reads `multiSelectedElementPaths` (the element-only subset) and
+// `hasMultiSelection` (2+ ELEMENTS) — adding a section/layer to the set never
+// turns on the canvas group box / group drag. The tree highlights every path
+// in `selectedPaths` regardless of kind.
+
+function isElementPath(p: string | null | undefined): boolean {
+  return !!p && !isGlobalPath(p) && p.split('.').length === 6
+}
+
+// A real tree node path (section/layer/element), i.e. not a @global sentinel.
+function isTreeNodePath(p: string | null | undefined): boolean {
+  if (!p || isGlobalPath(p)) return false
+  const n = p.split('.').length
+  return n === 2 || n === 4 || n === 6
+}
+
+// Element-only subset of the multi-set — the canvas group overlay/move ONLY
+// ever sees these, so a section/layer in the set can't drive a canvas drag.
+export const multiSelectedElementPaths = computed(() =>
+  state.selectedPaths.filter(isElementPath),
+)
+
+// True when 2+ ELEMENTS are multi-selected (canvas group overlay / group
+// move). Deliberately element-scoped (NOT selectedPaths.length) so a tree
+// multi-select that includes sections/layers never engages the canvas group.
+export const hasMultiSelection = computed(
+  () => multiSelectedElementPaths.value.length >= 2,
+)
+
+// Kind of a tree node path, for the Claude context chip / block labels.
+function nodeKind(p: string): 'section' | 'layer' | 'element' | null {
+  const n = p.split('.').length
+  return n === 2 ? 'section' : n === 4 ? 'layer' : n === 6 ? 'element' : null
+}
+
+const KIND_ES: Record<'section' | 'layer' | 'element', string> = {
+  section: 'sección',
+  layer: 'capa',
+  element: 'elemento',
+}
+
+export interface SelectedNodeInfo {
+  path: string
+  kind: 'section' | 'layer' | 'element'
+  kindEs: string
+  id: string
+}
+
+// The current multi-selection (or single selection) as a list of tree nodes,
+// in selection order, for the Claude context chip. Falls back to the single
+// `selectedPath` when the multi-set is empty so a plain click still shows the
+// "1 elemento seleccionado" context.
+export const selectedNodes = computed<SelectedNodeInfo[]>(() => {
+  if (!state.site) return []
+  const paths = state.selectedPaths.length
+    ? state.selectedPaths
+    : isTreeNodePath(state.selectedPath)
+      ? [state.selectedPath as string]
+      : []
+  const out: SelectedNodeInfo[] = []
+  for (const p of paths) {
+    const kind = nodeKind(p)
+    if (!kind) continue
+    const node = getAtPath(p)
+    if (!node) continue
+    out.push({ path: p, kind, kindEs: KIND_ES[kind], id: node.id || '(sin id)' })
+  }
+  return out
+})
+
+// Build the concise context block PREPENDED to a Claude prompt so it knows
+// which part of site.json to analyze/edit. Bounded: per-node JSON snippet is
+// capped, and the overall block is capped, so a huge selection can't blow the
+// prompt. The active view is resolved (independent views) by going through
+// getAtPath, which rebases a leading "sections" onto the active view root.
+const CTX_NODE_SNIPPET_CAP = 1800
+const CTX_TOTAL_CAP = 14000
+export function buildClaudeContextBlock(): string {
+  const nodes = selectedNodes.value
+  if (!nodes.length) return ''
+  const lines: string[] = [
+    'CONTEXTO DE SELECCIÓN (el usuario seleccionó estos nodos en el editor;',
+    'analiza/edita SOLO lo relevante a ellos dentro de site.json):',
+  ]
+  for (const n of nodes) {
+    const node = getAtPath(n.path)
+    let snippet = ''
+    try {
+      snippet = JSON.stringify(node, null, 2)
+    } catch {
+      snippet = '(no serializable)'
+    }
+    if (snippet.length > CTX_NODE_SNIPPET_CAP) {
+      snippet = snippet.slice(0, CTX_NODE_SNIPPET_CAP) + '\n… (recortado)'
+    }
+    lines.push(
+      `\n- ${n.kindEs} "${n.id}" — ruta JSON: ${n.path}\n${snippet}`,
+    )
+  }
+  let block = lines.join('\n')
+  if (block.length > CTX_TOTAL_CAP) {
+    block = block.slice(0, CTX_TOTAL_CAP) + '\n… (contexto recortado)\n'
+  }
+  return block + '\n\n— Fin del contexto —\n\n'
+}
+
+// Shift+click toggle on the canvas. Adds the path to the multi-set (seeding it
+// with the current single selection first so the FIRST shift+click promotes
+// "1 selected" → "2 selected"), or removes it if already present. Keeps
+// `selectedPath` pointing at the most-recently-touched element so PROPIEDADES
+// etc. still show something sensible.
+export function toggleCanvasSelection(path: string) {
+  if (!isElementPath(path)) return
+  const set = state.selectedPaths.length
+    ? [...state.selectedPaths]
+    : isElementPath(state.selectedPath)
+      ? [state.selectedPath as string]
+      : []
+  const i = set.indexOf(path)
+  if (i >= 0) {
+    set.splice(i, 1)
+    state.selectedPaths = set
+    // Primary follows the last remaining (or clears).
+    state.selectedPath = set.length ? set[set.length - 1] : null
+  } else {
+    set.push(path)
+    state.selectedPaths = set
+    state.selectedPath = path
+  }
+}
+
+// Plain (non-shift) canvas selection: single element, multi-set collapses.
+export function setCanvasSelection(path: string | null) {
+  state.selectedPath = path
+  state.selectedPaths = isElementPath(path) ? [path as string] : []
+}
+
+// Ctrl/Cmd+click on a CAPAS tree node (TASK #94). Toggles ANY node kind
+// (section / layer / element) into the multi-set, seeding it with the current
+// single selection so the FIRST modified click promotes "1 selected" → "2
+// selected". `selectedPath` follows the most-recently-touched node so
+// PROPIEDADES / single-select surfaces still show something sensible. Mirrors
+// toggleCanvasSelection but is kind-agnostic (the canvas stays element-only
+// via multiSelectedElementPaths / hasMultiSelection).
+export function toggleTreeSelection(path: string) {
+  if (!isTreeNodePath(path)) return
+  const set = state.selectedPaths.length
+    ? [...state.selectedPaths]
+    : isTreeNodePath(state.selectedPath)
+      ? [state.selectedPath as string]
+      : []
+  const i = set.indexOf(path)
+  if (i >= 0) {
+    set.splice(i, 1)
+    state.selectedPaths = set
+    state.selectedPath = set.length ? set[set.length - 1] : null
+  } else {
+    set.push(path)
+    state.selectedPaths = set
+    state.selectedPath = path
+  }
+}
+
+// Plain (non-modifier) tree click: single select, multi-set collapses to it.
+// Used by LayersPanel for a normal row click so it matches current behavior.
+export function setTreeSelection(path: string | null) {
+  state.selectedPath = path
+  state.selectedPaths = isTreeNodePath(path) ? [path as string] : []
+}
+
+// Keep `selectedPaths` consistent whenever `selectedPath` changes by ANY other
+// route (paste, addElement, delete, undo, global select, single tree click…).
+// If the new primary is already part of the multi-set, the set is preserved
+// (a tree Ctrl/Cmd+click moves the primary WITHIN the set). Otherwise the set
+// collapses to the new primary (or empties). This writes ONLY selectedPaths
+// (never selectedPath) so it cannot loop, and makes every legacy single-select
+// call site automatically exit multi mode without touching any of them.
+watch(
+  () => state.selectedPath,
+  (p) => {
+    if (state.selectedPaths.length === 0) return
+    if (p && state.selectedPaths.includes(p)) return
+    state.selectedPaths = isTreeNodePath(p) ? [p as string] : []
+  },
+)
 
 // Move an item in an array (for drag reorder within one parent).
 export function moveInArray(arrayPath: string, fromIndex: number, toIndex: number) {
@@ -430,9 +1079,143 @@ export function syncLocksToSite() {
   }
 }
 
+// ─── Inline id rename (Finder-style, TASK #77) ─────────────────────────────
+//
+// Rename the `id` of ANY tree node (section / layer / element). Sections and
+// layers may not have an id yet — this allows SETTING one. The new id is
+// sanitized to a valid kebab-ish id (no spaces/accents, lowercase), collisions
+// with ANY existing id anywhere in the site are auto-suffixed (-2, -3, …), and
+// any animations[].dependsOn referencing the OLD id is best-effort updated so
+// cross-element "depends" triggers don't break. Pushes undo + marks dirty
+// (setAtPath-style: one pushUndo for the whole rename). Returns the FINAL id
+// applied (may differ from requested due to sanitize/collision) or null.
+
+// Strip accents, lowercase, spaces/invalid → '-', collapse repeats, trim '-'.
+export function sanitizeId(raw: string): string {
+  const noAccents = raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // strip combining diacritics
+  return noAccents
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+// Every id currently used by any section/layer/element across BOTH the legacy
+// tree and (if present) every independent view — the full collision space.
+function collectAllIds(): Set<string> {
+  const ids = new Set<string>()
+  const site = state.site as any
+  if (!site) return ids
+  const roots: any[] = []
+  if (site.views) {
+    if (site.views.desktop?.sections) roots.push(site.views.desktop.sections)
+    if (site.views.mobile?.sections) roots.push(site.views.mobile.sections)
+  }
+  if (Array.isArray(site.sections)) roots.push(site.sections)
+  for (const sections of roots) {
+    for (const sec of sections || []) {
+      if (sec?.id) ids.add(sec.id)
+      for (const layer of sec?.layers || []) {
+        if (layer?.id) ids.add(layer.id)
+        for (const el of layer?.elements || []) {
+          if (el?.id) ids.add(el.id)
+        }
+      }
+    }
+  }
+  return ids
+}
+
+// Walk every element in the site and rewrite animations[].dependsOn that
+// pointed at `oldId` → `newId` (cross-element "depends" trigger). Best-effort:
+// runs over all views so a cross-view reference is fixed too.
+function remapDependsOn(oldId: string, newId: string) {
+  const site = state.site as any
+  if (!site || !oldId) return
+  const roots: any[] = []
+  if (site.views) {
+    if (site.views.desktop?.sections) roots.push(site.views.desktop.sections)
+    if (site.views.mobile?.sections) roots.push(site.views.mobile.sections)
+  }
+  if (Array.isArray(site.sections)) roots.push(site.sections)
+  for (const sections of roots) {
+    for (const sec of sections || []) {
+      for (const layer of sec?.layers || []) {
+        for (const el of layer?.elements || []) {
+          if (Array.isArray(el?.animations)) {
+            for (const anim of el.animations) {
+              if (anim && anim.dependsOn === oldId) anim.dependsOn = newId
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+export interface RenameResult {
+  ok: boolean
+  id?: string
+  // Spanish hint when the requested id was changed (sanitized or de-collided)
+  // or rejected (empty), so the UI can surface why.
+  hint?: string
+}
+
+export function renameNodeId(path: string, requested: string): RenameResult {
+  if (!state.site || !path || isGlobalPath(path)) {
+    return { ok: false, hint: 'No se puede renombrar.' }
+  }
+  const node = getAtPath(path)
+  if (!node || typeof node !== 'object') {
+    return { ok: false, hint: 'No se encontró el nodo.' }
+  }
+  const oldId: string | undefined = node.id
+  let next = sanitizeId(requested)
+  if (!next) {
+    return { ok: false, hint: 'El nombre no puede quedar vacío.' }
+  }
+  if (next === oldId) {
+    return { ok: true, id: oldId }
+  }
+  // Collision with ANY existing id (excluding this node's own current id) →
+  // auto-suffix -2, -3, … until free.
+  const taken = collectAllIds()
+  if (oldId) taken.delete(oldId)
+  let final = next
+  let collided = false
+  if (taken.has(final)) {
+    collided = true
+    let n = 2
+    while (taken.has(`${next}-${n}`)) n++
+    final = `${next}-${n}`
+  }
+  pushUndo()
+  node.id = final
+  // Best-effort: keep cross-element "depends" triggers pointing at this node.
+  if (oldId) remapDependsOn(oldId, final)
+  // If this node's id is in the editor-local lock set, move the lock to the
+  // new id so the lock survives the rename.
+  if (oldId) {
+    const li = state.lockedIds.indexOf(oldId)
+    if (li >= 0) state.lockedIds.splice(li, 1, final)
+    syncLocksToSite()
+  }
+  let hint: string | undefined
+  if (collided) {
+    hint = `Ese id ya existe; se renombró a "${final}".`
+  } else if (final !== requested.trim()) {
+    hint = `Renombrado a "${final}".`
+  }
+  return { ok: true, id: final, hint }
+}
+
 // Delete the selected element
 export function deleteSelected() {
   if (!state.selectedPath || !state.site) return
+  if (isGlobalPath(state.selectedPath)) return // meta/theme aren't deletable
   pushUndo()
   const parts = state.selectedPath.split('.')
   const parentPath = parts.slice(0, -1).join('.')
@@ -447,6 +1230,7 @@ export function deleteSelected() {
 // Duplicate the selected element
 export function duplicateSelected() {
   if (!state.selectedPath || !state.site) return
+  if (isGlobalPath(state.selectedPath)) return // nothing to duplicate
   pushUndo()
   const parts = state.selectedPath.split('.')
   const parentPath = parts.slice(0, -1).join('.')
@@ -506,21 +1290,66 @@ function kindForPath(path: string): ClipboardKind | null {
   return null
 }
 
+// ─── Copy/paste id derivation (#123) ────────────────────────────────────────
+//
+// On paste the TOP-LEVEL node's new id is derived from the SOURCE id so the
+// base stays recognizable in CAPAS:
+//   "seccion-hero"           → "seccion-hero-copy-a3f9"
+// Pasting a node that is ALREADY a copy must NOT stack endlessly — the trailing
+// "-copy-xxxx" is stripped first, then a fresh one appended:
+//   "seccion-hero-copy-a3f9" → "seccion-hero-copy-9b2c"
+// Uniqueness within the document is guaranteed against `taken` (collectAllIds()
+// plus ids minted earlier in the same multi-paste); on the rare suffix
+// collision we re-roll. If there's no usable source id we fall back to uid().
+const COPY_SUFFIX_RE = /-copy-[a-z0-9]{4}$/
+function copySuffix(): string {
+  // 4 lowercase-alphanumeric chars (base36 of a random number, padded).
+  return Math.random().toString(36).slice(2, 6).padEnd(4, '0')
+}
+function deriveCopyId(sourceId: string | undefined, taken: Set<string>): string {
+  if (!sourceId) {
+    // No recognizable base → keep the old random-id behavior, still unique.
+    let id = uid('el')
+    while (taken.has(id)) id = uid('el')
+    return id
+  }
+  // Strip an existing "-copy-xxxx" so copies of copies don't grow unbounded.
+  const base = sourceId.replace(COPY_SUFFIX_RE, '')
+  let id = `${base}-copy-${copySuffix()}`
+  while (taken.has(id)) id = `${base}-copy-${copySuffix()}`
+  return id
+}
+
 // Deep-clone a node and regenerate EVERY id (section/layer/element) so a paste
-// can never collide with an existing node — even across views.
-function regenerateIds(node: any, kind: ClipboardKind): any {
+// can never collide with an existing node — even across views. The TOP-LEVEL
+// node's id is DERIVED from `sourceId` (#123: "<source>-copy-<rand>"); nested
+// layer/element ids stay freshly-minted random ids. `taken` accumulates every
+// id already present plus those minted earlier in the same multi-paste so the
+// whole operation stays collision-free.
+function regenerateIds(
+  node: any,
+  kind: ClipboardKind,
+  sourceId?: string,
+  taken: Set<string> = collectAllIds(),
+): any {
   const copy = JSON.parse(JSON.stringify(node))
+  // Top-level id derived from the source (recognizable base + -copy- suffix).
+  copy.id = deriveCopyId(sourceId, taken)
+  taken.add(copy.id)
+  // Nested ids: fresh random uids, deduped against `taken`.
+  const mint = (prefix: string) => {
+    let id = uid(prefix)
+    while (taken.has(id)) id = uid(prefix)
+    taken.add(id)
+    return id
+  }
   if (kind === 'section') {
-    copy.id = uid('section')
     for (const layer of copy.layers || []) {
-      layer.id = uid('layer')
-      for (const el of layer.elements || []) el.id = uid(el.type || 'el')
+      layer.id = mint('layer')
+      for (const el of layer.elements || []) el.id = mint(el.type || 'el')
     }
   } else if (kind === 'layer') {
-    copy.id = uid('layer')
-    for (const el of copy.elements || []) el.id = uid(el.type || 'el')
-  } else {
-    copy.id = uid(copy.type || 'el')
+    for (const el of copy.elements || []) el.id = mint(el.type || 'el')
   }
   return copy
 }
@@ -532,21 +1361,61 @@ function flashPasteHint(msg: string) {
   }, 2600)
 }
 
-// Snapshot the current selection into the clipboard.
-function clip(op: 'copy' | 'cut') {
-  if (!state.selectedPath) return
-  const kind = kindForPath(state.selectedPath)
-  if (!kind) return
-  const data = getAtPath(state.selectedPath)
-  if (!data) return
-  state.clipboard = {
-    kind,
-    op,
-    data: JSON.parse(JSON.stringify(data)),
-    sourceId: data.id,
+// Document (tree) order comparator for two tree-node paths. Compares each
+// numeric segment so "sections.0.layers.1.elements.2" sorts before
+// "sections.0.layers.1.elements.10". So a multi-paste reproduces nodes in the
+// same top-to-bottom order they appear in CAPAS, regardless of click order.
+function compareTreePaths(a: string, b: string): number {
+  const pa = a.split('.')
+  const pb = b.split('.')
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const na = Number(pa[i])
+    const nb = Number(pb[i])
+    const an = Number.isFinite(na)
+    const bn = Number.isFinite(nb)
+    if (an && bn) { if (na !== nb) return na - nb; continue }
+    if ((pa[i] ?? '') !== (pb[i] ?? '')) return (pa[i] ?? '') < (pb[i] ?? '') ? -1 : 1
   }
-  if (op === 'cut') flashPasteHint('Cortado — pega donde quieras (Cmd+V)')
-  else flashPasteHint('Copiado — pega donde quieras (Cmd+V)')
+  return 0
+}
+
+// The set of tree-node paths to snapshot: the multi-selection when 2+ are
+// selected, otherwise the single primary selection. Sorted in document order
+// so a multi-paste preserves top-to-bottom tree order (task #107).
+function clipboardSourcePaths(): string[] {
+  const raw = state.selectedPaths.length
+    ? state.selectedPaths.filter(isTreeNodePath)
+    : isTreeNodePath(state.selectedPath)
+      ? [state.selectedPath as string]
+      : []
+  return [...new Set(raw)].sort(compareTreePaths)
+}
+
+// Snapshot the current selection (one OR many nodes) into the clipboard.
+function clip(op: 'copy' | 'cut') {
+  const paths = clipboardSourcePaths()
+  if (!paths.length) return
+  const items: ClipboardItem[] = []
+  for (const p of paths) {
+    const kind = kindForPath(p)
+    if (!kind) continue
+    const data = getAtPath(p)
+    if (!data) continue
+    items.push({ kind, data: JSON.parse(JSON.stringify(data)), sourceId: data.id })
+  }
+  if (!items.length) return
+  // items[0] mirrors the legacy single-node fields so clipboardLabel and any
+  // existing single-select surface keep reading the same shape.
+  state.clipboard = {
+    kind: items[0].kind,
+    op,
+    data: items[0].data,
+    sourceId: items[0].sourceId,
+    items,
+  }
+  const verb = op === 'cut' ? 'Cortado' : 'Copiado'
+  if (items.length > 1) flashPasteHint(`${verb} — pega donde quieras (Cmd+V)`)
+  else flashPasteHint(`${verb} — pega donde quieras (Cmd+V)`)
 }
 
 export function copySelected() {
@@ -611,17 +1480,85 @@ function pathOfNodeInActiveView(id: string, kind: ClipboardKind): string | null 
   return null
 }
 
+// A resolved paste destination for one clipboard KIND: the array to splice
+// into, the index of the FIRST insert, and a path builder. `targetArr` mutates
+// in place (it's a live reference into state.site), so a sequential multi-paste
+// of the same kind just keeps incrementing the running insert index.
+type PasteTarget = { targetArr: any[]; insertAt: number; pathFor: (idx: number) => string }
+
+// Resolve where a node of `kind` should be pasted, given the current single
+// selection (selKind/selParts). Returns null when no sensible target exists for
+// that kind (caller skips the item with a subtle hint). This is the SAME rule
+// set the single paste always used — extracted so multi-paste reuses it
+// verbatim (section→active view, layer→section, element→layer).
+function resolvePasteTarget(
+  kind: ClipboardKind,
+  selKind: ClipboardKind | null,
+  selParts: string[],
+): PasteTarget | null {
+  if (kind === 'section') {
+    const sections = activeSections()
+    const insertAt = selKind ? Number(selParts[1]) + 1 : sections.length
+    return { targetArr: sections, insertAt, pathFor: (idx) => `sections.${idx}` }
+  }
+  if (kind === 'layer') {
+    let si: number | null = null
+    let at: number | null = null
+    if (selKind === 'section') si = Number(selParts[1])
+    else if (selKind === 'layer') { si = Number(selParts[1]); at = Number(selParts[3]) + 1 }
+    else if (selKind === 'element') { si = Number(selParts[1]); at = Number(selParts[3]) + 1 }
+    else {
+      if (activeSections().length === 0) return null
+      si = 0
+    }
+    const section = getAtPath(`sections.${si}`) as any
+    if (!section || !Array.isArray(section.layers)) return null
+    return {
+      targetArr: section.layers,
+      insertAt: at == null ? section.layers.length : at,
+      pathFor: (idx) => `sections.${si}.layers.${idx}`,
+    }
+  }
+  // element
+  let si: number | null = null
+  let li: number | null = null
+  let at: number | null = null
+  if (selKind === 'layer') { si = Number(selParts[1]); li = Number(selParts[3]) }
+  else if (selKind === 'element') { si = Number(selParts[1]); li = Number(selParts[3]); at = Number(selParts[5]) + 1 }
+  else if (selKind === 'section') {
+    si = Number(selParts[1])
+    const section = getAtPath(`sections.${si}`) as any
+    if (!section || !Array.isArray(section.layers) || section.layers.length === 0) return null
+    li = 0
+  } else {
+    return null
+  }
+  const layer = getAtPath(`sections.${si}.layers.${li}`) as any
+  if (!layer || !Array.isArray(layer.elements)) return null
+  return {
+    targetArr: layer.elements,
+    insertAt: at == null ? layer.elements.length : at,
+    pathFor: (idx) => `sections.${si}.layers.${li}.elements.${idx}`,
+  }
+}
+
 /**
  * Paste the clipboard relative to the current selection (active view).
  *
- * Targets:
+ * Targets (per item KIND — same rules for single and multi paste):
  *  - Section  → appended after the selected section (or at the end of the
  *               active view's sections).
  *  - Layer    → into the selected section (or the selected layer's section),
  *               after the selected layer when one is selected.
  *  - Element  → into the selected layer (or the selected element's layer),
  *               after the selected element when one is selected.
- * If no sensible target exists for the clipboard kind, no-op + subtle hint.
+ *
+ * Multi-paste (task #107): every snapshotted item is pasted. Same-kind items go
+ * sequentially into the resolved target (preserving copy/tree order). Mixed
+ * kinds each route to their own sensible target; items whose kind has no
+ * sensible target for the current selection are skipped (subtle hint). A cut
+ * removes ALL originals. ONE undo for the whole operation; the pasted nodes
+ * become the new selection. A single-item clipboard behaves EXACTLY as before.
  */
 export function pasteClipboard() {
   if (!state.site || !state.clipboard) {
@@ -629,85 +1566,179 @@ export function pasteClipboard() {
     return
   }
   const cb = state.clipboard
+  // Back-compat: a clipboard written by older code (no items[]) → wrap the
+  // legacy single-node fields into a 1-item list.
+  const items: ClipboardItem[] =
+    cb.items && cb.items.length
+      ? cb.items
+      : [{ kind: cb.kind, data: cb.data, sourceId: cb.sourceId }]
+
   const sel = state.selectedPath
   const selParts = sel ? sel.split('.') : []
   const selKind = sel ? kindForPath(sel) : null
 
-  // ── Resolve the destination array + insert index FIRST (no mutation yet) ──
-  // so a no-op (wrong target / nothing sensible) leaves undo/redo untouched
-  // and only shows a subtle hint.
-  let targetArr: any[] | null = null
-  let insertAt = 0
-  let pathFor: (idx: number) => string = () => ''
-
-  if (cb.kind === 'section') {
-    const sections = activeSections()
-    insertAt = selKind ? Number(selParts[1]) + 1 : sections.length
-    targetArr = sections
-    pathFor = (idx) => `sections.${idx}`
-  } else if (cb.kind === 'layer') {
-    let si: number | null = null
-    let at: number | null = null
-    if (selKind === 'section') si = Number(selParts[1])
-    else if (selKind === 'layer') { si = Number(selParts[1]); at = Number(selParts[3]) + 1 }
-    else if (selKind === 'element') { si = Number(selParts[1]); at = Number(selParts[3]) + 1 }
-    else {
-      if (activeSections().length === 0) { flashPasteHint('Crea una sección primero'); return }
-      si = 0
+  // ── Resolve a target per KIND FIRST (no mutation yet) so a no-op leaves
+  // undo/redo untouched. The running insertAt advances as we paste, keeping
+  // multiple same-kind items in order; a cached live array reference means the
+  // sequential splices land contiguously. ──
+  const targets = new Map<ClipboardKind, PasteTarget>()
+  const pasteable: ClipboardItem[] = []
+  let skipped = 0
+  for (const it of items) {
+    let tgt = targets.get(it.kind)
+    if (!tgt) {
+      const resolved = resolvePasteTarget(it.kind, selKind, selParts)
+      if (!resolved) { skipped++; continue }
+      targets.set(it.kind, resolved)
+      tgt = resolved
     }
-    const section = getAtPath(`sections.${si}`) as any
-    if (!section || !Array.isArray(section.layers)) { flashPasteHint('No hay sección destino'); return }
-    targetArr = section.layers
-    insertAt = at == null ? section.layers.length : at
-    pathFor = (idx) => `sections.${si}.layers.${idx}`
-  } else {
-    let si: number | null = null
-    let li: number | null = null
-    let at: number | null = null
-    if (selKind === 'layer') { si = Number(selParts[1]); li = Number(selParts[3]) }
-    else if (selKind === 'element') { si = Number(selParts[1]); li = Number(selParts[3]); at = Number(selParts[5]) + 1 }
-    else if (selKind === 'section') {
-      si = Number(selParts[1])
-      const section = getAtPath(`sections.${si}`) as any
-      if (!section || !Array.isArray(section.layers) || section.layers.length === 0) {
-        flashPasteHint('Selecciona una capa para pegar el elemento'); return
-      }
-      li = 0
-    } else {
-      flashPasteHint('Selecciona una capa para pegar el elemento'); return
-    }
-    const layer = getAtPath(`sections.${si}.layers.${li}`) as any
-    if (!layer || !Array.isArray(layer.elements)) { flashPasteHint('No hay capa destino'); return }
-    targetArr = layer.elements
-    insertAt = at == null ? layer.elements.length : at
-    pathFor = (idx) => `sections.${si}.layers.${li}.elements.${idx}`
+    pasteable.push(it)
   }
 
-  // Target is valid → commit (undoable).
+  if (!pasteable.length) {
+    // Nothing routed → mirror the single-paste hints (kind-specific guidance).
+    if (items.some((i) => i.kind === 'layer')) flashPasteHint('Crea una sección primero')
+    else if (items.some((i) => i.kind === 'element')) flashPasteHint('Selecciona una capa para pegar el elemento')
+    else flashPasteHint('No hay destino para pegar')
+    return
+  }
+
+  // Target(s) valid → commit (single undo for the whole multi-paste).
   pushUndo()
-  const fresh = regenerateIds(cb.data, cb.kind)
-  targetArr!.splice(insertAt, 0, fresh)
-  let newPath: string | null = pathFor(insertAt)
-
-  // A cut consumes the original on the first paste (find by id so it works
-  // even after a view switch). Subsequent pastes behave like copy.
-  if (cb.op === 'cut' && cb.sourceId && cb.sourceId !== fresh.id) {
-    const loc = findNodeLocationById(cb.sourceId, cb.kind)
-    if (loc) loc.arr.splice(loc.index, 1)
-    state.clipboard = { ...cb, op: 'copy', sourceId: undefined }
-    // The splice above can shift the freshly-pasted index when source and
-    // target share the same array and the source preceded it. Re-derive the
-    // selection path from the fresh node's actual location in the ACTIVE view.
-    newPath = pathOfNodeInActiveView(fresh.id, cb.kind)
+  const freshIds: { id: string; kind: ClipboardKind }[] = []
+  const cutOriginals: { sourceId: string; kind: ClipboardKind }[] = []
+  // #123: derive each pasted node's id from its SOURCE id ("<src>-copy-xxxx").
+  // Share ONE `taken` set across the whole multi-paste so every minted id —
+  // top-level copy ids AND nested layer/element ids — stays unique within the
+  // document, even when several items derive from the same base.
+  const taken = collectAllIds()
+  for (const it of pasteable) {
+    const tgt = targets.get(it.kind)!
+    // Derive the copy base from the snapshot's OWN id (it.data.id), not from
+    // it.sourceId: sourceId is cleared once a 'cut' is consumed, but the
+    // snapshot id is always present, so copies-of-a-cut still get a
+    // recognizable "<base>-copy-xxxx" name on every paste.
+    const fresh = regenerateIds(it.data, it.kind, it.data?.id, taken)
+    tgt.targetArr.splice(tgt.insertAt, 0, fresh)
+    tgt.insertAt++ // next same-kind item lands right after this one
+    freshIds.push({ id: fresh.id, kind: it.kind })
+    if (cb.op === 'cut' && it.sourceId && it.sourceId !== fresh.id) {
+      cutOriginals.push({ sourceId: it.sourceId, kind: it.kind })
+    }
   }
 
-  if (newPath) state.selectedPath = newPath
-  flashPasteHint('Pegado')
+  // A cut consumes ALL originals on the first paste (find by id so it works even
+  // after a view switch). Do this AFTER pasting so target indices stay valid;
+  // subsequent pastes behave like copy.
+  if (cutOriginals.length) {
+    for (const o of cutOriginals) {
+      const loc = findNodeLocationById(o.sourceId, o.kind)
+      if (loc) loc.arr.splice(loc.index, 1)
+    }
+    state.clipboard = {
+      ...cb,
+      op: 'copy',
+      sourceId: undefined,
+      items: cb.items.map((i) => ({ ...i, sourceId: undefined })),
+    }
+  }
+
+  // Select the freshly-pasted nodes (re-derive paths from ids in the ACTIVE
+  // view so a cut's source-removal can't leave stale indices). Primary =
+  // last pasted, mirroring the single-paste behavior.
+  const newPaths = freshIds
+    .map((f) => pathOfNodeInActiveView(f.id, f.kind))
+    .filter((p): p is string => !!p)
+  if (newPaths.length) {
+    state.selectedPaths = newPaths.length > 1 ? newPaths : []
+    state.selectedPath = newPaths[newPaths.length - 1]
+  }
+
+  if (skipped > 0) flashPasteHint(`Pegado (${freshIds.length}) — ${skipped} no aplica${skipped > 1 ? 'n' : ''} aquí`)
+  else flashPasteHint(freshIds.length > 1 ? `Pegado: ${freshIds.length}` : 'Pegado')
 }
 
+// Artboard sizes for the preview. Mobile is a modern standard phone
+// (iPhone 12/13/14/15 ≈ 390×844) rather than the old iPhone SE (375×667): the
+// short 667px height crowded `vh`-based sections so elements overlapped in the
+// editor while looking fine on a real (taller) phone. 390×844 matches what most
+// visitors actually see and tracks Chrome's mobile emulation closely.
+//
+// MOBILE is now CONFIGURABLE (#90) and persisted (see prefs). Desktop stays
+// fixed at 1440×900. To keep every consumer (`VIEWPORTS[state.deviceMode]` in
+// EditorCanvas computeds, useCanvas, etc.) reactive WITHOUT changing how they
+// read it, the mobile dimensions live in a `reactive` object exposed through a
+// getter: reads inside a computed/watch re-track its `.width`/`.height`, so
+// changing the size live-resizes the artboard AND re-runs the vw/vh→px remap.
+
+// Sane bounds for a hand-entered custom artboard size (phones up to 4K desktop).
+const ARTBOARD_DIM_MIN = 200
+const ARTBOARD_DIM_MAX = 3840
+function isFinitePositive(n: unknown): n is number {
+  return typeof n === 'number' && Number.isFinite(n) && n > 0
+}
+function clampDimension(n: number): number {
+  return Math.max(ARTBOARD_DIM_MIN, Math.min(ARTBOARD_DIM_MAX, Math.round(n)))
+}
+
+// BOTH artboards are reactive + persisted so changing the size live-resizes the
+// preview AND re-runs the vw/vh→px remap. Exposed through getters so every
+// consumer keeps reading `VIEWPORTS[state.deviceMode]` unchanged.
+const mobileViewport = reactive({ width: 390, height: 844 })
+const desktopViewport = reactive({ width: 1440, height: 900 })
+
 export const VIEWPORTS = {
-  desktop: { width: 1440, height: 900 },
-  mobile: { width: 375, height: 667 },
+  get desktop() {
+    return desktopViewport
+  },
+  get mobile() {
+    return mobileViewport
+  },
+}
+
+// Device presets surfaced in the toolbar size dropdown (#90). CSS-viewport
+// sizes, portrait for phones/tablets. Values are 2026-current.
+export interface MobilePreset {
+  id: string
+  label: string
+  width: number
+  height: number
+}
+export const MOBILE_PRESETS: MobilePreset[] = [
+  { id: 'iphone-16-pro-max', label: 'iPhone 16 Pro Max', width: 440, height: 956 },
+  { id: 'iphone-16-plus', label: 'iPhone 16 Plus', width: 430, height: 932 },
+  { id: 'iphone-16-pro', label: 'iPhone 16 Pro', width: 402, height: 874 },
+  { id: 'iphone-16', label: 'iPhone 16 / 15', width: 393, height: 852 },
+  { id: 'iphone-se', label: 'iPhone SE', width: 375, height: 667 },
+  { id: 'galaxy-s24-ultra', label: 'Galaxy S24 Ultra', width: 384, height: 824 },
+  { id: 'galaxy-s25', label: 'Galaxy S25', width: 360, height: 800 },
+  { id: 'galaxy-a', label: 'Galaxy A', width: 412, height: 915 },
+  { id: 'pixel-8', label: 'Pixel 8', width: 412, height: 915 },
+]
+export const DESKTOP_PRESETS: MobilePreset[] = [
+  { id: 'pc-fhd', label: 'PC Full HD', width: 1920, height: 1080 },
+  { id: 'pc-hd', label: 'PC HD', width: 1366, height: 768 },
+  { id: 'pc-qhd', label: 'PC 2K', width: 2560, height: 1440 },
+  { id: 'mac-air', label: 'MacBook Air', width: 1470, height: 956 },
+  { id: 'mac-pro-14', label: 'MacBook Pro 14"', width: 1512, height: 982 },
+  { id: 'imac', label: 'iMac / Mac', width: 1440, height: 900 },
+  { id: 'ipad-pro-13', label: 'iPad Pro 13"', width: 1032, height: 1376 },
+  { id: 'ipad-pro-11', label: 'iPad Pro 11"', width: 834, height: 1194 },
+  { id: 'ipad', label: 'iPad / iPad Air', width: 820, height: 1180 },
+]
+
+// Update an artboard size reactively + persist it. Dimensions are clamped.
+export function setMobileViewport(width: number, height: number) {
+  if (!isFinitePositive(width) || !isFinitePositive(height)) return
+  mobileViewport.width = clampDimension(width)
+  mobileViewport.height = clampDimension(height)
+  persistPrefs()
+}
+export function setDesktopViewport(width: number, height: number) {
+  if (!isFinitePositive(width) || !isFinitePositive(height)) return
+  desktopViewport.width = clampDimension(width)
+  desktopViewport.height = clampDimension(height)
+  persistPrefs()
 }
 
 // ─── Zoom limits ───────────────────────────────────────────────────────────────
@@ -719,30 +1750,66 @@ export function setZoom(z: number) {
   state.canvasZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(z * 100) / 100))
 }
 
-// Manual zoom while in overview is intentionally NON-confusing for a
-// non-technical user: it simply turns "Vista completa" OFF and KEEPS whatever
-// zoom the user just chose (no snapping back). The pre-overview snapshot is
-// discarded since the user is now driving the zoom themselves.
-export function exitOverviewKeepingZoom() {
-  if (!state.overviewMode) return
-  state.overviewMode = false
-  state.overviewContentHeight = 0
-  state.preOverview = null
-}
+// Manual zoom (cmd/ctrl+wheel, zoom tool, zoom +/- buttons, cmd+0) while
+// "Vista completa" is ON must NOT exit overview: the user is intentionally
+// zooming in to inspect the giant sheet, and "Vista completa" only turns OFF
+// when she explicitly unchecks the toggle (disableOverview, which restores the
+// pre-overview snapshot). So this is now a deliberate NO-OP — overview stays
+// ON, the checkbox stays checked, the persisted pref stays ON, and crucially we
+// do NOT re-fit/snap-back here (the manual zoom is applied freely by the
+// caller). Kept as a function so every existing zoom call site stays a
+// one-liner; the (overview-OFF) early-return was already a no-op, so behaviour
+// with overview OFF is byte-for-byte unchanged.
+//
+// The overview fit still runs through the proper paths: enableOverview (toggle
+// ON), refitOverview (device/view/content change) and the persisted-pref
+// restore on project open — none of which go through here.
+// (There used to be an exitOverviewKeepingZoom() called from every zoom site;
+// it was removed — the zoom call sites just zoom now.)
 
+// zoom +/- buttons & cmd+/-: just change the zoom. If "Vista completa" is ON
+// it STAYS ON (the user is inspecting the giant sheet); it only turns OFF when
+// she unchecks the toggle.
 export function zoomIn() {
-  exitOverviewKeepingZoom()
   setZoom(state.canvasZoom + 0.1)
 }
 
 export function zoomOut() {
-  exitOverviewKeepingZoom()
   setZoom(state.canvasZoom - 0.1)
 }
 
-// Fit the artboard inside the visible canvas viewport (cmd+0)
+// ─── Zoom tool: zoom IN/OUT around a cursor point (GAP9) ────────────────────
+//
+// The Zoom tool (Z) zooms toward where you click (alt/option+click zooms out),
+// Illustrator-style. The artboard is a `transform: scale(zoom)` box
+// (transform-origin: top-left) sitting at `canvasPan` inside the canvas, so the
+// on-screen position of an artboard-local point `a` is
+//   screen = canvasRectOrigin + canvasPan + a*zoom
+// To keep the point under the cursor pinned while zoom changes z0→z1 we solve
+//   a = (cursorOffset − pan0) / z0   then   pan1 = cursorOffset − a*z1
+// `offsetX/offsetY` are the cursor position RELATIVE to the canvas element's
+// top-left (clientX − canvasRect.left). Reuses setZoom (clamping/rounding). If
+// "Vista completa" is ON it STAYS ON — zooming the giant sheet around the
+// cursor does NOT exit overview (only unchecking the toggle does).
+export function zoomAroundPoint(offsetX: number, offsetY: number, zoomIn: boolean) {
+  const z0 = state.canvasZoom
+  const factor = zoomIn ? 1.25 : 0.8
+  // Round-trip through setZoom so the same clamp/round rules apply; read back
+  // the actual applied zoom for an exact pan compensation.
+  setZoom(z0 * factor)
+  const z1 = state.canvasZoom
+  if (z1 === z0) return // already at a zoom limit → don't drift the pan
+  const ax = (offsetX - state.canvasPan.x) / z0
+  const ay = (offsetY - state.canvasPan.y) / z0
+  state.canvasPan = {
+    x: Math.round(offsetX - ax * z1),
+    y: Math.round(offsetY - ay * z1),
+  }
+}
+
+// Fit the artboard inside the visible canvas viewport (cmd+0). Does NOT exit
+// "Vista completa": if it's ON it stays ON (only unchecking the toggle exits).
 export function zoomToFit(canvasW: number, canvasH: number) {
-  exitOverviewKeepingZoom()
   const vp = VIEWPORTS[state.deviceMode]
   if (!canvasW || !canvasH) {
     setZoom(0.5)
@@ -764,6 +1831,32 @@ export function zoomToFit(canvasW: number, canvasH: number) {
   }
 }
 
+// Initial framing when a project opens: the artboard must NOT be jammed in the
+// top-left corner. Center it HORIZONTALLY with a small TOP margin (gallery-like
+// framing — top of the composition visible, room to scroll down through it),
+// at the default zoom, in NORMAL mode. zoomToFit/cmd+0 (full centering) and the
+// overview fit are untouched — this only replaces the (0,0) cold-start.
+export function centerArtboardOnLoad(canvasW: number, canvasH: number) {
+  if (state.overviewMode) return
+  const vp = VIEWPORTS[state.deviceMode]
+  if (!canvasW || !canvasH) {
+    // No measurements yet: keep the default zoom, leave pan at origin (the
+    // canvas re-invokes this once it has a real size).
+    return
+  }
+  const TOP_MARGIN = 32
+  // Pick a zoom that comfortably fits the artboard WIDTH with side breathing
+  // room, capped at the default 0.5 (don't zoom a small canvas in past the
+  // editor's normal default), and never below ZOOM_MIN.
+  const widthFit = (canvasW - 96) / vp.width
+  setZoom(Math.max(ZOOM_MIN, Math.min(0.5, widthFit)))
+  const scaledW = vp.width * state.canvasZoom
+  state.canvasPan = {
+    x: Math.round((canvasW - scaledW) / 2),
+    y: TOP_MARGIN,
+  }
+}
+
 // ─── "Vista completa" (overview / hoja gigante) ────────────────────────────────
 //
 // Default OFF → today's behavior is byte-for-byte unchanged (device-proportion
@@ -779,7 +1872,7 @@ export function zoomToFit(canvasW: number, canvasH: number) {
 // scroll is neutralized while active (everything is visible, nothing to scroll).
 
 // Sum of the active view's section heights, resolved to PX against the device
-// viewport height the editor uses for the artboard (desktop 900 / mobile 667).
+// viewport height the editor uses for the artboard (desktop 900 / mobile 844).
 // Section.height is a CSS length: "100vh"/"150vh" → fraction × vp.height;
 // "<n>px" → n; "<n>%" → fraction × vp.height; bare number → px. Unknown →
 // fall back to one viewport so we never collapse to 0. This is the fallback
@@ -877,6 +1970,7 @@ export function enableOverview(
       : overviewContentHeightFromModel()
   state.overviewMode = true
   fitOverview(canvasW, canvasH)
+  persistPrefs()
 }
 
 /**
@@ -895,6 +1989,7 @@ export function disableOverview() {
     state.canvasPan = { x: snap.pan.x, y: snap.pan.y }
   }
   // preOverview is kept until the canvas consumes the inner-scroll part.
+  persistPrefs()
 }
 
 // The canvas calls this AFTER overview is disabled and the frame has shrunk
@@ -1073,10 +2168,18 @@ function newFormElement(): AnyElement {
       successMessage: '¡Gracias por confirmar!',
       errorMessage: 'Hubo un error. Intenta de nuevo.',
       honeypotField: 'website',
+      // Defaults reference the SITE THEME tokens (parallax-engine
+      // ParallaxSite exposes --color-paper/ink/accent + --font-body) so a
+      // freshly-added form adopts the project's palette instead of a fixed
+      // café look. The CTA uses the ACCENT colour (not the dark ink, which
+      // read as an out-of-place brown block) with paper text for contrast;
+      // inputs are paper on an ink-tinted hairline border. Every value is a
+      // theme-driven CSS token, all editable via the FormColorField swatches.
+      // Existing forms in content are NOT touched — this only seeds NEW forms.
       styling: {
         inputBg: 'var(--color-paper)',
-        inputBorder: 'var(--color-accent)',
-        buttonBg: 'var(--color-ink)',
+        inputBorder: 'var(--color-ink)',
+        buttonBg: 'var(--color-accent)',
         buttonText: 'var(--color-paper)',
         fontFamily: 'var(--font-body)',
       },
@@ -1085,6 +2188,71 @@ function newFormElement(): AnyElement {
       { type: 'fadeIn', trigger: 'enter', from: 0, to: 1, duration: 800, easing: 'easeOut' },
     ],
   } as AnyElement
+}
+
+// Derive a default value for a single editableProp. Honors an explicit
+// `default`; else a sensible empty per type so a freshly-added component is
+// valid and renderable (array → [], number → 0, boolean → false, etc.).
+function defaultForProp(schema: EditablePropSchema): unknown {
+  if (schema.default !== undefined) {
+    // Clone so two instances never share a reference (arrays/objects).
+    return JSON.parse(JSON.stringify(schema.default))
+  }
+  switch (schema.type) {
+    case 'number': return 0
+    case 'boolean': return false
+    case 'array': return []
+    case 'select': return schema.options?.[0] ?? ''
+    default: return '' // string | color | image
+  }
+}
+
+// Build the props object for a NEW custom-component element from its
+// registered editableProps schema (defaults only — Daniela edits in
+// PROPIEDADES afterwards).
+function defaultPropsFor(reg: ComponentRegistration): Record<string, unknown> {
+  const props: Record<string, unknown> = {}
+  for (const [key, schema] of Object.entries(reg.editableProps || {})) {
+    props[key] = defaultForProp(schema)
+  }
+  return props
+}
+
+// A new custom-component element (type:"component", name:<registered name>).
+// Same common-element shape as the other kinds so the canvas overlay /
+// properties / drag machinery all work unchanged.
+function newCustomComponentElement(reg: ComponentRegistration): AnyElement {
+  return {
+    type: 'component',
+    id: uid(reg.name.toLowerCase()),
+    name: reg.name,
+    position: { x: 50, y: 50 },
+    anchor: 'center',
+    opacity: 1,
+    rotation: 0,
+    visible: true,
+    interactive: true,
+    props: defaultPropsFor(reg),
+    animations: [
+      { type: 'fadeIn', trigger: 'enter', from: 0, to: 1, duration: 800, easing: 'easeOut' },
+    ],
+  } as AnyElement
+}
+
+/**
+ * Add a registered custom component (by name) into the resolved layer, same
+ * pattern as addElement: valid node, auto id, undo, selected, dirty. No-op if
+ * the name isn't in the active registry (defensive).
+ */
+export function addCustomComponent(layerPath: string, name: string) {
+  if (!state.site) return
+  const reg = getComponentRegistration(name)
+  if (!reg) return
+  const layer = getAtPath(layerPath)
+  if (!layer || !Array.isArray(layer.elements)) return
+  pushUndo()
+  layer.elements.push(newCustomComponentElement(reg))
+  state.selectedPath = `${layerPath}.elements.${layer.elements.length - 1}`
 }
 
 export function addSection() {

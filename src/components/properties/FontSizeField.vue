@@ -79,6 +79,13 @@ function buildClamp(px: number): string {
 
 const currentPx = computed(() => parsePx(props.modelValue))
 
+// Filled-track look (matches NumberSlider / RangeSlider): % left of the thumb.
+const fillPct = computed(() => {
+  const range = MAX_PX - MIN_PX
+  const p = ((currentPx.value - MIN_PX) / range) * 100
+  return Math.max(0, Math.min(100, p))
+})
+
 const isResponsive = computed(() =>
   typeof props.modelValue === 'string' && /clamp\(/i.test(props.modelValue),
 )
@@ -138,6 +145,7 @@ function onRaw(e: Event) {
         :max="MAX_PX"
         step="1"
         :value="currentPx"
+        :style="{ '--pct': fillPct + '%' }"
         data-test="fontsize-slider"
         aria-label="Tamaño del texto"
         @input="onSlider"
@@ -191,13 +199,45 @@ function onRaw(e: Event) {
   font-size: 10px; padding: 3px 7px; border-radius: 4px; cursor: pointer;
 }
 .fs-preset:hover { background: #383838; color: #eee; }
-.fs-preset.active { background: #0066cc; border-color: #0066cc; color: #fff; }
+.fs-preset.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 .fs-fine { margin-top: 6px; padding-left: 78px; }
-.fs-slider { flex: 1; min-width: 0; accent-color: #0066cc; }
+/* Filled-track slider matching NumberSlider/RangeSlider (Image #63/#66). */
+.fs-slider {
+  flex: 1; min-width: 0; height: 18px; margin: 0; cursor: pointer;
+  -webkit-appearance: none; appearance: none; background: transparent;
+}
+.fs-slider::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--accent) 0%, var(--accent) var(--pct, 50%),
+    #3a3a3a var(--pct, 50%), #3a3a3a 100%
+  );
+}
+.fs-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px; margin-top: -4px; border-radius: 50%;
+  background: #eef2f8; border: 1px solid var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45); cursor: grab;
+}
+.fs-slider::-webkit-slider-thumb:active { cursor: grabbing; }
+.fs-slider:focus { outline: none; }
+.fs-slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--accent-soft); }
+.fs-slider::-moz-range-track { height: 6px; border-radius: 999px; background: #3a3a3a; }
+.fs-slider::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--accent); }
+.fs-slider::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #eef2f8; border: 1px solid var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
 .fs-num {
   width: 56px; background: #2a2a2a; border: 1px solid #444; border-radius: 4px;
   color: #e0e0e0; padding: 4px 6px; font-size: 12px;
+  /* Hide the native number spinner (#109) — slider/arrow keys are the affordance. */
+  -moz-appearance: textfield;
 }
+.fs-num::-webkit-outer-spin-button,
+.fs-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .fs-unit { font-size: 11px; color: #888; }
 .fs-meta {
   margin-top: 4px; padding-left: 78px; font-size: 10px; color: #777;
@@ -205,12 +245,16 @@ function onRaw(e: Event) {
 }
 .fs-tag { color: #6c9; }
 .fs-adv-toggle {
-  margin-left: auto; background: none; border: none; color: #6cb3ff;
+  margin-left: auto; background: none; border: none; color: var(--accent-strong);
   font-size: 10px; cursor: pointer; padding: 0; text-decoration: underline;
 }
 .fs-raw { margin-top: 4px; padding-left: 78px; }
+/* Match PropField.vue's .field-input byte-for-byte (incl. box-sizing + focus)
+   so the advanced/custom CSS box is visually consistent with every other
+   themed panel input — issue #55. */
 .field-input {
-  width: 100%; background: #2a2a2a; border: 1px solid #444; border-radius: 4px;
-  color: #e0e0e0; padding: 4px 8px; font-size: 12px; font-family: inherit;
+  width: 100%; box-sizing: border-box; background: #2a2a2a; border: 1px solid #444;
+  border-radius: 4px; color: #e0e0e0; padding: 4px 8px; font-size: 12px; font-family: inherit;
 }
+.field-input:focus { outline: 1px solid var(--accent-strong); border-color: var(--accent-strong); }
 </style>

@@ -1,4 +1,11 @@
-import { state, activeSections } from '../stores/editor'
+import {
+  state,
+  activeSections,
+  shouldSwallowCanvasClick,
+  setCanvasSelection,
+  toggleCanvasSelection,
+  isNodeLockedById,
+} from '../stores/editor'
 import type { Site } from 'parallax-engine/schema'
 
 /**
@@ -43,11 +50,22 @@ export function findElementPath(_site: Site, parallaxId: string): string | null 
  * When several elements overlap the point we pick the topmost one: later in
  * DOM order / deeper paints last, matching what the user visually clicked
  * and what the selection overlay will frame.
+ *
+ * Item #6 — LOCKED elements are SKIPPED. A locked element (lock toggle in the
+ * CAPAS tree; the flag lives in editor state `lockedIds`, NOT the engine
+ * schema) is intentionally inert on the canvas: a click "passes through" it to
+ * whatever is behind, and it gets no hover highlight. So a big locked
+ * background image never blocks selecting the elements in front of/behind it.
+ * It remains selectable ONLY from the CAPAS tree (that path doesn't go through
+ * this geometric hit-test).
  */
 export function elementAtPoint(clientX: number, clientY: number): HTMLElement | null {
   const candidates = document.querySelectorAll<HTMLElement>('[data-parallax-id]')
   let best: HTMLElement | null = null
   candidates.forEach((el) => {
+    // Item #6: a locked element is invisible to the canvas hit-test — clicks
+    // and hover pass straight through it.
+    if (isNodeLockedById(el.getAttribute('data-parallax-id'))) return
     // Skip elements that aren't actually painted (display:none → 0 box).
     const rect = el.getBoundingClientRect()
     if (rect.width === 0 && rect.height === 0) return
@@ -66,23 +84,71 @@ export function elementAtPoint(clientX: number, clientY: number): HTMLElement | 
 }
 
 /**
+ * Is a screen point INSIDE the artboard (the `.preview-frame` rect)?
+ *
+ * TASK #112 (Illustrator pasteboard semantics): a canvas click only selects
+ * when the click lands inside the artboard. The geometric `elementAtPoint`
+ * hit-test matches by an element's live getBoundingClientRect(), so a TALL
+ * element whose box spills into the dark pasteboard around the mesa would get
+ * "selected" by a click over the pasteboard even though nothing is visible
+ * there. We gate every canvas hit-test by the artboard rect: a click outside
+ * it must DESELECT and select nothing. The `.preview-frame` is the scaled +
+ * panned device artboard (its on-screen rect is the visible mesa), valid in
+ * normal AND "Vista completa" mode. (Tree-driven selection is unaffected — it
+ * never goes through this path.)
+ */
+export function pointInArtboard(clientX: number, clientY: number): boolean {
+  const frame = document.querySelector<HTMLElement>('.preview-frame')
+  if (!frame) return false
+  const r = frame.getBoundingClientRect()
+  return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom
+}
+
+/**
  * Handle click on the canvas to select an element.
  */
 export function handleCanvasClick(e: MouseEvent, _canvasEl: HTMLElement) {
   if (state.tool !== 'select' || !state.site) return
 
+  // Swallow the click synthesized by a move/resize/rotate drag's mouseup, so
+  // releasing a handle over the pasteboard never deselects the dragged node.
+  if (shouldSwallowCanvasClick()) return
+
+  // TASK #112: gate by the artboard (`.preview-frame`) rect BEFORE the
+  // geometric hit-test. A click on the pasteboard (outside the mesa) clears
+  // the selection and selects nothing — even if an off-board element's box
+  // extends under the cursor. A plain click clears; a SHIFT click on the
+  // pasteboard preserves the current multi-selection (a missed shift-click
+  // shouldn't nuke the group). The ONLY way to select an off-board element is
+  // via the CAPAS tree.
+  if (!pointInArtboard(e.clientX, e.clientY)) {
+    if (!e.shiftKey) setCanvasSelection(null)
+    return
+  }
+
   const parallaxEl = elementAtPoint(e.clientX, e.clientY)
   if (!parallaxEl) {
-    state.selectedPath = null
+    // Click on empty pasteboard. A plain click clears everything; a SHIFT
+    // click on nothing preserves the existing multi-selection (so a missed
+    // shift-click doesn't nuke the group).
+    if (!e.shiftKey) setCanvasSelection(null)
     return
   }
 
   const id = parallaxEl.getAttribute('data-parallax-id')
   if (!id) {
-    state.selectedPath = null
+    if (!e.shiftKey) setCanvasSelection(null)
     return
   }
 
   const path = findElementPath(state.site, id)
-  state.selectedPath = path
+  if (!path) {
+    if (!e.shiftKey) setCanvasSelection(null)
+    return
+  }
+  // SHIFT+click → toggle this element in/out of the multi-selection (GAP5).
+  // Plain click → single select (collapses any multi-selection). Both keep
+  // `selectedPath` as the primary so PROPIEDADES/CAPAS are unchanged.
+  if (e.shiftKey) toggleCanvasSelection(path)
+  else setCanvasSelection(path)
 }

@@ -67,7 +67,7 @@ POST /api/claude                          — ejecutar claude -p
 - Snap-to-grid toggle
 - Layers panel: arbol sections > layers > elements, drag reorder
 - Properties panel: dinamico segun seleccion (section/layer/element)
-- Device toggle: desktop (1440x900) / mobile (375x667)
+- Device toggle: desktop (1440x900) / mobile (390x844)
 - Zoom: cmd+scroll, cmd+/-  Pan: space+drag
 - Keyboard shortcuts: V/H (tools), cmd+Z/shift+cmd+Z (undo/redo), cmd+S (save), cmd+D (duplicate), delete
 - Claude: input libre → shell exec → file watcher refresca
@@ -87,3 +87,9 @@ Ejecuta git en esos repos. Ejecuta claude -p con el cwd del repo correspondiente
 - Auth, multiusuario, deploy desde editor
 - Tabs multiples (un archivo a la vez)
 - No exponer a internet
+
+## Git hooks
+
+Hook `pre-commit` versionado en `hooks/pre-commit`, activado con `git config --local core.hooksPath hooks` (config local del repo; el hook vive en el árbol). En un `git commit` humano corre `yarn lint` **si** existe el script `lint` en `package.json` (hoy no existe → se omite con nota) y `yarn test` (smoke, offline). Cualquier fallo → commit bloqueado con mensaje claro en español. Emergencia: `git commit --no-verify`.
+
+**El auto-commit-on-save bypasea este hook por diseño.** `server/git.ts` → `gitCommit()` (la ruta por la que pasan Cmd+S, el botón Guardar y el timer de autosave, desde `EditorView.save()`) emite `git commit --no-verify` **en los repos de contenido vecinos** (`daniela-reyes-eventos` / `daniela-reyes-site`). Sin eso, cada autosave (~cada 1.5s mientras se edita) correría toda la suite offline de ese repo = inusable, y venía contaminando los repos de contenido con corridas de test pesadas toda la sesión. La correctitud del contenido ya está cubierta: `validateSite` del engine corre al cargar y el flujo **Publicar** (`GitPanel.vue`) revalida el schema antes del push (task #44); el push (`gitPush`) no pasa por pre-commit. Si tocas `gitCommit`/`gitPush`, conserva `--no-verify`.

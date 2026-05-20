@@ -1,4 +1,4 @@
-import { state, VIEWPORTS, setZoom, exitOverviewKeepingZoom } from '../stores/editor'
+import { state, VIEWPORTS, setZoom, zoomAroundPoint } from '../stores/editor'
 
 /**
  * Canvas interaction. The preview frame (the white artboard) is a natively
@@ -44,6 +44,14 @@ export function useCanvas() {
   function pointerOverSite(clientX: number, clientY: number): boolean {
     const hit = document.elementFromPoint(clientX, clientY) as Element | null
     if (hit && hit.closest('.parallax-site')) return true
+    // TASK 1: in Edición mode the pointer-capture layer (a full-cover sibling
+    // painted ON TOP of the engine content inside .preview-frame) is what
+    // elementFromPoint returns over the artboard. It exactly overlays the
+    // rendered site, so a hit on it counts as "over the site" → the wheel drives
+    // the artboard's internal scroll exactly as before (instead of falling
+    // through to the workspace-pan branch). Preview mode has no capture layer,
+    // so this never affects it.
+    if (hit && (hit as HTMLElement).classList?.contains('capture-layer')) return true
     // Geometric fallback: inside the (scaled+panned) artboard viewport box.
     if (previewFrame) {
       const r = previewFrame.getBoundingClientRect()
@@ -64,10 +72,10 @@ export function useCanvas() {
   function handleWheel(e: WheelEvent) {
     if (e.metaKey || e.ctrlKey) {
       // Zoom (cmd/ctrl + scroll). Trackpad pinch also arrives here as ctrl+wheel.
-      // Manual zoom while in "Vista completa" turns it OFF and keeps the
-      // user's chosen zoom (non-confusing for a non-technical user).
+      // Manual zoom while "Vista completa" is ON keeps it ON (and the toggle
+      // checked / pref ON): the user is intentionally zooming into the giant
+      // sheet. It only turns OFF when she unchecks the toggle.
       e.preventDefault()
-      exitOverviewKeepingZoom()
       const factor = e.deltaY > 0 ? 0.95 : 1.05
       setZoom(state.canvasZoom * factor)
       return
@@ -76,8 +84,11 @@ export function useCanvas() {
     e.preventDefault()
 
     // In "Vista completa" the whole composition is already visible — there's
-    // nothing to scroll. The wheel just pans the workspace (so she can nudge
-    // the giant sheet around), never the site's internal scroll.
+    // nothing to scroll. The pointer-location split routing (site-internal vs
+    // workspace) is INTENTIONALLY disabled here: we return BEFORE pointerOverSite
+    // so the wheel never drives the site's internal scroll. It only optionally
+    // pans the workspace so she can nudge the giant sheet around. cmd+wheel was
+    // already handled above (zoom, which exits overview keeping the zoom).
     if (state.overviewMode) {
       let dx = e.deltaX
       let dy = e.deltaY
@@ -161,7 +172,13 @@ export function useCanvas() {
   let panStart = { x: 0, y: 0 }
 
   function handleMouseDown(e: MouseEvent) {
-    if (state.tool === 'hand' || e.buttons === 4 || (e.buttons === 1 && e.altKey)) {
+    // Pan when: the Mano tool is active, the middle button, alt+drag, OR the
+    // Space pan modifier is held (GAP9 — Space behaves like the hand tool but
+    // without changing state.tool). The alt+drag clause is kept BUT excluded
+    // while the Zoom tool is active so alt+click can mean "zoom out" there.
+    const spaceOrHand = state.tool === 'hand' || state.spacePanning
+    const altDrag = e.buttons === 1 && e.altKey && state.tool !== 'zoom'
+    if (spaceOrHand || e.buttons === 4 || altDrag) {
       isPanning = true
       panStart = { x: e.clientX - state.canvasPan.x, y: e.clientY - state.canvasPan.y }
     }
@@ -178,6 +195,16 @@ export function useCanvas() {
     isPanning = false
   }
 
+  // Zoom tool click: zoom IN toward the pointer; alt/option+click zooms OUT.
+  // Coordinates are made canvas-local (clientX − canvasRect.left) so the
+  // store's pan-compensation math pins the point under the cursor. No-op
+  // unless the Zoom tool is active and Space isn't panning (Space wins).
+  function handleZoomToolClick(e: MouseEvent, canvasEl: HTMLElement | null) {
+    if (state.tool !== 'zoom' || state.spacePanning || !canvasEl) return
+    const r = canvasEl.getBoundingClientRect()
+    zoomAroundPoint(e.clientX - r.left, e.clientY - r.top, !e.altKey)
+  }
+
   return {
     viewport,
     setPreviewFrame,
@@ -185,5 +212,6 @@ export function useCanvas() {
     handleMouseDown,
     handleMouseMove,
     handleMouseUp,
+    handleZoomToolClick,
   }
 }

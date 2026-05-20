@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Parallax Editor</title>
   <style>
+    :root {
+      --accent: #0066cc;                    /* botones primarios rellenos (Guardar, etc.) */
+      --accent-hover: #157ae0;              /* hover */
+      --accent-strong: #4a9eff;             /* fills de slider, checks, anillo de foco */
+      --accent-fg: #ffffff;                 /* texto/icono sobre un relleno de acento */
+      --accent-soft: rgba(0, 102, 204, .20); /* tinte sutil de seleccion/hover */
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a1a; color: #e0e0e0; overflow: hidden; }
     #app { width: 100vw; height: 100vh; }

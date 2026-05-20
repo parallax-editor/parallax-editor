@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { addElement, resolveAddElementLayerPath, type ElementKind } from '../../stores/editor'
+import {
+  addElement,
+  addCustomComponent,
+  resolveAddElementLayerPath,
+  customComponents,
+  type ElementKind,
+} from '../../stores/editor'
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -26,6 +32,17 @@ function pick(kind: ElementKind) {
   addElement(layerPath, kind)
   emit('close')
 }
+
+// Custom components registered for this project (parallax.config.ts in the
+// neighbor repo). Empty on `eventos` (built-ins only) → the group is hidden.
+// FormBlock keeps its dedicated "Formulario" path above (filtered out of
+// customComponents in the store).
+function pickComponent(name: string) {
+  const layerPath = resolveAddElementLayerPath()
+  if (!layerPath) return
+  addCustomComponent(layerPath, name)
+  emit('close')
+}
 </script>
 
 <template>
@@ -49,6 +66,29 @@ function pick(kind: ElementKind) {
           <span class="aem-hint">{{ t.hint }}</span>
         </span>
       </button>
+
+      <!-- Custom components registered via the neighbor repo's
+           parallax.config.ts (GAP1 / PLAN §13). Hidden when none are
+           registered for this project type (e.g. eventos). -->
+      <template v-if="customComponents.length">
+        <div class="aem-group-title" data-test="add-element-components-group">
+          Componentes
+        </div>
+        <button
+          v-for="c in customComponents"
+          :key="c.name"
+          class="aem-item"
+          :data-test="`add-element-component-${c.name}`"
+          @click="pickComponent(c.name)"
+          :aria-label="`Agregar ${c.label}`"
+        >
+          <span class="aem-icon">&#x1F9E9;</span>
+          <span class="aem-text">
+            <span class="aem-label">{{ c.label }}</span>
+            <span class="aem-hint">{{ c.description || c.name }}</span>
+          </span>
+        </button>
+      </template>
     </div>
   </div>
 </template>
@@ -88,7 +128,23 @@ function pick(kind: ElementKind) {
   line-height: 1;
 }
 .aem-close:hover { color: #fff; }
-.aem-list { padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+.aem-list {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.aem-group-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #777;
+  padding: 10px 4px 2px;
+  border-top: 1px solid #333;
+  margin-top: 4px;
+}
 .aem-item {
   display: flex;
   align-items: center;
@@ -101,9 +157,15 @@ function pick(kind: ElementKind) {
   cursor: pointer;
   text-align: left;
 }
-.aem-item:hover { background: #0066cc; border-color: #0066cc; color: #fff; }
+.aem-item:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 .aem-icon { font-size: 18px; width: 24px; text-align: center; }
-.aem-text { display: flex; flex-direction: column; }
+.aem-text { display: flex; flex-direction: column; min-width: 0; }
 .aem-label { font-size: 13px; font-weight: 600; }
-.aem-hint { font-size: 11px; opacity: 0.6; }
+.aem-hint {
+  font-size: 11px;
+  opacity: 0.6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 </style>

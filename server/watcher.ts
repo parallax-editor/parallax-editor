@@ -2,7 +2,9 @@ import type { HttpServer } from 'vite'
 import type { IncomingMessage } from 'http'
 import type { Socket } from 'net'
 import chokidar from 'chokidar'
+import { statSync } from 'fs'
 import { WebSocketServer, WebSocket } from 'ws'
+import { shouldIgnoreSelfWrite } from './selfWrites'
 
 let wss: WebSocketServer | null = null
 
@@ -27,6 +29,21 @@ export function setupWatcher(httpServer: HttpServer, watchPaths: string[]) {
   )
 
   watcher.on('change', (path) => {
+    // Self-write suppression (PLAN §16): if this change is the editor's own
+    // write of site.json (manual Guardar / Autosave), don't broadcast — the
+    // client must not reload and discard the user's selection. We match by
+    // absolute path + current on-disk size against what writeProject just
+    // wrote. An EXTERNAL change (claude -p, hand edit) has no marker (or a
+    // different size) and still broadcasts → reload, exactly as before.
+    let size = -1
+    try {
+      size = statSync(path).size
+    } catch {
+      // Can't stat (deleted/raced) → can't be a matched self-write; broadcast.
+    }
+    if (size >= 0 && shouldIgnoreSelfWrite(path, size)) {
+      return
+    }
     broadcast({ type: 'file-changed', path })
   })
 
@@ -39,7 +56,7 @@ export function setupWatcher(httpServer: HttpServer, watchPaths: string[]) {
   })
 }
 
-function broadcast(data: object) {
+export function broadcast(data: object) {
   if (!wss) return
   const msg = JSON.stringify(data)
   wss.clients.forEach((client) => {

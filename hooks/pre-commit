@@ -1,0 +1,43 @@
+#!/bin/sh
+# pre-commit — parallax-editor
+#
+# Corre lint (si existe) + smoke test (offline) antes de permitir el commit.
+# Si algo falla, el commit se BLOQUEA con un mensaje claro.
+#
+# Activado vía: git config --local core.hooksPath hooks  (versionado en el repo)
+# Saltar en emergencia: git commit --no-verify
+#
+# IMPORTANTE: el auto-commit-on-save del propio editor (server/git.ts →
+# gitCommit) pasa `git commit --no-verify` A PROPÓSITO. Sin eso, cada autosave
+# (cada ~1.5s mientras se edita) correría toda la suite = inusable, y venía
+# contaminando los repos de contenido con corridas de test pesadas. La
+# validación de contenido ya la cubre `validateSite` (al cargar) y el flujo
+# "Publicar" (revalida el schema antes del push, task #44). Este hook es para
+# un `git commit` humano en parallax-editor, no para el autosave.
+set -e
+
+ROOT=$(git rev-parse --show-toplevel)
+cd "$ROOT"
+
+echo "[pre-commit parallax-editor] verificando antes del commit…"
+
+# ── lint (solo si el script existe en package.json) ────────────────────────
+if node -e "process.exit(require('./package.json').scripts && require('./package.json').scripts.lint ? 0 : 1)" 2>/dev/null; then
+  echo "[pre-commit] → yarn lint"
+  if ! yarn --silent lint; then
+    echo "[pre-commit] ❌ BLOQUEADO: 'yarn lint' falló en parallax-editor. Corrige el lint o usa 'git commit --no-verify' solo en emergencia." >&2
+    exit 1
+  fi
+else
+  echo "[pre-commit] (sin script 'lint' en package.json — se omite)"
+fi
+
+# ── tests (smoke, offline) ─────────────────────────────────────────────────
+echo "[pre-commit] → yarn test"
+if ! yarn --silent test; then
+  echo "[pre-commit] ❌ BLOQUEADO: 'yarn test' falló en parallax-editor (smoke). Corrige los tests o usa 'git commit --no-verify' solo en emergencia." >&2
+  exit 1
+fi
+
+echo "[pre-commit parallax-editor] ✅ todo verde — commit permitido."
+exit 0
