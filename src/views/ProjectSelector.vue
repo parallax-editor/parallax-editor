@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { projectsApi, workspaceApi, s3Api } from '../composables/useApi'
 import type { ProjectListItem, Workspace } from '../composables/useApi'
 import ProjectCard from '../components/selector/ProjectCard.vue'
+import HelpHint from '../components/properties/HelpHint.vue'
 // The SAME canonical slug transform the server uses to create the folder, so
 // this live preview ALWAYS matches the folder/route that gets created.
 import { slugify } from '../../server/slug'
@@ -123,7 +124,7 @@ async function createNew() {
     showCreate.value = false
     newName.value = ''
     if (created && expected && created !== expected) {
-      window.alert(`Ya existía un sitio con esa dirección.\nSe creó como: "${created}"`)
+      window.alert(`Ya existía un proyecto con esa dirección.\nSe creó como: "${created}"`)
     }
     if (created) { openProject(created); return }
   } finally {
@@ -178,6 +179,54 @@ async function loadBuckets() {
     const r = await s3Api.buckets()
     if (r?.ok && Array.isArray(r.buckets)) bucketSuggestions.value = r.buckets
   } catch { /* offline / no creds — leave empty */ }
+}
+
+// ── Bucket combobox (Arreglo 2) ───────────────────────────────────────────────
+// A real anchored dropdown (not the broken floating <datalist>): a text input
+// with a list positioned BELOW it that filters bucketSuggestions as you type.
+const bucketOpen = ref(false)
+const bucketActiveIdx = ref(-1)
+const filteredBuckets = computed<string[]>(() => {
+  const q = (cfg.value.s3?.bucket || '').trim().toLowerCase()
+  const list = bucketSuggestions.value
+  if (!q) return list.slice(0, 50)
+  return list.filter((b) => b.toLowerCase().includes(q)).slice(0, 50)
+})
+function pickBucket(name: string) {
+  if (cfg.value.s3) cfg.value.s3.bucket = name
+  bucketOpen.value = false
+  bucketActiveIdx.value = -1
+}
+function onBucketInput() {
+  bucketOpen.value = true
+  bucketActiveIdx.value = -1
+}
+function onBucketFocus() {
+  bucketOpen.value = true
+}
+function onBucketBlur() {
+  // Delay so a click on a suggestion lands before we close.
+  setTimeout(() => { bucketOpen.value = false; bucketActiveIdx.value = -1 }, 150)
+}
+function onBucketKeydown(e: KeyboardEvent) {
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    if (!bucketOpen.value) bucketOpen.value = true
+    bucketActiveIdx.value = Math.min(bucketActiveIdx.value + 1, filteredBuckets.value.length - 1)
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    bucketActiveIdx.value = Math.max(bucketActiveIdx.value - 1, -1)
+  } else if (e.key === 'Enter') {
+    if (bucketOpen.value && bucketActiveIdx.value >= 0 && filteredBuckets.value[bucketActiveIdx.value]) {
+      e.preventDefault()
+      pickBucket(filteredBuckets.value[bucketActiveIdx.value])
+    } else {
+      bucketOpen.value = false
+    }
+  } else if (e.key === 'Escape') {
+    bucketOpen.value = false
+    bucketActiveIdx.value = -1
+  }
 }
 
 async function pickRepoFolder() {
@@ -286,7 +335,7 @@ async function createWorkspace() {
 
     <!-- Workspace selector bar -->
     <div class="ws-bar" data-test="workspace-bar">
-      <span class="ws-bar-label">Proyectos</span>
+      <span class="ws-bar-label">Workspace</span>
       <div class="ws-chips">
         <div
           v-for="w in wsState.list"
@@ -333,14 +382,14 @@ async function createWorkspace() {
         <div class="group-header">
           <h2>{{ activeWorkspace?.name || 'Proyectos' }}</h2>
           <span class="group-count">{{ projects.length }}</span>
-          <button class="btn-new" :disabled="!activeWorkspace" @click="showCreate = true">+ Nuevo</button>
+          <button class="btn-new" :disabled="!activeWorkspace" @click="showCreate = true">+ Nuevo proyecto</button>
         </div>
 
         <div v-if="!activeWorkspace" class="empty">
           No hay ningún workspace seleccionado. Crea uno con <strong>+ Nuevo workspace</strong>.
         </div>
         <div v-else-if="projects.length === 0" class="empty">
-          No hay proyectos aún. Crea uno con <strong>+ Nuevo</strong>.
+          Este workspace aún no tiene proyectos. Crea uno con <strong>+ Nuevo proyecto</strong>.
         </div>
         <div v-else-if="visibleProjects.length === 0" class="no-results" data-test="no-results">
           Sin resultados para “{{ search }}”.
@@ -368,7 +417,7 @@ async function createWorkspace() {
             <button class="cd-close" aria-label="Cerrar" @click="showCreate = false">&times;</button>
           </header>
           <div class="cd-body">
-            <label class="field-label" for="new-site-name">Nombre del sitio</label>
+            <label class="field-label" for="new-site-name">Nombre del proyecto</label>
             <input
               id="new-site-name"
               ref="nameInput"
@@ -422,11 +471,38 @@ async function createWorkspace() {
               </label>
               <template v-if="cfg.s3.enabled">
                 <label class="field-label">Bucket</label>
-                <input v-model="cfg.s3.bucket" list="s3-buckets" data-test="ws-cfg-s3-bucket" placeholder="mi-bucket" />
-                <datalist id="s3-buckets">
-                  <option v-for="b in bucketSuggestions" :key="b" :value="b" />
-                </datalist>
-                <button class="aux-btn" type="button" :disabled="wsBusy || !cfg.s3.bucket" @click="createS3Bucket">Crear bucket</button>
+                <div class="bucket-combo">
+                  <input
+                    v-model="cfg.s3.bucket"
+                    class="bucket-input"
+                    data-test="ws-cfg-s3-bucket"
+                    placeholder="mi-bucket"
+                    autocomplete="off"
+                    spellcheck="false"
+                    @input="onBucketInput"
+                    @focus="onBucketFocus"
+                    @blur="onBucketBlur"
+                    @keydown="onBucketKeydown"
+                  />
+                  <ul
+                    v-if="bucketOpen && filteredBuckets.length"
+                    class="bucket-list"
+                    data-test="ws-cfg-s3-bucket-list"
+                  >
+                    <li
+                      v-for="(b, i) in filteredBuckets"
+                      :key="b"
+                      class="bucket-opt"
+                      :class="{ active: i === bucketActiveIdx }"
+                      @mousedown.prevent="pickBucket(b)"
+                      @mouseenter="bucketActiveIdx = i"
+                    >{{ b }}</li>
+                  </ul>
+                </div>
+                <div class="bucket-create-row">
+                  <button class="aux-btn" type="button" :disabled="wsBusy || !cfg.s3.bucket" @click="createS3Bucket">Crear bucket</button>
+                  <span class="bucket-create-hint">Crea el bucket en S3 con el nombre escrito (si aún no existe).</span>
+                </div>
 
                 <label class="field-label">Prefijo (opcional)</label>
                 <input v-model="cfg.s3.prefix" placeholder="" />
@@ -434,6 +510,17 @@ async function createWorkspace() {
                 <label class="field-label">Región</label>
                 <input v-model="cfg.s3.region" placeholder="us-east-1" />
               </template>
+
+              <label class="check-row manifest-row">
+                <input type="checkbox" v-model="cfg.s3.publishManifest" data-test="ws-cfg-s3-manifest" />
+                Mantener manifiesto del catálogo (manifest.json)
+                <HelpHint
+                  label="Manifiesto del catálogo"
+                  text="Genera y mantiene **&lt;contentRoot&gt;/manifest.json** con la lista de proyectos del workspace, para catálogos públicos.
+
+» Apágalo en workspaces privados (por ejemplo invitaciones) para no exponer la lista de proyectos."
+                />
+              </label>
             </div>
 
             <p v-if="wsModalError" class="ws-err">{{ wsModalError }}</p>
@@ -459,8 +546,8 @@ async function createWorkspace() {
             <button class="cd-close" aria-label="Cerrar" @click="showNewWs = false">&times;</button>
           </header>
           <div class="cd-body">
-            <label class="field-label">Nombre</label>
-            <input v-model="newWs.name" data-test="new-ws-name" placeholder="Mi proyecto" />
+            <label class="field-label">Nombre del workspace</label>
+            <input v-model="newWs.name" data-test="new-ws-name" placeholder="Ej: Eventos, Portafolio" />
 
             <div class="mode-tabs">
               <button :class="{ active: newWs.mode === 'folder' }" @click="newWs.mode = 'folder'" data-test="new-ws-mode-folder">Carpeta local</button>
@@ -590,6 +677,44 @@ async function createWorkspace() {
 .s3-section h4 { margin: 0 0 8px; font-size: 13px; color: #c4c4c4; }
 .check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #ccc; margin-bottom: 6px; }
 .check-row input { width: auto; }
+.manifest-row { margin-top: 14px; padding-top: 12px; border-top: 1px solid #2f2f2f; }
+
+/* Bucket combobox (Arreglo 2): a text input with an anchored dropdown BELOW it.
+   The list is absolutely positioned relative to .bucket-combo so it overlays
+   the modal content (high z-index) instead of pushing/floating beside the
+   input. "Crear bucket" is its OWN row under the input, never over the list. */
+.bucket-combo { position: relative; }
+.bucket-input { width: 100%; }
+.bucket-list {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 100002; /* above the modal (.create-dialog) content */
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 200px;
+  overflow-y: auto;
+  background: #232323;
+  border: 1px solid #4a4a4a;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+.bucket-opt {
+  padding: 6px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #d6d6d6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bucket-opt.active,
+.bucket-opt:hover { background: var(--accent-soft, #2a2418); color: #fff; }
+.bucket-create-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.bucket-create-hint { font-size: 11px; color: #777; line-height: 1.4; }
 .mode-tabs { display: flex; gap: 6px; margin: 14px 0 4px; }
 .mode-tabs button { flex: 1 1 auto; background: #2a2a2a; border: 1px solid #444; color: #bbb; padding: 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
 .mode-tabs button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }

@@ -22,6 +22,7 @@ import {
   DeleteObjectsCommand,
 } from '@aws-sdk/client-s3'
 import type { Workspace } from './workspaces'
+import { buildCatalogItems, serializeCatalog } from './catalog'
 
 // Content-type by extension (mirrors the editor's MIME table + a few extras).
 const MIME: Record<string, string> = {
@@ -223,6 +224,10 @@ export function readDeploySidecar(ws: Workspace, slug: string): DeploySidecar | 
 // mundo regeneramos ese manifest escaneando TODOS los slugs hermanos del
 // contentRoot y lo subimos a S3, así un mundo nuevo aparece en el catálogo SIN
 // rebuild. Gated por ws.s3.publishManifest → NUNCA corre para eventos (privado).
+//
+// El BUILDER del manifest vive ahora en server/catalog.ts (single source of
+// truth, compartido con el archivo local versionado). Aquí solo subimos a S3 el
+// MISMO cuerpo que se escribe en disco.
 
 export interface ManifestResult {
   ok: boolean
@@ -230,19 +235,12 @@ export interface ManifestResult {
   error?: string
 }
 
-interface CatalogItem {
-  slug: string
-  title: string
-  description?: string
-  ogImage?: string
-}
-
 /**
  * Regenera <contentRoot>/manifest.json (lista del catálogo) desde el disco y lo
  * sube a s3://<bucket>/<prefix?>/<contentRoot>/manifest.json. Solo `meta` de
  * cada site.json (slug/title/description/ogImage) — nunca el árbol del mundo.
- * El prefijo de ogImage (`/<contentRoot>/<slug>/<og>`) coincide con el baseline
- * que hornea el build del sitio (nuxt.config getWorldsManifest).
+ * Usa el builder compartido (server/catalog.ts) para que el objeto S3 y el
+ * archivo local NUNCA divergan.
  */
 export async function publishCatalogManifest(ws: Workspace): Promise<ManifestResult> {
   const s3cfg = ws.s3
@@ -252,40 +250,12 @@ export async function publishCatalogManifest(ws: Workspace): Promise<ManifestRes
   const root = resolve(ws.repoPath, ws.contentRoot)
   if (!existsSync(root)) return { ok: false, error: `No existe el contentRoot: ${ws.contentRoot}` }
 
-  let slugs: string[]
-  try {
-    slugs = readdirSync(root, { withFileTypes: true })
-      .filter((d) => d.isDirectory() && existsSync(resolve(root, d.name, 'site.json')))
-      .map((d) => d.name)
-  } catch (e: any) {
-    return { ok: false, error: e?.message || 'No se pudo leer el contentRoot.' }
-  }
-
-  const items: CatalogItem[] = []
-  for (const slug of slugs) {
-    try {
-      const raw = JSON.parse(readFileSync(resolve(root, slug, 'site.json'), 'utf-8'))
-      const meta = raw?.meta ?? {}
-      const og: string | undefined = meta.ogImage
-      items.push({
-        slug,
-        title: meta.title || slug,
-        description: meta.description,
-        ogImage:
-          og && !og.startsWith('http') && !og.startsWith('/')
-            ? `/${ws.contentRoot}/${slug}/${og}`
-            : og,
-      })
-    } catch {
-      // site.json inválido → se omite del catálogo.
-    }
-  }
-  items.sort((a, b) => a.title.localeCompare(b.title))
+  const items = buildCatalogItems(ws)
 
   const parts = [s3cfg.prefix, ws.contentRoot].filter(Boolean)
   const Key = parts.join('/').replace(/\/+/g, '/').replace(/^\/+/, '') + '/manifest.json'
   try {
-    const body = JSON.stringify(items)
+    const body = serializeCatalog(items)
     await client(s3cfg.region || 'us-east-1').send(
       new PutObjectCommand({
         Bucket: s3cfg.bucket,

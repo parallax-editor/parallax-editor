@@ -39,29 +39,49 @@ export function gitLog(cwd: string, limit = 20): { hash: string; message: string
  *
  * The commit is ALSO scoped at commit time with `--only -- <addPath>` so even
  * if something is already staged from another path, it cannot ride along.
+ *
+ * `extraPaths` (optional): additional repo-relative paths to include in the SAME
+ * scoped commit. The ONLY caller is the manifest feature (Arreglo 4): when a
+ * workspace keeps a catalog manifest, the save commit also stages exactly
+ * `<contentRoot>/manifest.json` — a single extra file that lives in the SAME
+ * contentRoot as the slug being saved. Every extra path goes through the SAME
+ * containment guard (no absolute, no `..`) and is added to BOTH the `git add`
+ * and the `--only -- <paths…>` pathspec, so the commit can never spill into
+ * another slug or any unrelated repo change. Empty/invalid extras are dropped.
  */
-export function gitCommit(cwd: string, message: string, addPath: string): string {
+export function gitCommit(
+  cwd: string,
+  message: string,
+  addPath: string,
+  extraPaths: string[] = [],
+): string {
   // Containment guard: never let an absolute path or a `..` segment reach git.
   // The caller builds addPath from controlled inputs (type → subdir + slug),
   // but this is the last line where we can still refuse a malformed path.
-  if (
-    !addPath ||
-    addPath.startsWith('/') ||
-    addPath.split(/[\\/]/).some((seg) => seg === '..')
-  ) {
+  const safe = (p: string): boolean =>
+    !!p && !p.startsWith('/') && !p.split(/[\\/]/).some((seg) => seg === '..')
+  if (!safe(addPath)) {
     return 'Nothing to commit'
   }
+  // Validate + dedupe the extra paths against the SAME guard. A malformed extra
+  // is silently dropped (never aborts the save) so the manifest can never widen
+  // the commit's scope beyond well-formed, repo-relative paths.
+  const extras = Array.from(new Set(extraPaths.filter(safe)))
+  const paths = [addPath, ...extras]
+  // Quote every path; this is the exact set staged AND the exact `--only`
+  // pathspec, so the two can never diverge.
+  const quoted = paths.map((p) => `"${p}"`).join(' ')
   try {
-    git(`add -- "${addPath}"`, cwd)
+    git(`add -- ${quoted}`, cwd)
   } catch {
     return 'Nothing to commit'
   }
   try {
-    // `--only -- <path>` restricts the commit to ONLY that site's path even if
+    // `--only -- <paths…>` restricts the commit to ONLY these paths even if
     // unrelated changes are already staged in the index (belt-and-suspenders
     // over the scoped `add` above). `-m` must precede `--` (pathspec).
     return git(
-      `commit --no-verify --only -m "${message.replace(/"/g, '\\"')}" -- "${addPath}"`,
+      `commit --no-verify --only -m "${message.replace(/"/g, '\\"')}" -- ${quoted}`,
       cwd,
     )
   } catch {

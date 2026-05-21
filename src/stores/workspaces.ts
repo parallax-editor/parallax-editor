@@ -17,6 +17,14 @@ export type { Workspace }
 
 const WORKSPACES_KEY = 'parallax-editor:workspaces'
 const ACTIVE_KEY = 'parallax-editor:active-workspace'
+const SEED_VERSION_KEY = 'parallax-editor:seed-version'
+
+// Bump this whenever the SEEDED defaults change so an existing localStorage gets
+// reconciled ONCE per version (see reconcileSeedDefaults). v2: split the two
+// seeds onto their correct buckets (eventos → daniela-reyes-eventos, portafolio
+// → daniela-reyes-site + publishManifest) after some installs ended up with
+// both seeds pointing at the same bucket.
+const SEED_VERSION = 2
 
 interface WorkspacesState {
   list: Workspace[]
@@ -57,10 +65,83 @@ function persist() {
   }
 }
 
+function readSeedVersion(): number {
+  try {
+    const raw = localStorage.getItem(SEED_VERSION_KEY)
+    const n = raw ? parseInt(raw, 10) : 0
+    return Number.isFinite(n) ? n : 0
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * One-shot reconciliation of the SEEDED workspaces against the host defaults
+ * (Arreglo 3). The seed only ran with an EMPTY list, so an install whose
+ * localStorage was created before a seed change (e.g. both seeds pointing at the
+ * same bucket) never self-corrected. Here, if the stored seed version is behind
+ * the current SEED_VERSION, we fetch GET /api/workspaces/defaults and, ONLY for
+ * the workspaces whose id exists in defaults (the seeded 'eventos'/'site'),
+ * overwrite their CANONICAL fields (repoPath, contentRoot, s3.bucket/region/
+ * publishManifest) to match the default. User-created workspaces (ids not in
+ * defaults) are NEVER touched, nothing is deleted, and the seed version is then
+ * persisted so this runs at most once per version bump. Mutates `list` in place
+ * and returns it.
+ */
+async function reconcileSeedDefaults(list: Workspace[]): Promise<Workspace[]> {
+  if (!list.length) return list
+  if (readSeedVersion() >= SEED_VERSION) return list
+  let defaults: Workspace[] = []
+  try {
+    const r = await workspaceApi.defaults()
+    if (r?.ok && Array.isArray(r.workspaces)) defaults = r.workspaces
+  } catch {
+    // Host unreachable — DON'T bump the version, so we retry the reconcile on a
+    // later load once the host is up.
+    return list
+  }
+  const byId = new Map(defaults.map((d) => [d.id, d]))
+  const fixed: string[] = []
+  for (const w of list) {
+    const def = byId.get(w.id)
+    if (!def) continue // user-created workspace → never touch.
+    const before = JSON.stringify({ repoPath: w.repoPath, contentRoot: w.contentRoot, s3: w.s3 })
+    // Overwrite ONLY the canonical fields to the seed's values. Keep the user's
+    // chosen name and any gitRemote untouched.
+    w.repoPath = def.repoPath
+    w.contentRoot = def.contentRoot
+    if (def.s3) {
+      w.s3 = {
+        // Preserve the user's enabled toggle if they had one; otherwise default.
+        enabled: w.s3?.enabled ?? def.s3.enabled,
+        bucket: def.s3.bucket,
+        prefix: w.s3?.prefix ?? def.s3.prefix,
+        region: def.s3.region,
+        publishManifest: def.s3.publishManifest,
+      }
+    }
+    const after = JSON.stringify({ repoPath: w.repoPath, contentRoot: w.contentRoot, s3: w.s3 })
+    if (before !== after) fixed.push(w.id)
+  }
+  try {
+    localStorage.setItem(SEED_VERSION_KEY, String(SEED_VERSION))
+  } catch {
+    /* quota / unavailable — non-fatal */
+  }
+  if (fixed.length) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[workspaces] Reconciliación de seed v${SEED_VERSION}: se corrigieron los workspaces sembrados [${fixed.join(', ')}] a su configuración canónica (repoPath/contentRoot/bucket/region/publishManifest).`,
+    )
+  }
+  return list
+}
+
 /**
  * Load workspaces from localStorage. If empty, SEED the two defaults from the
- * host (resolved absolute repoPaths). Also reads the git-config status for the
- * setup banner. Idempotent (safe to call repeatedly).
+ * host (resolved absolute repoPaths). Otherwise run a one-shot reconciliation of
+ * the seeded workspaces against the host defaults (Arreglo 3). Also reads the
+ * git-config status for the setup banner. Idempotent (safe to call repeatedly).
  */
 export async function loadWorkspaces(): Promise<void> {
   let list = readList()
@@ -71,6 +152,11 @@ export async function loadWorkspaces(): Promise<void> {
     } catch {
       /* host unreachable — leave empty; UI shows "crea un workspace" */
     }
+    // A fresh seed is already canonical → mark the seed version so the
+    // reconcile path never runs for a just-seeded install.
+    try { localStorage.setItem(SEED_VERSION_KEY, String(SEED_VERSION)) } catch { /* non-fatal */ }
+  } else {
+    list = await reconcileSeedDefaults(list)
   }
   wsState.list = list
   const savedActive = (() => {

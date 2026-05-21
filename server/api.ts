@@ -11,6 +11,7 @@ import { activateWorkspace, resolveWorkspace, defaultWorkspaces } from './worksp
 import { pickFolder } from './fs'
 import { listBuckets, createBucket, readDeploySidecar } from './s3'
 import { publishWorkspaceSlug } from './publish'
+import { writeCatalogManifestFile } from './catalog'
 
 const MIME: Record<string, string> = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
@@ -70,6 +71,21 @@ function parseJsonBodyLarge(req: IncomingMessage): Promise<any> {
 function json(res: ServerResponse, data: any, status = 200) {
   res.writeHead(status, { 'Content-Type': 'application/json' })
   res.end(JSON.stringify(data))
+}
+
+// ── Catalog manifest as a repo file (Arreglo 4) ───────────────────────────────
+// When a workspace keeps a catalog manifest (ws.s3.publishManifest), the editor
+// maintains `<repoPath>/<contentRoot>/manifest.json` as a REAL versioned file.
+// Regenerate it on create / save / delete / publish. Returns the repo-relative
+// manifest path (e.g. `content/portafolio/manifest.json`) so the SAVE commit can
+// include EXACTLY that one extra file in its scoped commit — or '' if the
+// workspace doesn't keep a manifest / the write failed (best-effort, never
+// blocks the operation). The slug subdir is NEVER widened by this.
+function regenManifestIfEnabled(wsId: string): string {
+  const ws = resolveWorkspace(wsId)
+  if (!ws || !ws.s3?.publishManifest) return ''
+  const r = writeCatalogManifestFile(ws)
+  return r.ok && r.relPath ? r.relPath : ''
 }
 
 export function createHandler(server: ViteDevServer) {
@@ -200,6 +216,9 @@ export function createHandler(server: ViteDevServer) {
         }
         if (method === 'DELETE') {
           deleteProject(type, slug)
+          // Arreglo 4: refresh the catalog manifest so the removed project drops
+          // out of it (no-op for workspaces without a manifest).
+          regenManifestIfEnabled(type)
           return json(res, { ok: true })
         }
       }
@@ -214,6 +233,10 @@ export function createHandler(server: ViteDevServer) {
         const body = await parseBody(req)
         const name = typeof body?.name === 'string' ? body.name : (body?.slug ?? '')
         const finalSlug = createProject(cmatch[1], name)
+        // Arreglo 4: keep the catalog manifest file in sync when a project is
+        // created (no-op for workspaces without a manifest). It gets committed
+        // with the next scoped save (or the Publicar flow).
+        regenManifestIfEnabled(cmatch[1])
         return json(res, { ok: true, slug: finalSlug })
       }
 
@@ -228,6 +251,9 @@ export function createHandler(server: ViteDevServer) {
           if (body && typeof body.newSlug === 'string') desired = body.newSlug
         } catch { /* no/invalid body → auto-name */ }
         const newSlug = duplicateProject(dmatch[1], dmatch[2], desired)
+        // Arreglo 4: a duplicate adds a new slug → refresh the catalog manifest
+        // (no-op for workspaces without a manifest).
+        regenManifestIfEnabled(dmatch[1])
         return json(res, { ok: true, slug: newSlug })
       }
 
@@ -349,9 +375,19 @@ export function createHandler(server: ViteDevServer) {
         if (!relPath) {
           return json(res, { ok: true, result: 'Nothing to commit' })
         }
+        // Arreglo 4: if this workspace keeps a catalog manifest, regenerate it
+        // and include ONLY `<contentRoot>/manifest.json` as an extra path in the
+        // SAME scoped commit (a single file in the same contentRoot — never
+        // another slug). When the workspace has no manifest this is a no-op.
+        const manifestRel = regenManifestIfEnabled(gcmatch[1])
         return json(res, {
           ok: true,
-          result: gitCommit(getRepoPath(gcmatch[1]), message || 'Auto-save', relPath),
+          result: gitCommit(
+            getRepoPath(gcmatch[1]),
+            message || 'Auto-save',
+            relPath,
+            manifestRel ? [manifestRel] : [],
+          ),
         })
       }
 

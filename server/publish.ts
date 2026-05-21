@@ -13,6 +13,7 @@ import { resolveWorkspace } from './workspaces'
 import { gitPush, gitCommitPath } from './git'
 import { getContentRelPath } from './projects'
 import { syncSiteToS3, publishCatalogManifest, type SyncResult } from './s3'
+import { writeCatalogManifestFile } from './catalog'
 import { markSelfWrite } from './selfWrites'
 
 export interface PublishResult {
@@ -62,6 +63,24 @@ export async function publishWorkspaceSlug(wsId: string, slug: string): Promise<
         manifest = m.count
       } else {
         warning = warning || `El sitio se publicó, pero no se pudo actualizar el catálogo: ${m.error || ''}`
+      }
+      // Arreglo 4: además del upload a S3, mantén el manifest como ARCHIVO REAL
+      // versionado bajo content/. Si cambió, lo commiteamos ACOTADO a
+      // `<contentRoot>/manifest.json` (un único archivo del mismo contentRoot —
+      // nunca otros slugs) y lo empujamos. Best-effort: el deploy del slug ya
+      // fue exitoso, un fallo aquí es solo informativo.
+      try {
+        const fileRes = writeCatalogManifestFile(ws)
+        if (fileRes.ok && fileRes.changed && fileRes.relPath) {
+          gitCommitPath(ws.repoPath, `catalog: actualizar manifest.json`, fileRes.relPath)
+          try {
+            gitPush(ws.repoPath)
+          } catch {
+            /* push best-effort */
+          }
+        }
+      } catch {
+        /* mantener el archivo es best-effort; el catálogo S3 ya se subió */
       }
     }
   } else {
