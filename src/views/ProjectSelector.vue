@@ -25,6 +25,9 @@ const dialog = useDialog()
 const projects = ref<ProjectListItem[]>([])
 const loading = ref(true)
 const wsError = ref<string | null>(null)
+// Slug del proyecto que se está eliminando (borrado asíncrono: commit+push+S3).
+// Mientras dura, su ProjectCard muestra un spinner en lugar de los botones.
+const deletingSlug = ref<string | null>(null)
 
 // Free-form NAME the human types (becomes meta.title / the HTML <title>).
 const newName = ref('')
@@ -162,8 +165,15 @@ async function remove(slug: string) {
     danger: true,
   })
   if (!ok) return
-  await projectsApi.delete(ws.id, slug)
-  await refreshProjects()
+  // Feedback en la fila: spinner mientras el borrado asíncrono corre. En éxito,
+  // refreshProjects() quita la fila; en error, el finally restaura los botones.
+  deletingSlug.value = slug
+  try {
+    await projectsApi.delete(ws.id, slug)
+    await refreshProjects()
+  } finally {
+    deletingSlug.value = null
+  }
 }
 
 // ── Workspace config modal (gear) ─────────────────────────────────────────────
@@ -443,6 +453,7 @@ async function createWorkspace() {
             :key="p.slug"
             :type="(activeWorkspace as Workspace).id"
             :project="p"
+            :deleting="deletingSlug === p.slug"
             @open="openProject(p.slug)"
             @duplicate="duplicate(p.slug)"
             @remove="remove(p.slug)"
@@ -663,7 +674,7 @@ async function createWorkspace() {
 .ws-chip.active { border-color: var(--accent); background: #2a2418; }
 .ws-chip-name { background: none; border: none; color: #ddd; cursor: pointer; padding: 6px 10px 6px 14px; font-size: 13px; }
 .ws-chip.active .ws-chip-name { color: #fff; font-weight: 600; }
-.ws-gear { background: none; border: none; color: #999; cursor: pointer; padding: 6px 10px 6px 4px; font-size: 13px; }
+.ws-gear { background: none; border: none; color: #999; cursor: pointer; padding: 7px 12px 7px 6px; font-size: 18px; line-height: 1; }
 .ws-gear:hover { color: #fff; }
 .ws-new {
   background: #2a2a2a; border: 1px dashed #4a4a4a; color: #cfcfcf; border-radius: 999px;

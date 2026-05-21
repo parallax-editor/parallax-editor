@@ -14,6 +14,9 @@ const props = defineProps<{
   // so the /content/<ws>/<slug>/... thumbnail path is unchanged for them.
   type: string
   project: ProjectListItem
+  // Borrado asíncrono en curso (commit+push+S3): muestra spinner en la fila y
+  // bloquea el click de abrir mientras dura.
+  deleting?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -66,12 +69,13 @@ function formatEdited(ms: number): string {
 <template>
   <div
     class="project-card"
+    :class="{ 'is-deleting': deleting }"
     role="button"
     tabindex="0"
     :data-test="`project-card-${type}-${project.slug}`"
-    @click="emit('open')"
-    @keydown.enter.prevent="emit('open')"
-    @keydown.space.prevent="emit('open')"
+    @click="!deleting && emit('open')"
+    @keydown.enter.prevent="!deleting && emit('open')"
+    @keydown.space.prevent="!deleting && emit('open')"
   >
     <div class="thumb">
       <img
@@ -93,20 +97,30 @@ function formatEdited(ms: number): string {
     </div>
 
     <div class="project-actions" @click.stop>
-      <button
-        type="button"
-        class="act"
-        title="Duplicar"
-        aria-label="Duplicar"
-        @click="emit('duplicate')"
-      >&#x2398;</button>
-      <button
-        type="button"
-        class="act danger"
-        title="Eliminar"
-        aria-label="Eliminar"
-        @click="emit('remove')"
-      >&#x2715;</button>
+      <span
+        v-if="deleting"
+        class="act-spinner"
+        :data-test="`project-deleting-${project.slug}`"
+        role="status"
+        aria-label="Eliminando…"
+        title="Eliminando…"
+      ></span>
+      <template v-else>
+        <button
+          type="button"
+          class="act"
+          title="Duplicar"
+          aria-label="Duplicar"
+          @click="emit('duplicate')"
+        >&#x2398;</button>
+        <button
+          type="button"
+          class="act danger"
+          title="Eliminar"
+          aria-label="Eliminar"
+          @click="emit('remove')"
+        >&#x2715;</button>
+      </template>
     </div>
   </div>
 </template>
@@ -205,7 +219,8 @@ function formatEdited(ms: number): string {
 .project-actions {
   flex: 0 0 auto;
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 6px;
   opacity: 0;
   transition: opacity 0.12s;
 }
@@ -219,10 +234,10 @@ function formatEdited(ms: number): string {
   border: 1px solid #3a3a3a;
   color: #b9b9b9;
   cursor: pointer;
-  width: 30px;
-  height: 30px;
-  border-radius: 7px;
-  font-size: 15px;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  font-size: 18px;
   line-height: 1;
   display: flex;
   align-items: center;
@@ -241,5 +256,26 @@ function formatEdited(ms: number): string {
 @media (max-width: 520px) {
   /* Touch / narrow: actions always visible (no hover) so they stay reachable. */
   .project-actions { opacity: 1; }
+}
+
+/* Deleting in progress: dim the row, block opening, keep the spinner visible. */
+.project-card.is-deleting {
+  cursor: progress;
+  opacity: 0.6;
+  pointer-events: none;
+}
+.project-card.is-deleting .project-actions {
+  opacity: 1;
+}
+.act-spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2.5px solid #4a4a4a;
+  border-top-color: #ff7676;
+  animation: act-spin 0.7s linear infinite;
+}
+@keyframes act-spin {
+  to { transform: rotate(360deg); }
 }
 </style>
