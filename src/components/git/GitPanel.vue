@@ -10,6 +10,10 @@ const dialog = useDialog()
 const emit = defineEmits<{ close: [] }>()
 
 const loading = ref(false)
+// Carga inicial del panel (status de git + estado de deploy). El botón Publicar
+// NO se muestra hasta que esto sea true, para no ofrecer publicar con datos a
+// medias (p.ej. deploy aún null haría parecer "no publicado" antes de tiempo).
+const ready = ref(false)
 const pushResult = ref('')
 // Pending-to-push commits (ahead of origin) + last 5 commits on origin/main.
 const pending = ref<GitStatusCommit[]>([])
@@ -46,6 +50,8 @@ async function loadStatus() {
     originRecent.value = []
   }
   await loadDeploy()
+  // Status + deploy ya cargados → ahora sí se puede mostrar el botón Publicar.
+  ready.value = true
 }
 
 async function loadDeploy() {
@@ -141,7 +147,8 @@ onMounted(loadStatus)
     <div class="git-header">
       <span class="git-title">Publicar</span>
       <div class="git-header-actions">
-        <button class="publish-btn" data-test="git-publish" @click="publish" :disabled="!canPublish">
+        <span v-if="!ready" class="git-loading" data-test="git-loading">Cargando…</span>
+        <button v-else class="publish-btn" data-test="git-publish" @click="publish" :disabled="!canPublish">
           {{ loading ? 'Publicando...' : 'Publicar' }}
         </button>
         <!-- Close X: the toolbar "Publicar" button disables itself once there's
@@ -230,6 +237,7 @@ onMounted(loadStatus)
 .git-close:hover { color: #fff; background: #ffffff14; }
 .publish-btn { background: #2ea043; border: none; color: #fff; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px; }
 .publish-btn:disabled { opacity: 0.5; cursor: default; }
+.git-loading { color: #888; font-size: 12px; font-style: italic; }
 .s3-badge {
   display: flex; align-items: center; gap: 7px; font-size: 11px; color: #999;
   background: #1f1f1f; border: 1px solid #333; border-radius: 6px;

@@ -53,6 +53,17 @@ onBeforeRouteLeave(async () => {
   })
 })
 
+// Cierre/recarga DURA del navegador (cerrar pestaña, F5, navegar fuera): no se
+// puede usar un modal propio (el navegador solo permite su prompt nativo). Solo
+// se activa cuando hay cambios sin guardar.
+function onBeforeUnload(e: BeforeUnloadEvent) {
+  if (!isDirty.value) return
+  e.preventDefault()
+  e.returnValue = ''
+}
+onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
+onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload))
+
 async function loadProject() {
   loading.value = true
   // Fase 2: ensure the workspace (props.type === workspace id) is ACTIVATED on
