@@ -1,5 +1,5 @@
-import type { ViteDevServer } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'http'
+import type { Server as HttpServer } from 'http'
 import { createReadStream, existsSync } from 'fs'
 import { resolve, extname } from 'path'
 import { listProjects, readProject, writeProject, createProject, duplicateProject, getRepoPath, getContentRelPath, getAssetPath, saveProjectAsset, assetKindFromMime, listProjectAssets, deleteProjectAsset } from './projects'
@@ -88,12 +88,23 @@ function regenManifestIfEnabled(wsId: string): string {
   return r.ok && r.relPath ? r.relPath : ''
 }
 
-export function createHandler(server: ViteDevServer) {
-  // Setup file watcher on the shared Vite HTTP server (path /__ws, no extra port)
+// FASE 1: `createHandler` no longer needs a ViteDevServer. The only Vite
+// dependency was `server.ssrLoadModule` (to load parallax.config.ts), now
+// replaced by an esbuild-based loader (server/configLoader.ts). The handler
+// optionally takes the HTTP server it's mounted on so the file watcher can ride
+// its `upgrade` event for the /__ws WebSocket — works identically whether that
+// server is Vite's dev server (DEV) or the standalone Node server (PROD).
+export interface CreateHandlerOptions {
+  httpServer?: HttpServer | null
+}
+
+export function createHandler(opts: CreateHandlerOptions = {}) {
+  // Setup file watcher on the host HTTP server (path /__ws, no extra port).
+  const httpServer = opts.httpServer ?? null
   const eventosRepo = resolve(process.cwd(), '..', 'daniela-reyes-eventos')
   const siteRepo = resolve(process.cwd(), '..', 'daniela-reyes-site')
-  if (server.httpServer) {
-    setupWatcher(server.httpServer, [eventosRepo, siteRepo])
+  if (httpServer) {
+    setupWatcher(httpServer, [eventosRepo, siteRepo])
   } else {
     console.warn('[editor-watcher] No HTTP server available — file watcher disabled')
   }
@@ -183,7 +194,7 @@ export function createHandler(server: ViteDevServer) {
       // the #33 Vite plugin — no manual restart.
       const compMatch = url.match(/^\/api\/components\/([^/]+)$/)
       if (compMatch && method === 'GET') {
-        const registry = await loadComponentRegistry(server, compMatch[1])
+        const registry = await loadComponentRegistry(compMatch[1])
         return json(res, registry)
       }
 

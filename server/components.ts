@@ -1,7 +1,7 @@
-import type { ViteDevServer } from 'vite'
 import { existsSync } from 'fs'
 import { resolve } from 'path'
 import { getRepoPath } from './projects'
+import { loadParallaxConfigDefault } from './configLoader'
 
 // ─── Custom component discovery (parallax.config.ts → serializable registry) ───
 //
@@ -23,13 +23,14 @@ import { getRepoPath } from './projects'
 // render code) — never sent to the client; the canvas dynamically imports the
 // real SFCs separately (best-effort, with a red placeholder fallback per §16).
 //
-// Loading strategy: Vite's own SSR module graph (`server.ssrLoadModule`). The
-// config imports `.vue` SFCs (handled by @vitejs/plugin-vue) and
-// `defineParallaxConfig` from `parallax-engine` (resolved by the editor's
-// vite alias to the built dist). We import it OUT of the editor root via its
-// absolute path; ssrLoadModule supports absolute fs paths. Everything is
-// wrapped so a broken/absent config returns a structured payload instead of
-// crashing the API (the editor degrades to built-ins only).
+// Loading strategy (FASE 1 — Vite-free): the config is transpiled + bundled
+// with esbuild (`server/configLoader.ts`), which STUBS its `.vue` imports to an
+// empty default and its `parallax-engine` import to an identity
+// `defineParallaxConfig`. We then read the resulting plain config object. This
+// removes the previous dependency on `server.ssrLoadModule` / ViteDevServer so
+// the same code runs in the standalone Node server (server/standalone.ts).
+// Everything is wrapped so a broken/absent config returns a structured payload
+// instead of crashing the API (the editor degrades to built-ins only).
 
 export interface SerializableEditableProp {
   // Mirrors the engine's EditableProp (src/config.ts). The new types
@@ -167,17 +168,18 @@ function sanitizeRegistration(
 }
 
 /**
- * Load + serialize the custom-component registry for a project `type`
- * (`eventos` | `site`). Never throws: a missing config → empty registry;
- * a broken config → empty registry + `error` describing the failure.
+ * Load + serialize the custom-component registry for a workspace `type`
+ * (workspace id, e.g. `eventos` | `site`). Never throws: a missing config →
+ * empty registry; a broken config → empty registry + `error` describing the
+ * failure.
  *
- * Uses Vite's SSR module loader so the config's `.vue` imports and its
- * `parallax-engine` import resolve through the same machinery the editor
- * already uses (the Vue plugin + the engine alias). Strips the live Vue
- * `component` refs — only the JSON registry is returned.
+ * Vite-free (FASE 1): the config is bundled with esbuild via
+ * `loadParallaxConfigDefault` (its `.vue` and `parallax-engine` imports are
+ * stubbed). We only read the resulting plain config object and strip the live
+ * Vue `component` refs — only the JSON registry is returned. Takes the
+ * workspace id directly (resolves the repo internally); no ViteDevServer.
  */
 export async function loadComponentRegistry(
-  server: ViteDevServer,
   type: string,
 ): Promise<ComponentRegistryResponse> {
   const repo = getRepoPath(type)
@@ -190,12 +192,9 @@ export async function loadComponentRegistry(
     return { components: {} }
   }
   try {
-    // ssrLoadModule accepts an absolute fs path; the leading "/" form keeps it
-    // out of the editor's import-analysis (it's a sibling repo file). The Vue
-    // plugin compiles the imported SFCs; the engine alias resolves
-    // `defineParallaxConfig`. We only read the resulting plain config object.
-    const mod = await server.ssrLoadModule(configPath)
-    const config = (mod?.default ?? mod) as any
+    // esbuild bundles the config (stubbing `.vue` + `parallax-engine`); we read
+    // the resulting plain config object's `default` export.
+    const config = (await loadParallaxConfigDefault(configPath)) as any
     const comps = config?.components
     if (!comps || typeof comps !== 'object') {
       return { components: {} }

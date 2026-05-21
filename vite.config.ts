@@ -78,7 +78,11 @@ export default defineConfig({
         let apiHandler: ((req: IncomingMessage, res: ServerResponse, next: () => void) => void) | null = null
 
         server.ssrLoadModule('/server/api').then((mod) => {
-          apiHandler = mod.createHandler(server)
+          // FASE 1: createHandler no longer needs the whole ViteDevServer — only
+          // the HTTP server (for the /__ws watcher). Pass it via the options
+          // object. The component-registry loader is now esbuild-based (no
+          // ssrLoadModule) and resolves the workspace internally.
+          apiHandler = mod.createHandler({ httpServer: server.httpServer })
           console.log('[editor-api] API middleware loaded')
         }).catch((err) => {
           console.error('[editor-api] Failed:', err.message)
