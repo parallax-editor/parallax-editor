@@ -4,12 +4,15 @@
   "description": "Editor local tipo Illustrator para sitios parallax de Daniela Reyes.",
   "private": true,
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "editor": "vite --open",
     "dev": "vite",
     "build": "vite build",
     "build:server": "esbuild server/standalone.ts --bundle --platform=node --format=cjs --outfile=dist-server/server.cjs --external:esbuild --external:@aws-sdk/client-s3 --external:chokidar --external:ws --external:fsevents",
     "start": "yarn build && yarn build:server && node dist-server/server.cjs",
+    "electron:dev": "ELECTRON_DEV=1 electron electron/main.cjs",
+    "electron:start": "yarn build && yarn build:server && electron electron/main.cjs",
     "test": "node tests/editor.test.mjs"
   },
   "dependencies": {
@@ -23,6 +26,7 @@
     "@types/ws": "^8.5.12",
     "@vitejs/plugin-vue": "^5.1.0",
     "chokidar": "^3.6.0",
+    "electron": "^37.0.0",
     "esbuild": "^0.21.5",
     "typescript": "~5.4.5",
     "vite": "^5.4.0",

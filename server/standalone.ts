@@ -10,14 +10,20 @@
 //       que usa el plugin de Vite (ahora Vite-free).
 //   (c) Monta el watcher WebSocket en /__ws sobre este httpServer.
 //
-// Puerto: env EDITOR_PORT (default 4317). Cierre limpio con SIGINT/SIGTERM.
+// FASE 2 (Electron): este módulo exporta `start(port?)` para arrancar el server
+// IN-PROCESS desde el proceso principal de Electron. El modo CLI (script
+// `yarn start`) se conserva con `if (require.main === module) start()`, así que
+// nada del flujo previo cambia.
+//
+// Puerto: arg de start() → env EDITOR_PORT → default 4317. Cierre limpio con
+// SIGINT/SIGTERM (solo cuando se corre como script).
 
-import { createServer, IncomingMessage, ServerResponse } from 'http'
+import { createServer, IncomingMessage, ServerResponse, Server as HttpServer } from 'http'
 import { createReadStream, existsSync, statSync } from 'fs'
 import { resolve, extname, normalize, join } from 'path'
 import { createHandler } from './api'
 
-const PORT = Number(process.env.EDITOR_PORT) || 4317
+const DEFAULT_PORT = Number(process.env.EDITOR_PORT) || 4317
 
 // dist/ del SPA compilado (vite build). En el bundle CJS, __dirname apunta a
 // dist-server/, así que dist/ es ../dist relativo a este archivo; pero también
@@ -80,35 +86,73 @@ function serveStatic(req: IncomingMessage, res: ServerResponse) {
   res.end('dist/index.html no encontrado. Corre `yarn build` primero.')
 }
 
-const httpServer = createServer((req, res) => {
-  const url = req.url || ''
-  if (isApiOrContent(url)) {
-    // next() = caer al estático (p. ej. una ruta /api desconocida igual
-    // responde 404 dentro del handler; este next solo se usa si el handler
-    // decide no manejarla, lo cual no ocurre para estos prefijos).
-    apiHandler(req, res, () => serveStatic(req, res))
-  } else {
-    serveStatic(req, res)
-  }
-})
+/**
+ * Arranca el server standalone y resuelve cuando está escuchando.
+ *
+ * @param port  Puerto a usar. Default: env EDITOR_PORT → 4317. Pasa 0 para que
+ *              el SO asigne uno libre (útil si Electron quiere evitar choques).
+ * @returns     `{ port, server, close }` — `port` es el puerto REAL en uso
+ *              (relevante si pediste 0), `close()` apaga el server limpio.
+ */
+export function start(port: number = DEFAULT_PORT): Promise<{
+  port: number
+  server: HttpServer
+  close: () => Promise<void>
+}> {
+  const httpServer = createServer((req, res) => {
+    const url = req.url || ''
+    if (isApiOrContent(url)) {
+      // next() = caer al estático (p. ej. una ruta /api desconocida igual
+      // responde 404 dentro del handler; este next solo se usa si el handler
+      // decide no manejarla, lo cual no ocurre para estos prefijos).
+      apiHandler(req, res, () => serveStatic(req, res))
+    } else {
+      serveStatic(req, res)
+    }
+  })
 
-// createHandler monta el watcher /__ws sobre ESTE httpServer (mismo mecanismo
-// que en Vite) y resuelve el registry de componentes con esbuild (sin Vite).
-const apiHandler = createHandler({ httpServer })
+  // createHandler monta el watcher /__ws sobre ESTE httpServer (mismo mecanismo
+  // que en Vite) y resuelve el registry de componentes con esbuild (sin Vite).
+  const apiHandler = createHandler({ httpServer })
 
-httpServer.listen(PORT, () => {
-  console.log(`\n  Parallax Editor (standalone) → http://localhost:${PORT}\n`)
-  console.log(`  Sirviendo SPA desde: ${DIST}`)
-  if (!existsSync(join(DIST, 'index.html'))) {
-    console.warn('  AVISO: dist/index.html no existe. Corre `yarn build` para compilar el SPA.')
-  }
-})
+  const close = () =>
+    new Promise<void>((resolveClose) => {
+      httpServer.close(() => resolveClose())
+      // Failsafe: si algún socket queda colgado, no esperar para siempre.
+      setTimeout(() => resolveClose(), 2000).unref()
+    })
 
-function shutdown(signal: string) {
-  console.log(`\n[standalone] ${signal} recibido → cerrando…`)
-  httpServer.close(() => process.exit(0))
-  // Failsafe: si algún socket queda colgado, forzar salida.
-  setTimeout(() => process.exit(0), 2000).unref()
+  return new Promise((resolveStart, rejectStart) => {
+    httpServer.once('error', rejectStart)
+    httpServer.listen(port, () => {
+      httpServer.removeListener('error', rejectStart)
+      const addr = httpServer.address()
+      const actualPort = typeof addr === 'object' && addr ? addr.port : port
+      console.log(`\n  Parallax Editor (standalone) → http://localhost:${actualPort}\n`)
+      console.log(`  Sirviendo SPA desde: ${DIST}`)
+      if (!existsSync(join(DIST, 'index.html'))) {
+        console.warn('  AVISO: dist/index.html no existe. Corre `yarn build` para compilar el SPA.')
+      }
+      resolveStart({ port: actualPort, server: httpServer, close })
+    })
+  })
 }
-process.on('SIGINT', () => shutdown('SIGINT'))
-process.on('SIGTERM', () => shutdown('SIGTERM'))
+
+// ─── Modo CLI (script `yarn start`) ─────────────────────────────────────────
+// Cuando se ejecuta como script (no `require`d por Electron), arranca y maneja
+// las señales de cierre por sí mismo. Bajo Electron, el proceso principal hace
+// `require()` de este módulo y llama start() directamente, así que esta rama no
+// corre y el manejo de señales lo hace Electron.
+if (require.main === module) {
+  start().then(({ close }) => {
+    const shutdown = (signal: string) => {
+      console.log(`\n[standalone] ${signal} recibido → cerrando…`)
+      close().then(() => process.exit(0))
+    }
+    process.on('SIGINT', () => shutdown('SIGINT'))
+    process.on('SIGTERM', () => shutdown('SIGTERM'))
+  }).catch((err) => {
+    console.error('[standalone] Error al arrancar:', err)
+    process.exit(1)
+  })
+}

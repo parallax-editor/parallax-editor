@@ -3,3 +3,9 @@ dist
 dist-server
 .DS_Store
 *.local
+
+# Electron (Fase 2/3): salidas de empaquetado/instalador. Aún no se generan en
+# Fase 2 (solo cáscara), pero las dejamos ignoradas para que no se cuelen luego.
+dist-electron
+release
+out
