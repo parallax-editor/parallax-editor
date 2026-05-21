@@ -11,6 +11,7 @@ import { wsState, loadWorkspaces, selectWorkspace } from '../stores/workspaces'
 import { validateSite, assignIds } from 'parallax-engine/schema'
 import { resolveSections } from 'parallax-engine'
 import { buildCommitMessage } from '../composables/commitMessage'
+import { useDialog } from '../composables/useDialog'
 import Toolbar from '../components/toolbar/Toolbar.vue'
 import EditorCanvas from '../components/canvas/EditorCanvas.vue'
 import LayersPanel from '../components/layers/LayersPanel.vue'
@@ -20,6 +21,7 @@ import GitPanel from '../components/git/GitPanel.vue'
 
 const props = defineProps<{ type: string; slug: string }>()
 const router = useRouter()
+const dialog = useDialog()
 const loading = ref(true)
 const bottomPanel = ref<'claude' | 'git' | null>(null)
 // Imperative handle to the canvas so applyExternalChange can scroll the preview
@@ -46,7 +48,7 @@ async function loadProject() {
   await selectWorkspace(props.type)
   const data = await projectsApi.get(props.type, props.slug)
   if (!data || data.error) {
-    alert('Proyecto no encontrado')
+    await dialog.alert({ title: 'Proyecto no encontrado', message: 'Proyecto no encontrado' })
     router.push('/')
     return
   }

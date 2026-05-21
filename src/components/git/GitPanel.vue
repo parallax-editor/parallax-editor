@@ -3,6 +3,9 @@ import { ref, onMounted, watch, computed } from 'vue'
 import { gitApi, publishApi, type GitStatusCommit, type DeploySidecar } from '../../composables/useApi'
 import { state } from '../../stores/editor'
 import { validateSite } from 'parallax-engine/schema'
+import { useDialog } from '../../composables/useDialog'
+
+const dialog = useDialog()
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -96,7 +99,12 @@ async function publish() {
     validationErrors.value = ['No hay un proyecto abierto para publicar.']
     return
   }
-  if (!confirm('Publicar cambios? Esto hará git push y, si está configurado, subirá el sitio a S3.')) return
+  const ok = await dialog.confirm({
+    title: 'Publicar cambios',
+    message: 'Publicar cambios? Esto hará git push y, si está configurado, subirá el sitio a S3.',
+    confirmText: 'Publicar',
+  })
+  if (!ok) return
   loading.value = true
   pushResult.value = 'Publicando… (push + sincronización con S3)'
   try {

@@ -16,6 +16,9 @@ import {
 } from '../../stores/editor'
 import { openLivePreview } from '../../composables/useLivePreview'
 import { claudeApi, gitApi } from '../../composables/useApi'
+import { useDialog } from '../../composables/useDialog'
+
+const dialog = useDialog()
 import MobileSizeControl from './MobileSizeControl.vue'
 import GridGuidesControl from './GridGuidesControl.vue'
 
@@ -143,14 +146,17 @@ function onOpenLivePreview() {
   openLivePreview()
 }
 
-function onEnableIndependent() {
+async function onEnableIndependent() {
   if (isIndependent.value) return
-  const ok = window.confirm(
-    'Vas a separar escritorio y móvil en dos configuraciones independientes.\n\n' +
+  const ok = await dialog.confirm({
+    title: 'Separar escritorio y móvil',
+    message:
+      'Vas a separar escritorio y móvil en dos configuraciones independientes.\n\n' +
       'Móvil empieza como copia de escritorio (con los ajustes móviles aplicados) ' +
       'y desde ahora podrás editarlos por separado.\n\n' +
       'Puedes deshacer con Cmd+Z. ¿Continuar?',
-  )
+    confirmText: 'Continuar',
+  })
   if (ok) enableIndependentViews()
 }
 </script>

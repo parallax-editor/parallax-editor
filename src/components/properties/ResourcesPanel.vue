@@ -28,6 +28,9 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { state } from '../../stores/editor'
 import { projectsApi } from '../../composables/useApi'
 import type { ProjectAsset, ProjectAssetKind } from '../../composables/useApi'
+import { useDialog } from '../../composables/useDialog'
+
+const dialog = useDialog()
 
 const GROUPS: { kind: ProjectAssetKind; label: string; accept: string }[] = [
   { kind: 'image', label: 'Imágenes', accept: 'image/*' },
@@ -179,9 +182,12 @@ async function uploadOne(kind: ProjectAssetKind, file: File) {
 async function onDelete(kind: ProjectAssetKind, file: ProjectAsset) {
   if (!state.projectType || !state.slug) return
   // Spanish confirm — Daniela is non-technical.
-  const ok = window.confirm(
-    `¿Eliminar "${file.name}"? Esta acción no se puede deshacer y el archivo se borra del proyecto.`,
-  )
+  const ok = await dialog.confirm({
+    title: 'Eliminar archivo',
+    message: `¿Eliminar "${file.name}"? Esta acción no se puede deshacer y el archivo se borra del proyecto.`,
+    confirmText: 'Eliminar',
+    danger: true,
+  })
   if (!ok) return
   const dk = `del-${kind}-${file.name}`
   groupError.value = { ...groupError.value, [`add-${kind}`]: null }

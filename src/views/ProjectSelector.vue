@@ -8,6 +8,7 @@ import HelpHint from '../components/properties/HelpHint.vue'
 // The SAME canonical slug transform the server uses to create the folder, so
 // this live preview ALWAYS matches the folder/route that gets created.
 import { slugify } from '../../server/slug'
+import { useDialog } from '../composables/useDialog'
 import {
   wsState,
   activeWorkspace,
@@ -20,6 +21,7 @@ import {
 } from '../stores/workspaces'
 
 const router = useRouter()
+const dialog = useDialog()
 const projects = ref<ProjectListItem[]>([])
 const loading = ref(true)
 const wsError = ref<string | null>(null)
@@ -124,7 +126,10 @@ async function createNew() {
     showCreate.value = false
     newName.value = ''
     if (created && expected && created !== expected) {
-      window.alert(`Ya existía un proyecto con esa dirección.\nSe creó como: "${created}"`)
+      await dialog.alert({
+        title: 'Dirección en uso',
+        message: `Ya existía un proyecto con esa dirección.\nSe creó como: "${created}"`,
+      })
     }
     if (created) { openProject(created); return }
   } finally {
@@ -135,20 +140,28 @@ async function createNew() {
 async function duplicate(slug: string) {
   const ws = activeWorkspace.value
   if (!ws) return
-  const proposed = window.prompt(
-    `Nombre para la copia de "${slug}"\n\nDéjalo vacío para usar un nombre automático (por ejemplo "${slug}-copia").`,
-    `${slug}-copia`,
-  )
+  const proposed = await dialog.prompt({
+    title: 'Duplicar proyecto',
+    message: `Nombre para la copia de "${slug}"\n\nDéjalo vacío para usar un nombre automático (por ejemplo "${slug}-copia").`,
+    defaultValue: `${slug}-copia`,
+    confirmText: 'Duplicar',
+  })
   if (proposed === null) return
   const r = await projectsApi.duplicate(ws.id, slug, proposed.trim() || undefined)
   await refreshProjects()
-  if (r?.slug) window.alert(`Copia creada: "${r.slug}"`)
+  if (r?.slug) await dialog.alert({ title: 'Copia creada', message: `Copia creada: "${r.slug}"` })
 }
 
 async function remove(slug: string) {
   const ws = activeWorkspace.value
   if (!ws) return
-  if (!confirm(`Eliminar "${slug}"? Esta accion no se puede deshacer.`)) return
+  const ok = await dialog.confirm({
+    title: 'Eliminar proyecto',
+    message: `Eliminar "${slug}"? Se borrará la carpeta del repositorio y, si está publicado, también de S3. Esta acción no se puede deshacer.`,
+    confirmText: 'Eliminar',
+    danger: true,
+  })
+  if (!ok) return
   await projectsApi.delete(ws.id, slug)
   await refreshProjects()
 }
@@ -266,9 +279,15 @@ async function saveConfig() {
   } finally { wsBusy.value = false }
 }
 
-function deleteWorkspace() {
+async function deleteWorkspace() {
   if (!wsConfigId.value) return
-  if (!confirm('¿Quitar este workspace de la lista? (No borra archivos en disco.)')) return
+  const ok = await dialog.confirm({
+    title: 'Quitar workspace',
+    message: '¿Quitar este workspace de la lista? (No borra archivos en disco.)',
+    confirmText: 'Quitar',
+    danger: true,
+  })
+  if (!ok) return
   removeWorkspace(wsConfigId.value)
   wsConfigId.value = null
   void activateAndLoad()
