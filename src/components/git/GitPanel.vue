@@ -20,9 +20,13 @@ const validationErrors = ref<string[]>([])
 // Fase 3: S3 deploy state read from the slug's .deploy.json sidecar.
 const deploy = ref<DeploySidecar | null>(null)
 
-// Publish now does push + S3 sync, so it's available whenever a project is open
-// (a re-sync to S3 is valid even with nothing new to push).
-const canPublish = computed(() => !!state.site && !loading.value)
+// El botón Publicar DENTRO del panel se habilita solo si hay ALGO que publicar:
+// commits pendientes por subir, o un sitio que aún no está en S3 (primera
+// publicación). Si no hay pendientes y ya está publicado → nada que hacer →
+// deshabilitado. (El botón de la barra superior siempre abre el panel.)
+const canPublish = computed(
+  () => !!state.site && !loading.value && (pending.value.length > 0 || !deploy.value?.deployed),
+)
 
 const deployLabel = computed(() => {
   if (!deploy.value?.deployed) return 'No publicado en S3'

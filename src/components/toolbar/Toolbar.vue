@@ -35,14 +35,16 @@ const claudeTitle = computed(() =>
 )
 
 // ── Publicar (git) button state ──────────────────────────────────────────────
-// "Publicar" is enabled ONLY when there are local commits ahead of origin
-// (something to push). We fetch the count on mount and refresh after every save
-// (state.gitLogNonce bumps in EditorView.save).
+// El botón "Publicar" de la barra SIEMPRE abre el panel (es útil para ver los
+// commits y cuándo se publicó por última vez); nunca se deshabilita. El badge
+// (N) solo informa cuántos commits locales hay por subir. La ACCIÓN de publicar
+// vive dentro del panel y se deshabilita sola cuando no hay nada que publicar.
+// gitAhead se refresca tras cada guardado (state.gitLogNonce en EditorView.save).
 const gitAhead = ref(0)
 const publishTitle = computed(() =>
   gitAhead.value > 0
-    ? 'Publicar los cambios pendientes al sitio'
-    : 'No hay cambios pendientes por publicar',
+    ? `Ver commits y publicar (${gitAhead.value} pendiente${gitAhead.value === 1 ? '' : 's'})`
+    : 'Ver commits y la última publicación',
 )
 
 async function refreshGitStatus() {
@@ -203,7 +205,6 @@ async function onEnableIndependent() {
           class="tool-btn"
           data-test="toggle-git"
           @click="emit('toggle-git')"
-          :disabled="gitAhead === 0"
           :title="publishTitle"
         >Publicar{{ gitAhead > 0 ? ` (${gitAhead})` : '' }}</button>
         <button class="save-btn" data-test="save" @click="emit('save')" :disabled="!isDirty" title="Guardar (Cmd+S)">Guardar</button>

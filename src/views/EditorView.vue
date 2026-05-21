@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import { projectsApi, gitApi } from '../composables/useApi'
 import { useShortcuts } from '../composables/useShortcuts'
 import { useWebSocket } from '../composables/useWebSocket'
@@ -37,6 +37,21 @@ const { sizes, onHandlePointerDown, resetPanel } = usePanelResize()
 // Mirror the current (possibly unsaved) doc to any open "Vista en vivo" tab.
 // Pure in-memory broadcast — no save/commit, content repos untouched.
 useLiveBroadcast()
+
+// Guarda de cambios sin guardar: al salir del proyecto (botón ←, o cualquier
+// navegación que abandone /edit/:type/:slug) con cambios pendientes, confirma
+// antes de descartar lo no guardado. Si autosave está activo e isDirty ya se
+// limpió, no interrumpe. Devuelve false → cancela la navegación (se queda).
+onBeforeRouteLeave(async () => {
+  if (!isDirty.value) return true
+  return await dialog.confirm({
+    title: 'Cambios sin guardar',
+    message: 'Tienes cambios sin guardar. Si sales del proyecto se perderán. ¿Salir de todos modos?',
+    confirmText: 'Salir sin guardar',
+    cancelText: 'Seguir editando',
+    danger: true,
+  })
+})
 
 async function loadProject() {
   loading.value = true
