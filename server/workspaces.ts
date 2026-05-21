@@ -31,6 +31,14 @@ export interface WorkspaceS3 {
   bucket: string
   prefix: string
   region: string
+  /**
+   * Si true, al publicar un slug también se regenera y sube
+   * `<contentRoot>/manifest.json` (la lista del catálogo) a S3, así un mundo
+   * nuevo aparece en el catálogo del sitio público SIN rebuild. SOLO se activa
+   * en workspaces tipo "portafolio" — NUNCA en eventos, cuyos slugs son
+   * privados/por-URL y no deben enumerarse públicamente.
+   */
+  publishManifest?: boolean
 }
 
 // One workspace as sent by the client. `id` is a stable client-generated key.
@@ -63,7 +71,9 @@ const LEGACY_WORKSPACES: Record<string, Workspace> = {
     name: 'Portafolio',
     repoPath: resolve(BASE, '..', 'daniela-reyes-site'),
     contentRoot: 'content/portafolio',
-    s3: { enabled: true, bucket: 'daniela-reyes-site', prefix: '', region: 'us-east-1' },
+    // publishManifest: el portafolio es público y tiene catálogo → al publicar
+    // un mundo regeneramos /content/portafolio/manifest.json en S3.
+    s3: { enabled: true, bucket: 'daniela-reyes-site', prefix: '', region: 'us-east-1', publishManifest: true },
   },
 }
 
@@ -134,6 +144,7 @@ export function activateWorkspace(raw: any): ActivateResult {
       bucket: typeof raw.s3.bucket === 'string' ? raw.s3.bucket : '',
       prefix: typeof raw.s3.prefix === 'string' ? raw.s3.prefix.replace(/^\/+|\/+$/g, '') : '',
       region: typeof raw.s3.region === 'string' && raw.s3.region ? raw.s3.region : 'us-east-1',
+      publishManifest: raw.s3.publishManifest === true,
     }
   }
 

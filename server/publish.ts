@@ -12,7 +12,7 @@ import { resolve } from 'path'
 import { resolveWorkspace } from './workspaces'
 import { gitPush, gitCommitPath } from './git'
 import { getContentRelPath } from './projects'
-import { syncSiteToS3, type SyncResult } from './s3'
+import { syncSiteToS3, publishCatalogManifest, type SyncResult } from './s3'
 import { markSelfWrite } from './selfWrites'
 
 export interface PublishResult {
@@ -24,6 +24,8 @@ export interface PublishResult {
   error?: string
   /** Non-fatal note (e.g. push had nothing / S3 disabled). */
   warning?: string
+  /** Nº de mundos en el manifest del catálogo regenerado (si aplica). */
+  manifest?: number
 }
 
 export async function publishWorkspaceSlug(wsId: string, slug: string): Promise<PublishResult> {
@@ -44,10 +46,23 @@ export async function publishWorkspaceSlug(wsId: string, slug: string): Promise<
 
   // 2) S3 sync (only if enabled).
   let s3: SyncResult | undefined
+  let manifest: number | undefined
   if (ws.s3?.enabled) {
     s3 = await syncSiteToS3(ws, slug)
     if (!s3.ok) {
       return { ok: false, pushed, s3, error: s3.error || 'Falló la sincronización con S3.' }
+    }
+    // 2b) Catálogo: si el workspace lo pide (portafolio público, NO eventos),
+    //     regeneramos+subimos <contentRoot>/manifest.json para que un mundo
+    //     nuevo aparezca en el catálogo sin rebuild. Best-effort: el deploy del
+    //     slug ya fue exitoso, así que un fallo aquí es solo un warning.
+    if (ws.s3.publishManifest) {
+      const m = await publishCatalogManifest(ws)
+      if (m.ok) {
+        manifest = m.count
+      } else {
+        warning = warning || `El sitio se publicó, pero no se pudo actualizar el catálogo: ${m.error || ''}`
+      }
     }
   } else {
     warning = warning || 'S3 no está habilitado en este workspace; solo se hizo push.'
@@ -85,5 +100,5 @@ export async function publishWorkspaceSlug(wsId: string, slug: string): Promise<
     }
   }
 
-  return { ok: true, pushed, s3, deployedAt, warning }
+  return { ok: true, pushed, s3, deployedAt, warning, manifest }
 }

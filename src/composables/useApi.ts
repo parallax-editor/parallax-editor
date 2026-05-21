@@ -169,6 +169,8 @@ export interface WorkspaceS3 {
   bucket: string
   prefix: string
   region: string
+  /** Regenerar+subir el manifest del catálogo al publicar (solo portafolio). */
+  publishManifest?: boolean
 }
 export interface Workspace {
   id: string
@@ -233,7 +235,7 @@ export interface DeploySidecar {
 export const publishApi = {
   // Publish = push + (S3 sync if enabled) + .deploy.json sidecar commit/push.
   run: (workspaceId: string, slug: string) =>
-    api<{ ok: boolean; pushed?: boolean; s3?: any; deployedAt?: string; warning?: string; error?: string }>(
+    api<{ ok: boolean; pushed?: boolean; s3?: any; deployedAt?: string; warning?: string; manifest?: number; error?: string }>(
       `/publish/${encodeURIComponent(workspaceId)}/${encodeURIComponent(slug)}`,
       { method: 'POST' },
     ),
