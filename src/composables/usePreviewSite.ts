@@ -49,7 +49,7 @@ export function isRelativeAsset(s: unknown): s is string {
  */
 export function buildPreviewSite(
   site: Site | null,
-  projectType: 'eventos' | 'site' | null,
+  projectType: string | null,
   slug: string | null,
   deviceMode: DeviceMode,
 ): any {

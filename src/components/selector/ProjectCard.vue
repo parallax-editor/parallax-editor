@@ -10,7 +10,9 @@ import type { ProjectListItem } from '../../composables/useApi'
  * All copy is Spanish (Daniela is non-technical).
  */
 const props = defineProps<{
-  type: 'eventos' | 'site'
+  // Workspace id (Fase 2). The two seeded defaults still use 'eventos'/'site',
+  // so the /content/<ws>/<slug>/... thumbnail path is unchanged for them.
+  type: string
   project: ProjectListItem
 }>()
 

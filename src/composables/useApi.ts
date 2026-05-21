@@ -85,12 +85,38 @@ export interface ProjectAsset {
 }
 
 // One editable-prop schema entry as served by /api/components/:type. Mirrors
-// the engine's EditableProp minus the (stripped) Vue `component` ref.
+// the engine's EditableProp (src/config.ts) minus the (stripped) Vue
+// `component` ref. The new types + metadata are ADDITIVE / backwards-compatible.
 export interface EditablePropSchema {
-  type: 'string' | 'number' | 'boolean' | 'select' | 'array' | 'color' | 'image'
+  type:
+    | 'string'
+    | 'number'
+    | 'boolean'
+    | 'select'
+    | 'array'
+    | 'color'
+    | 'image'
+    | 'textarea'
+    | 'url'
+    | 'range'
+    | 'date'
   label: string
+  /** Help copy → "?" hint icon next to the field. */
+  help?: string
+  /** Required → visual indicator + empty-validation highlight. */
+  required?: boolean
+  /** Group header the field is rendered under in PROPIEDADES. */
+  group?: string
+  /** Show the field only when a sibling prop `field` equals `equals`. */
+  showIf?: { field: string; equals: unknown }
   options?: string[]
   default?: unknown
+  /** type:'range' (and optional on 'number'): bounds + step. */
+  min?: number
+  max?: number
+  step?: number
+  /** type:'textarea': visible rows. */
+  rows?: number
   itemSchema?: Record<string, EditablePropSchema>
 }
 export interface ComponentRegistration {
@@ -135,6 +161,87 @@ export const gitApi = {
     api(`/git/${type}/commit`, { method: 'POST', body: JSON.stringify({ message, slug }) }),
   push: (type: string) =>
     api(`/git/${type}/push`, { method: 'POST' }),
+}
+
+// ─── Workspaces (Fase 2) + S3 (Fase 3) ──────────────────────────────────────
+export interface WorkspaceS3 {
+  enabled: boolean
+  bucket: string
+  prefix: string
+  region: string
+}
+export interface Workspace {
+  id: string
+  name: string
+  /** Absolute path to the git repo on this machine. */
+  repoPath: string
+  gitRemote?: string
+  /** Content root RELATIVE to repoPath ('content' | 'content/portafolio'). */
+  contentRoot: string
+  s3?: WorkspaceS3
+}
+
+export const workspaceApi = {
+  // Host-resolved seed defaults (absolute repoPaths). Used to seed localStorage
+  // on first run so the two built-in projects keep working unchanged.
+  defaults: () =>
+    api<{ ok: boolean; workspaces: Workspace[] }>('/workspaces/defaults'),
+  // Send the ACTIVE workspace config so the host validates + caches it. All
+  // subsequent :ws routes resolve repoPath/contentRoot from this.
+  activate: (ws: Workspace) =>
+    api<{ ok: boolean; workspace?: Workspace; error?: string }>('/workspace/activate', {
+      method: 'POST',
+      body: JSON.stringify(ws),
+    }),
+  // List the sites (slugs) under a workspace's contentRoot.
+  projects: (id: string) =>
+    api<{ ok?: boolean; projects?: ProjectListItem[]; error?: string }>(
+      `/workspaces/${encodeURIComponent(id)}/projects`,
+    ),
+  // Open the native Finder folder picker (macOS). canceled:true on Cancel.
+  pickFolder: () =>
+    api<{ ok: boolean; path?: string; canceled?: boolean; error?: string }>('/fs/pick-folder', {
+      method: 'POST',
+    }),
+  // Clone a GitHub repo to a local absolute path (host git/ssh).
+  clone: (gitUrl: string, localPath: string) =>
+    api<{ ok: boolean; path?: string; error?: string }>('/workspace/clone', {
+      method: 'POST',
+      body: JSON.stringify({ gitUrl, localPath }),
+    }),
+  // Is the host's global git user.name/email set? Drives the setup banner.
+  gitConfigStatus: () =>
+    api<{ configured: boolean; name: string; email: string }>('/git/config-status'),
+}
+
+export const s3Api = {
+  buckets: () => api<{ ok: boolean; buckets?: string[]; error?: string }>('/s3/buckets'),
+  createBucket: (name: string, region: string) =>
+    api<{ ok: boolean; bucket?: string; error?: string }>('/s3/bucket', {
+      method: 'POST',
+      body: JSON.stringify({ name, region }),
+    }),
+}
+
+export interface DeploySidecar {
+  deployed: boolean
+  lastDeployedAt: string
+  bucket: string
+  prefix: string
+  region: string
+}
+export const publishApi = {
+  // Publish = push + (S3 sync if enabled) + .deploy.json sidecar commit/push.
+  run: (workspaceId: string, slug: string) =>
+    api<{ ok: boolean; pushed?: boolean; s3?: any; deployedAt?: string; warning?: string; error?: string }>(
+      `/publish/${encodeURIComponent(workspaceId)}/${encodeURIComponent(slug)}`,
+      { method: 'POST' },
+    ),
+  // Read the .deploy.json sidecar so the panel shows the S3 status badge.
+  status: (workspaceId: string, slug: string) =>
+    api<{ ok?: boolean; deploy?: DeploySidecar | null; error?: string }>(
+      `/publish/${encodeURIComponent(workspaceId)}/${encodeURIComponent(slug)}/status`,
+    ),
 }
 
 export const claudeApi = {

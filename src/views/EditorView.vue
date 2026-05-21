@@ -7,6 +7,7 @@ import { useWebSocket } from '../composables/useWebSocket'
 import { usePanelResize } from '../composables/usePanelResize'
 import { useLiveBroadcast } from '../composables/useLivePreview'
 import { state, loadSite, isDirty, fetchComponentRegistry, selectedNodes } from '../stores/editor'
+import { wsState, loadWorkspaces, selectWorkspace } from '../stores/workspaces'
 import { validateSite, assignIds } from 'parallax-engine/schema'
 import { resolveSections } from 'parallax-engine'
 import { buildCommitMessage } from '../composables/commitMessage'
@@ -37,6 +38,12 @@ useLiveBroadcast()
 
 async function loadProject() {
   loading.value = true
+  // Fase 2: ensure the workspace (props.type === workspace id) is ACTIVATED on
+  // the host so its repo + contentRoot resolve. Needed when the editor is
+  // opened directly (page refresh / deep link) without going through the
+  // workspace selector first. Idempotent + best-effort.
+  if (!wsState.loaded) await loadWorkspaces()
+  await selectWorkspace(props.type)
   const data = await projectsApi.get(props.type, props.slug)
   if (!data || data.error) {
     alert('Proyecto no encontrado')

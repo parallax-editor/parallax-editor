@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue'
-import { gitApi, type GitStatusCommit } from '../../composables/useApi'
+import { gitApi, publishApi, type GitStatusCommit, type DeploySidecar } from '../../composables/useApi'
 import { state } from '../../stores/editor'
 import { validateSite } from 'parallax-engine/schema'
 
@@ -14,8 +14,19 @@ const originRecent = ref<GitStatusCommit[]>([])
 // Hard schema errors that BLOCK a publish (GAP7 / PLAN §9/§14). Shown in the
 // panel in Spanish; the push only proceeds once the site is valid.
 const validationErrors = ref<string[]>([])
+// Fase 3: S3 deploy state read from the slug's .deploy.json sidecar.
+const deploy = ref<DeploySidecar | null>(null)
 
-const canPublish = computed(() => pending.value.length > 0 && !loading.value)
+// Publish now does push + S3 sync, so it's available whenever a project is open
+// (a re-sync to S3 is valid even with nothing new to push).
+const canPublish = computed(() => !!state.site && !loading.value)
+
+const deployLabel = computed(() => {
+  if (!deploy.value?.deployed) return 'No publicado en S3'
+  const d = Date.parse(deploy.value.lastDeployedAt)
+  const when = Number.isFinite(d) ? new Date(d).toLocaleString('es-ES') : deploy.value.lastDeployedAt
+  return `Publicado en S3 · ${when}`
+})
 
 async function loadStatus() {
   if (!state.projectType) return
@@ -26,6 +37,17 @@ async function loadStatus() {
   } catch {
     pending.value = []
     originRecent.value = []
+  }
+  await loadDeploy()
+}
+
+async function loadDeploy() {
+  if (!state.projectType || !state.slug) { deploy.value = null; return }
+  try {
+    const r = await publishApi.status(state.projectType, state.slug)
+    deploy.value = r?.deploy ?? null
+  } catch {
+    deploy.value = null
   }
 }
 
@@ -70,12 +92,24 @@ async function publish() {
     return // BLOCKED — do not push.
   }
 
-  if (!confirm('Publicar cambios? Esto hara git push al repositorio remoto.')) return
+  if (!state.slug) {
+    validationErrors.value = ['No hay un proyecto abierto para publicar.']
+    return
+  }
+  if (!confirm('Publicar cambios? Esto hará git push y, si está configurado, subirá el sitio a S3.')) return
   loading.value = true
-  pushResult.value = ''
+  pushResult.value = 'Publicando… (push + sincronización con S3)'
   try {
-    const r = await gitApi.push(state.projectType)
-    pushResult.value = r.result || 'Push exitoso'
+    const r = await publishApi.run(state.projectType, state.slug)
+    if (!r.ok) {
+      pushResult.value = `Error: ${r.error || 'no se pudo publicar'}`
+    } else {
+      const parts: string[] = []
+      if (r.pushed) parts.push('Push exitoso')
+      if (r.s3?.ok) parts.push(`S3: ${r.s3.uploaded ?? 0} archivos subidos, ${r.s3.deleted ?? 0} eliminados`)
+      if (r.warning) parts.push(r.warning)
+      pushResult.value = parts.join(' · ') || 'Publicado'
+    }
   } catch (e: any) {
     pushResult.value = `Error: ${e.message}`
   }
@@ -108,6 +142,16 @@ onMounted(loadStatus)
           @click="emit('close')"
         >&times;</button>
       </div>
+    </div>
+
+    <!-- S3 deploy status badge (Fase 3) -->
+    <div
+      class="s3-badge"
+      :class="{ deployed: deploy?.deployed }"
+      data-test="s3-deploy-badge"
+    >
+      <span class="s3-dot" :class="{ on: deploy?.deployed }" />
+      {{ deployLabel }}
     </div>
 
     <div
@@ -174,6 +218,14 @@ onMounted(loadStatus)
 .git-close:hover { color: #fff; background: #ffffff14; }
 .publish-btn { background: #2ea043; border: none; color: #fff; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px; }
 .publish-btn:disabled { opacity: 0.5; cursor: default; }
+.s3-badge {
+  display: flex; align-items: center; gap: 7px; font-size: 11px; color: #999;
+  background: #1f1f1f; border: 1px solid #333; border-radius: 6px;
+  padding: 5px 9px; margin-bottom: 8px;
+}
+.s3-badge.deployed { color: #b6e3c0; border-color: #2c5a38; background: #16241a; }
+.s3-dot { width: 7px; height: 7px; border-radius: 50%; background: #666; flex-shrink: 0; }
+.s3-dot.on { background: #2ea043; }
 .validation-block { background: #2a1414; border: 1px solid #6b2020; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
 .vb-title { color: #f88; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
 .vb-list { margin: 0; padding-left: 16px; max-height: 90px; overflow-y: auto; }

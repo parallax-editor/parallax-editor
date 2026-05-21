@@ -6,6 +6,7 @@ import type { ProjectAsset } from '../../composables/useApi'
 import PropField from './PropField.vue'
 import FormColorField from './FormColorField.vue'
 import HelpHint from './HelpHint.vue'
+import NumberSlider from './NumberSlider.vue'
 import ResourceCombobox from './ResourceCombobox.vue'
 import type { ComboOption } from './ResourceCombobox.vue'
 
@@ -42,6 +43,88 @@ function propValue(key: string): any {
 const schemaEntries = computed(() =>
   Object.entries(props.registration.editableProps || {}) as [string, EditablePropSchema][],
 )
+
+// ── showIf (conditional visibility) ────────────────────────────────────────
+// Show a field only when its sibling prop `field` currently equals `equals`.
+// Loose-equality on the resolved value keeps it forgiving (e.g. "true" vs
+// true). No condition → always visible.
+function isVisible(schema: EditablePropSchema): boolean {
+  const cond = schema.showIf
+  if (!cond || typeof cond.field !== 'string') return true
+  // eslint-disable-next-line eqeqeq
+  return propValue(cond.field) == (cond as any).equals
+}
+
+// Entries currently VISIBLE (showIf satisfied). Everything downstream (groups,
+// validation) only ever considers visible fields so a hidden required field
+// never blocks/flags.
+const visibleEntries = computed(() =>
+  schemaEntries.value.filter(([, schema]) => isVisible(schema)),
+)
+
+// ── Grouping ───────────────────────────────────────────────────────────────
+// Fields WITHOUT a `group` render first (ungrouped), in declaration order.
+// Grouped fields follow under a small section header, groups in first-seen
+// order, fields within a group in declaration order.
+interface PropGroup {
+  // null = the leading ungrouped block (no header).
+  name: string | null
+  entries: [string, EditablePropSchema][]
+}
+const groupedEntries = computed<PropGroup[]>(() => {
+  const ungrouped: [string, EditablePropSchema][] = []
+  const order: string[] = []
+  const byName = new Map<string, [string, EditablePropSchema][]>()
+  for (const entry of visibleEntries.value) {
+    const g = entry[1].group
+    if (!g) {
+      ungrouped.push(entry)
+    } else {
+      if (!byName.has(g)) {
+        byName.set(g, [])
+        order.push(g)
+      }
+      byName.get(g)!.push(entry)
+    }
+  }
+  const out: PropGroup[] = []
+  if (ungrouped.length) out.push({ name: null, entries: ungrouped })
+  for (const name of order) out.push({ name, entries: byName.get(name)! })
+  return out
+})
+
+// ── Required validation ─────────────────────────────────────────────────────
+// A required field is "missing" when its current value is empty (empty string,
+// null/undefined, or an empty array). Drives a red highlight + a label asterisk
+// so Daniela sees what still needs filling. Booleans are never "empty".
+function isEmptyValue(v: any): boolean {
+  if (v === undefined || v === null) return true
+  if (typeof v === 'string') return v.trim() === ''
+  if (Array.isArray(v)) return v.length === 0
+  return false
+}
+function isMissingRequired(key: string, schema: EditablePropSchema): boolean {
+  if (!schema.required) return false
+  if (schema.type === 'boolean') return false
+  return isEmptyValue(propValue(key))
+}
+
+// ── url validation (basic) ───────────────────────────────────────────────────
+// True when a NON-EMPTY url value does not look like a usable URL — drives an
+// informational hint (never blocks the save). Empty is fine here (the required
+// check, if any, handles emptiness separately).
+function isInvalidUrl(key: string, schema: EditablePropSchema): boolean {
+  if (schema.type !== 'url') return false
+  const v = propValue(key)
+  if (typeof v !== 'string' || v.trim() === '') return false
+  const s = v.trim()
+  // Recognized: absolute (https://…, mailto:, tel:), root/relative paths,
+  // anchors, or a bare "domain.com/…" (engine/browser will prefix).
+  const recognized =
+    /^(https?:|mailto:|tel:|\/|\.\/|\.\.\/|#)/i.test(s) ||
+    /^[a-z0-9.-]+\.[a-z]{2,}(\/.*)?$/i.test(s)
+  return !recognized
+}
 
 // ── array prop CRUD (rows of itemSchema fields) ────────────────────────────
 function arrayRows(key: string): any[] {
@@ -165,9 +248,18 @@ async function onImagePick(key: string, e: Event) {
 }
 
 function fieldHelp(schema: EditablePropSchema): string {
+  // Prefer the explicit `help` copy authored in parallax.config.ts (Fase 0);
+  // fall back to a generated one-liner so the "?" still says something useful.
+  if (typeof schema.help === 'string' && schema.help.trim()) return schema.help
   return schema.label
     ? `${schema.label} — propiedad del componente "${props.registration.label}".`
     : ''
+}
+
+// Label shown for a field, with a "*" suffix when required (visual indicator).
+function fieldLabel(key: string, schema: EditablePropSchema): string {
+  const base = schema.label || key
+  return schema.required ? `${base} *` : base
 }
 </script>
 
@@ -177,46 +269,119 @@ function fieldHelp(schema: EditablePropSchema): string {
       {{ registration.description }}
     </div>
 
-    <template v-for="[key, schema] in schemaEntries" :key="key">
+    <template v-for="(grp, gi) in groupedEntries" :key="grp.name || `__ungrouped-${gi}`">
+      <!-- group header (skipped for the leading ungrouped block) -->
+      <div
+        v-if="grp.name"
+        class="cp-group-head"
+        :data-test="`component-group-${grp.name}`"
+      >{{ grp.name }}</div>
+
+    <template v-for="[key, schema] in grp.entries" :key="key">
+      <!-- per-field wrapper carries the required-missing highlight -->
+      <div
+        :class="['cp-field', { 'cp-required-missing': isMissingRequired(key, schema) }]"
+        :data-test="`component-prop-${key}`"
+        :data-required-missing="isMissingRequired(key, schema) ? 'true' : undefined"
+      >
       <!-- string -->
-      <div v-if="schema.type === 'string'" :data-test="`component-prop-${key}`">
+      <template v-if="schema.type === 'string'">
         <PropField
-          :label="schema.label || key"
+          :label="fieldLabel(key, schema)"
           :help="fieldHelp(schema)"
           :modelValue="propValue(key) ?? ''"
           @update:modelValue="setProp(key, $event)"
         />
-      </div>
+      </template>
 
-      <!-- number -->
-      <div v-else-if="schema.type === 'number'" :data-test="`component-prop-${key}`">
-        <PropField
-          :label="schema.label || key"
-          :help="fieldHelp(schema)"
-          type="number"
-          :modelValue="propValue(key) ?? 0"
-          @update:modelValue="setProp(key, $event)"
+      <!-- textarea (multiline, rows from schema) -->
+      <div v-else-if="schema.type === 'textarea'" class="cp-textarea">
+        <div class="cp-textarea-head">
+          <label class="field-label">{{ fieldLabel(key, schema) }}</label>
+          <HelpHint :text="fieldHelp(schema)" :label="schema.label || key" />
+        </div>
+        <textarea
+          class="field-input cp-textarea-input"
+          :rows="schema.rows && schema.rows > 0 ? schema.rows : 3"
+          :data-test="`component-prop-${key}-textarea`"
+          :value="String(propValue(key) ?? '')"
+          @input="setProp(key, ($event.target as any).value)"
         />
       </div>
 
-      <!-- boolean -->
-      <div v-else-if="schema.type === 'boolean'" :data-test="`component-prop-${key}`">
+      <!-- url (single-line input + basic validation) -->
+      <template v-else-if="schema.type === 'url'">
         <PropField
-          :label="schema.label || key"
+          :label="fieldLabel(key, schema)"
+          :help="fieldHelp(schema)"
+          :modelValue="propValue(key) ?? ''"
+          @update:modelValue="setProp(key, $event)"
+        />
+        <p
+          v-if="isInvalidUrl(key, schema)"
+          class="cp-warn"
+          :data-test="`component-prop-${key}-url-warn`"
+        >Revisa la dirección (ej: https://… o /pagina).</p>
+      </template>
+
+      <!-- number -->
+      <template v-else-if="schema.type === 'number'">
+        <PropField
+          :label="fieldLabel(key, schema)"
+          :help="fieldHelp(schema)"
+          type="number"
+          :min="schema.min"
+          :max="schema.max"
+          :step="schema.step"
+          :modelValue="propValue(key) ?? 0"
+          @update:modelValue="setProp(key, $event)"
+        />
+      </template>
+
+      <!-- range (single-value slider, reuses NumberSlider) -->
+      <template v-else-if="schema.type === 'range'">
+        <NumberSlider
+          :label="fieldLabel(key, schema)"
+          :help="fieldHelp(schema)"
+          :id="`cprop-${key}`"
+          :min="schema.min ?? 0"
+          :max="schema.max ?? 100"
+          :step="schema.step ?? 1"
+          :modelValue="typeof propValue(key) === 'number' ? propValue(key) : (schema.min ?? 0)"
+          @update:modelValue="setProp(key, $event)"
+        />
+      </template>
+
+      <!-- date (native date input) -->
+      <div v-else-if="schema.type === 'date'" class="prop-field">
+        <label class="field-label">{{ fieldLabel(key, schema) }}</label>
+        <input
+          type="date"
+          class="field-input field-control"
+          :data-test="`component-prop-${key}-date`"
+          :value="String(propValue(key) ?? '')"
+          @input="setProp(key, ($event.target as any).value)"
+        />
+        <HelpHint :text="fieldHelp(schema)" :label="schema.label || key" />
+      </div>
+
+      <!-- boolean -->
+      <template v-else-if="schema.type === 'boolean'">
+        <PropField
+          :label="fieldLabel(key, schema)"
           :help="fieldHelp(schema)"
           type="checkbox"
           :modelValue="propValue(key) ?? false"
           @update:modelValue="setProp(key, $event)"
         />
-      </div>
+      </template>
 
       <!-- select (labeled options) -->
       <div
         v-else-if="schema.type === 'select'"
         class="prop-field"
-        :data-test="`component-prop-${key}`"
       >
-        <label class="field-label">{{ schema.label || key }}</label>
+        <label class="field-label">{{ fieldLabel(key, schema) }}</label>
         <select
           class="field-input field-control"
           :data-test="`component-prop-${key}-select`"
@@ -229,24 +394,23 @@ function fieldHelp(schema: EditablePropSchema): string {
       </div>
 
       <!-- color -->
-      <div v-else-if="schema.type === 'color'" :data-test="`component-prop-${key}`">
+      <template v-else-if="schema.type === 'color'">
         <FormColorField
-          :label="schema.label || key"
+          :label="fieldLabel(key, schema)"
           :help="fieldHelp(schema)"
           :testKey="`cprop-${key}`"
           :modelValue="propValue(key) ?? ''"
           @update:modelValue="setProp(key, $event)"
         />
-      </div>
+      </template>
 
       <!-- image (upload into content/, store relative src) -->
       <div
         v-else-if="schema.type === 'image'"
         class="cp-image"
-        :data-test="`component-prop-${key}`"
       >
         <div class="cp-image-head">
-          <label class="field-label">{{ schema.label || key }}</label>
+          <label class="field-label">{{ fieldLabel(key, schema) }}</label>
           <HelpHint :text="fieldHelp(schema)" :label="schema.label || key" />
         </div>
         <div class="img-dropzone">
@@ -290,7 +454,6 @@ function fieldHelp(schema: EditablePropSchema): string {
       <div
         v-else-if="schema.type === 'array'"
         class="cp-array"
-        :data-test="`component-prop-${key}`"
       >
         <div class="cp-array-head">
           <span class="cp-array-title">
@@ -385,6 +548,8 @@ function fieldHelp(schema: EditablePropSchema): string {
           </template>
         </div>
       </div>
+      </div>
+    </template>
     </template>
 
     <div v-if="uploadError" class="img-msg img-err" data-test="component-prop-upload-error">
@@ -396,6 +561,26 @@ function fieldHelp(schema: EditablePropSchema): string {
 <style scoped>
 .component-props { padding-top: 2px; }
 .cp-desc { font-size: 11px; color: #888; padding: 4px 0 8px; line-height: 1.4; }
+/* Fase 0: group section header — small uppercase divider between field groups. */
+.cp-group-head {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: #8a8a8a;
+  margin: 10px 0 2px; padding-bottom: 3px; border-bottom: 1px solid #333;
+}
+/* Per-field wrapper. Required-but-empty fields get a subtle red left accent so
+   Daniela sees exactly what still needs filling. */
+.cp-field { border-left: 2px solid transparent; padding-left: 0; }
+.cp-required-missing {
+  border-left-color: #b23a3a;
+  padding-left: 6px;
+  margin-left: -8px;
+}
+/* textarea field */
+.cp-textarea { padding: 3px 0; }
+.cp-textarea-head { display: flex; align-items: center; gap: 6px; padding: 0 0 4px; }
+.cp-textarea-input { width: 100%; box-sizing: border-box; resize: vertical; line-height: 1.4; }
+/* informational url warning (never blocks the save) */
+.cp-warn { font-size: 10px; color: #d8a657; margin: 2px 0 0 78px; }
 .cp-image-head,
 .cp-array-head { display: flex; align-items: center; gap: 6px; padding: 6px 0 4px; }
 .cp-array-title { font-size: 11px; color: #999; font-weight: 600; flex: 1 1 auto; }

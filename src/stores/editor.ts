@@ -42,7 +42,11 @@ export interface Clipboard {
 export type PreviewMode = 'edit' | 'preview'
 
 export interface EditorState {
-  projectType: 'eventos' | 'site' | null
+  // Fase 2: this is the active WORKSPACE ID (was the hardcoded 'eventos'|'site'
+  // type). The two seeded defaults still use those exact ids, so per-project
+  // localStorage keys (tree-collapsed:<ws>:<slug>, grid-guias:<ws>:<slug>) and
+  // every :ws API route stay byte-for-byte compatible.
+  projectType: string | null
   slug: string | null
   site: Site | null
   originalSite: string | null
@@ -190,7 +194,7 @@ export const state = reactive<EditorState>({
  * load. Resilient: a network/parse failure clears the registry rather than
  * throwing — the add menu/properties just fall back to built-ins only.
  */
-export async function fetchComponentRegistry(type: 'eventos' | 'site') {
+export async function fetchComponentRegistry(type: string) {
   try {
     const r = await componentsApi.list(type)
     // Guard against the project being closed/switched mid-flight.
@@ -571,7 +575,7 @@ export const isDirty = computed(() => {
   return JSON.stringify(state.site) !== state.originalSite
 })
 
-export function loadSite(site: Site, projectType: 'eventos' | 'site', slug: string) {
+export function loadSite(site: Site, projectType: string, slug: string) {
   state.site = site
   state.originalSite = JSON.stringify(site)
   state.projectType = projectType

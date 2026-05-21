@@ -1,4 +1,6 @@
-import { execSync } from 'child_process'
+import { execSync, execFileSync } from 'child_process'
+import { existsSync, statSync, accessSync, constants } from 'fs'
+import { dirname, isAbsolute } from 'path'
 
 function git(args: string, cwd: string): string {
   return execSync(`git ${args}`, { cwd, encoding: 'utf-8', timeout: 30000 }).trim()
@@ -91,6 +93,88 @@ export function gitCommitContent(cwd: string, message: string): string | null {
 
 export function gitPush(cwd: string): string {
   return git('push', cwd)
+}
+
+// ── Git global config status (Fase 2) ────────────────────────────────────────
+// The editor clones/commits/pushes on Daniela's behalf using the host's git.
+// If `git config --global user.name`/`user.email` are unset, commits will fail
+// — so the workspace selector shows a persistent banner until git is set up.
+// Never throws.
+export interface GitConfigStatus {
+  configured: boolean
+  name: string
+  email: string
+}
+
+export function gitConfigStatus(): GitConfigStatus {
+  const read = (key: string): string => {
+    try {
+      return execFileSync('git', ['config', '--global', key], {
+        encoding: 'utf-8',
+        timeout: 5000,
+        stdio: 'pipe',
+      }).trim()
+    } catch {
+      return ''
+    }
+  }
+  const name = read('user.name')
+  const email = read('user.email')
+  return { configured: !!name && !!email, name, email }
+}
+
+// ── Clone a repo for a new workspace (Fase 2) ─────────────────────────────────
+// Uses the HOST's authenticated git/ssh (Daniela is logged in as
+// danielareyesarte). `localPath` must be an absolute path whose PARENT exists
+// and is writable, and must not already exist (git clone refuses a non-empty
+// target anyway, but we fail early with a clear Spanish message). Never throws —
+// returns a structured result the API passes through.
+export interface CloneResult {
+  ok: boolean
+  path?: string
+  error?: string
+}
+
+export function gitClone(gitUrl: string, localPath: string): CloneResult {
+  const url = (gitUrl || '').trim()
+  const dest = (localPath || '').trim()
+  if (!url) return { ok: false, error: 'Falta la URL de GitHub.' }
+  if (!dest || !isAbsolute(dest)) {
+    return { ok: false, error: 'La ruta local debe ser absoluta.' }
+  }
+  if (existsSync(dest)) {
+    return { ok: false, error: `La carpeta destino ya existe: ${dest}` }
+  }
+  const parent = dirname(dest)
+  if (!existsSync(parent) || !statSync(parent).isDirectory()) {
+    return { ok: false, error: `La carpeta contenedora no existe: ${parent}` }
+  }
+  try {
+    accessSync(parent, constants.W_OK)
+  } catch {
+    return { ok: false, error: `No se puede escribir en: ${parent}` }
+  }
+  try {
+    // execFileSync (no shell) so the URL/path are passed verbatim — no quoting
+    // hazard. Generous timeout for a fresh clone over the network.
+    execFileSync('git', ['clone', url, dest], {
+      encoding: 'utf-8',
+      timeout: 300000,
+      stdio: 'pipe',
+    })
+    return { ok: true, path: dest }
+  } catch (e: any) {
+    const msg = (e?.stderr || e?.message || '').toString().trim()
+    return { ok: false, error: `No se pudo clonar: ${msg || 'error de git'}` }
+  }
+}
+
+// ── Scoped sidecar commit (Fase 3: deploy state) ──────────────────────────────
+// Stage + commit ONE path (the slug's .deploy.json) with the standard scoped,
+// --no-verify, --only contract. Mirrors gitCommit but lets the caller pass an
+// explicit message. Returns the commit output or 'Nothing to commit'.
+export function gitCommitPath(cwd: string, message: string, addPath: string): string {
+  return gitCommit(cwd, message, addPath)
 }
 
 // ── Publicar status helpers (task: Git → "Publicar") ─────────────────────────

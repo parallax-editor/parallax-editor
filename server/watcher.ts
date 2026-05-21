@@ -7,6 +7,10 @@ import { WebSocketServer, WebSocket } from 'ws'
 import { shouldIgnoreSelfWrite } from './selfWrites'
 
 let wss: WebSocketServer | null = null
+// Module-level handle so newly-activated workspaces (Fase 2) can extend the
+// watched globs at runtime via addWatchPath — without restarting the server.
+let activeWatcher: import('chokidar').FSWatcher | null = null
+const watchedRoots = new Set<string>()
 
 const WS_PATH = '/__ws'
 
@@ -27,6 +31,8 @@ export function setupWatcher(httpServer: HttpServer, watchPaths: string[]) {
     watchPaths.map((p) => `${p}/**/site.json`),
     { ignoreInitial: true, awaitWriteFinish: { stabilityThreshold: 500 } },
   )
+  activeWatcher = watcher
+  for (const p of watchPaths) watchedRoots.add(p)
 
   watcher.on('change', (path) => {
     // Self-write suppression (PLAN §16): if this change is the editor's own
@@ -54,6 +60,17 @@ export function setupWatcher(httpServer: HttpServer, watchPaths: string[]) {
   watcher.on('unlink', (path) => {
     broadcast({ type: 'file-deleted', path })
   })
+}
+
+/**
+ * Add a workspace repo to the live site.json watch set (Fase 2). Idempotent —
+ * a repo that's already watched (e.g. the two seeded defaults) is skipped.
+ * No-op until setupWatcher has run.
+ */
+export function addWatchPath(repoPath: string) {
+  if (!repoPath || !activeWatcher || watchedRoots.has(repoPath)) return
+  watchedRoots.add(repoPath)
+  activeWatcher.add(`${repoPath}/**/site.json`)
 }
 
 export function broadcast(data: object) {

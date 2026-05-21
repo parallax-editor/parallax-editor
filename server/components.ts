@@ -32,10 +32,39 @@ import { getRepoPath } from './projects'
 // crashing the API (the editor degrades to built-ins only).
 
 export interface SerializableEditableProp {
-  type: 'string' | 'number' | 'boolean' | 'select' | 'array' | 'color' | 'image'
+  // Mirrors the engine's EditableProp (src/config.ts). The new types
+  // (textarea/url/range/date) are ADDITIVE — an older editor degrades them to
+  // text. An unknown type still falls back to 'string' in sanitizeProp.
+  type:
+    | 'string'
+    | 'number'
+    | 'boolean'
+    | 'select'
+    | 'array'
+    | 'color'
+    | 'image'
+    | 'textarea'
+    | 'url'
+    | 'range'
+    | 'date'
   label: string
+  // ── Fase 0 metadata (all OPTIONAL / additive) ──────────────────────────────
+  /** Help copy → "?" hint icon next to the field in the editor. */
+  help?: string
+  /** Marks the field as required → visual indicator + empty-validation. */
+  required?: boolean
+  /** Groups fields under a small section header in PROPIEDADES. */
+  group?: string
+  /** Show the field only when a sibling prop `field` equals `equals`. */
+  showIf?: { field: string; equals: unknown }
   options?: string[]
   default?: unknown
+  /** type:'range' (and optional on 'number'): bounds + step. */
+  min?: number
+  max?: number
+  step?: number
+  /** type:'textarea': visible rows. */
+  rows?: number
   itemSchema?: Record<string, SerializableEditableProp>
 }
 
@@ -54,13 +83,19 @@ export interface ComponentRegistryResponse {
   error?: string
 }
 
+// Full additive type set (engine src/config.ts). NOT a content whitelist — it
+// only decides whether to PASS THROUGH the declared `type` verbatim or degrade
+// an unknown one to 'string' (so the editor always has a control to render).
 const VALID_PROP_TYPES = new Set([
   'string', 'number', 'boolean', 'select', 'array', 'color', 'image',
+  'textarea', 'url', 'range', 'date',
 ])
 
 // Defensively project ONE EditableProp into its JSON-safe shape. Unknown
 // `type` falls back to 'string' (the safest editor control); recurses into
-// `itemSchema` for arrays. Anything non-serializable is dropped.
+// `itemSchema` for arrays. Anything non-serializable is dropped. The Fase 0
+// metadata keys (help/required/group/showIf/min/max/step/rows) are passed
+// through unchanged — there is NO whitelist that would strip them.
 function sanitizeProp(raw: any): SerializableEditableProp | null {
   if (!raw || typeof raw !== 'object') return null
   const type = VALID_PROP_TYPES.has(raw.type) ? raw.type : 'string'
@@ -68,6 +103,27 @@ function sanitizeProp(raw: any): SerializableEditableProp | null {
     type,
     label: typeof raw.label === 'string' ? raw.label : '',
   }
+  // ── Fase 0 metadata: pass through verbatim (additive, all optional) ────────
+  if (typeof raw.help === 'string') out.help = raw.help
+  if (typeof raw.required === 'boolean') out.required = raw.required
+  if (typeof raw.group === 'string') out.group = raw.group
+  if (
+    raw.showIf &&
+    typeof raw.showIf === 'object' &&
+    typeof raw.showIf.field === 'string'
+  ) {
+    // `equals` may be any JSON-serializable primitive; round-trip to drop
+    // anything non-serializable (a function/Symbol → omit the whole showIf).
+    try {
+      out.showIf = { field: raw.showIf.field, equals: JSON.parse(JSON.stringify(raw.showIf.equals)) }
+    } catch {
+      /* non-serializable equals — omit showIf */
+    }
+  }
+  if (typeof raw.min === 'number') out.min = raw.min
+  if (typeof raw.max === 'number') out.max = raw.max
+  if (typeof raw.step === 'number') out.step = raw.step
+  if (typeof raw.rows === 'number') out.rows = raw.rows
   if (Array.isArray(raw.options)) {
     out.options = raw.options.map((o: any) => String(o))
   }

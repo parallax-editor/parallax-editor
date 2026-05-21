@@ -12,25 +12,22 @@ import { slugify } from './slug'
 // editor's normal module resolution (symlinked dist). Falls back to the
 // current engine value if the import ever fails so createProject never throws.
 import { SCHEMA_VERSION as ENGINE_SCHEMA_VERSION } from 'parallax-engine/schema'
+// Fase 2: the hardcoded REPO_MAP/contentDir are gone. `type` is now a WORKSPACE
+// ID resolved through the host-side workspace registry (server/workspaces.ts).
+// The seeded default workspaces use ids 'eventos'/'site' with the SAME
+// repo/contentRoot as before, so every existing call path is unchanged.
+import { workspaceContentDir, workspaceRepoPath } from './workspaces'
 
 const SCHEMA_VERSION: string =
   typeof ENGINE_SCHEMA_VERSION === 'string' && /^\d+\.\d+$/.test(ENGINE_SCHEMA_VERSION)
     ? ENGINE_SCHEMA_VERSION
     : '1.1'
 
-const BASE = process.cwd()
-
-const REPO_MAP: Record<string, string> = {
-  eventos: resolve(BASE, '..', 'daniela-reyes-eventos'),
-  site: resolve(BASE, '..', 'daniela-reyes-site'),
-}
-
+// `type` is a workspace id throughout this module (kept the param name `type`
+// to minimize churn against the existing call sites in server/api.ts).
 function contentDir(type: string): string {
-  const repo = REPO_MAP[type]
-  if (!repo) throw new Error(`Unknown project type: ${type}`)
-  const dir = type === 'site'
-    ? resolve(repo, 'content', 'portafolio')
-    : resolve(repo, 'content')
+  const dir = workspaceContentDir(type)
+  if (!dir) throw new Error(`Unknown workspace: ${type}`)
   return dir
 }
 
@@ -168,7 +165,7 @@ export function deleteProject(type: string, slug: string): void {
 }
 
 export function getRepoPath(type: string): string {
-  return REPO_MAP[type] || ''
+  return workspaceRepoPath(type)
 }
 
 /**
@@ -179,7 +176,7 @@ export function getRepoPath(type: string): string {
  * repo changes). Returns '' for an unknown type so the caller can refuse.
  */
 export function getContentRelPath(type: string, slug: string): string {
-  const repo = REPO_MAP[type]
+  const repo = workspaceRepoPath(type)
   if (!repo) return ''
   return relative(repo, resolve(contentDir(type), slug))
 }
@@ -335,7 +332,7 @@ function commitOneAsset(
   relPathInsideRepo: string,
   displayName: string,
 ): AssetCommitInfo {
-  const repo = REPO_MAP[type]
+  const repo = workspaceRepoPath(type)
   if (!repo || !existsSync(resolve(repo, '.git'))) {
     return { commit: 'skipped', warning: 'Archivo guardado pero no versionado (sin repo git).' }
   }
@@ -395,7 +392,7 @@ function commitOneAsset(
 
 /** Compute the asset path relative to its repo root, for git. */
 function assetRelPathInRepo(type: string, slug: string, subdir: string, filename: string): string {
-  const repo = REPO_MAP[type]
+  const repo = workspaceRepoPath(type)
   const abs = resolve(contentDir(type), slug, subdir, filename)
   // `path.relative` returns a POSIX-ish path on macOS/Linux (git accepts both
   // separators on macOS, but staying POSIX matches the rest of the codebase).

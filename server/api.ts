@@ -3,10 +3,14 @@ import type { IncomingMessage, ServerResponse } from 'http'
 import { createReadStream, existsSync } from 'fs'
 import { resolve, extname } from 'path'
 import { listProjects, readProject, writeProject, createProject, duplicateProject, deleteProject, getRepoPath, getContentRelPath, getAssetPath, saveProjectAsset, assetKindFromMime, listProjectAssets, deleteProjectAsset } from './projects'
-import { gitLog, gitCommit, gitPush, gitPendingCommits, gitOriginRecent, gitAheadCount } from './git'
+import { gitLog, gitCommit, gitPush, gitPendingCommits, gitOriginRecent, gitAheadCount, gitConfigStatus, gitClone } from './git'
 import { runClaude, cancelClaude, isClaudeAvailable } from './claude'
-import { setupWatcher } from './watcher'
+import { setupWatcher, addWatchPath } from './watcher'
 import { loadComponentRegistry } from './components'
+import { activateWorkspace, resolveWorkspace, defaultWorkspaces } from './workspaces'
+import { pickFolder } from './fs'
+import { listBuckets, createBucket, readDeploySidecar } from './s3'
+import { publishWorkspaceSlug } from './publish'
 
 const MIME: Record<string, string> = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
@@ -83,8 +87,64 @@ export function createHandler(server: ViteDevServer) {
     const method = req.method || 'GET'
 
     try {
+      // ─── Workspace seed defaults (Fase 2) ────────────
+      // The client seeds its localStorage from these on first run so the two
+      // built-in projects (Eventos / Portafolio) keep working with their
+      // correct ABSOLUTE repo paths (resolved host-side).
+      if (url === '/api/workspaces/defaults' && method === 'GET') {
+        return json(res, { ok: true, workspaces: defaultWorkspaces() })
+      }
+
+      // ─── Workspace activation (Fase 2) ───────────────
+      // The client (localStorage = canonical) POSTs the ACTIVE workspace config
+      // here. The host validates (path exists, is a git repo, contentRoot
+      // exists) and caches it; all `:ws` routes then resolve repoPath +
+      // contentRoot from this cache. Also wires the file-watcher to the repo.
+      if (url === '/api/workspace/activate' && method === 'POST') {
+        const body = await parseBody(req)
+        const result = activateWorkspace(body)
+        if (result.ok && result.workspace) {
+          addWatchPath(result.workspace.repoPath)
+          return json(res, { ok: true, workspace: result.workspace })
+        }
+        return json(res, { ok: false, error: result.error }, 400)
+      }
+
+      // ─── Folder picker (macOS Finder) ────────────────
+      // POST /api/fs/pick-folder → osascript `choose folder`, returns the POSIX
+      // absolute path. Cancel → { ok:true, canceled:true }.
+      if (url === '/api/fs/pick-folder' && method === 'POST') {
+        const r = await pickFolder()
+        return json(res, r)
+      }
+
+      // ─── Clone a repo (host git/ssh) ─────────────────
+      // POST /api/workspace/clone { gitUrl, localPath } → git clone using the
+      // host's authenticated git. Returns the cloned absolute path.
+      if (url === '/api/workspace/clone' && method === 'POST') {
+        const { gitUrl, localPath } = await parseBody(req)
+        const r = await gitClone(String(gitUrl || ''), String(localPath || ''))
+        return json(res, r, r.ok ? 200 : 400)
+      }
+
+      // ─── Git global config status ────────────────────
+      // GET /api/git/config-status → { configured, name, email }. Drives the
+      // "configura git" banner in the workspace selector.
+      if (url === '/api/git/config-status' && method === 'GET') {
+        return json(res, gitConfigStatus())
+      }
+
+      // ─── S3 buckets (Fase 3) ─────────────────────────
+      if (url === '/api/s3/buckets' && method === 'GET') {
+        return json(res, await listBuckets())
+      }
+      if (url === '/api/s3/bucket' && method === 'POST') {
+        const { name, region } = await parseBody(req)
+        return json(res, await createBucket(String(name || ''), String(region || 'us-east-1')))
+      }
+
       // ─── Asset serving ───────────────────────────────
-      const assetMatch = url.match(/^\/content\/(eventos|site)\/([^/]+)\/(.+)$/)
+      const assetMatch = url.match(/^\/content\/([^/]+)\/([^/]+)\/(.+)$/)
       if (assetMatch && method === 'GET') {
         const [, type, slug, assetPath] = assetMatch
         const filePath = getAssetPath(type, slug, assetPath)
@@ -105,18 +165,29 @@ export function createHandler(server: ViteDevServer) {
       // no config → {} (built-ins only). A broken config → {} + error (never
       // 500s; the editor degrades gracefully). Server changes auto-apply via
       // the #33 Vite plugin — no manual restart.
-      const compMatch = url.match(/^\/api\/components\/(eventos|site)$/)
+      const compMatch = url.match(/^\/api\/components\/([^/]+)$/)
       if (compMatch && method === 'GET') {
         const registry = await loadComponentRegistry(server, compMatch[1])
         return json(res, registry)
       }
 
       // ─── Projects ────────────────────────────────────
+      // Legacy combined listing (kept for back-compat): the two seeded default
+      // workspaces. New per-workspace listing is GET /api/workspaces/:id/projects.
       if (url === '/api/projects' && method === 'GET') {
         return json(res, { eventos: listProjects('eventos'), site: listProjects('site') })
       }
 
-      const pmatch = url.match(/^\/api\/projects\/(eventos|site)\/([^/]+)$/)
+      // Per-workspace project listing (Fase 2). Resolves the workspace by id
+      // and lists the sites (slugs) under its contentRoot. Unknown id → 404.
+      const wlmatch = url.match(/^\/api\/workspaces\/([^/]+)\/projects$/)
+      if (wlmatch && method === 'GET') {
+        const ws = resolveWorkspace(wlmatch[1])
+        if (!ws) return json(res, { error: 'Workspace desconocido' }, 404)
+        return json(res, { ok: true, projects: listProjects(ws.id) })
+      }
+
+      const pmatch = url.match(/^\/api\/projects\/([^/]+)\/([^/]+)$/)
       if (pmatch) {
         const [, type, slug] = pmatch
         if (method === 'GET') {
@@ -133,7 +204,7 @@ export function createHandler(server: ViteDevServer) {
         }
       }
 
-      const cmatch = url.match(/^\/api\/projects\/(eventos|site)$/)
+      const cmatch = url.match(/^\/api\/projects\/([^/]+)$/)
       if (cmatch && method === 'POST') {
         // TASK 2: the client sends the FREE-FORM `name` the human typed (the
         // HTML <title>). The server derives the slug with the SHARED
@@ -146,7 +217,7 @@ export function createHandler(server: ViteDevServer) {
         return json(res, { ok: true, slug: finalSlug })
       }
 
-      const dmatch = url.match(/^\/api\/projects\/(eventos|site)\/([^/]+)\/duplicate$/)
+      const dmatch = url.match(/^\/api\/projects\/([^/]+)\/([^/]+)\/duplicate$/)
       if (dmatch && method === 'POST') {
         // Optional `newSlug` from the selector's Spanish prompt. Absent/blank →
         // duplicateProject auto-names "<slug>-copia" and auto-increments on
@@ -164,7 +235,7 @@ export function createHandler(server: ViteDevServer) {
       // GET /api/projects/:type/:slug/assets → files grouped by kind. Single
       // source of truth for the "Recursos" panel AND the image/font combobox
       // suggestions. Read-only; reuses the same content-dir path mapping.
-      const almatch = url.match(/^\/api\/projects\/(eventos|site)\/([^/]+)\/assets$/)
+      const almatch = url.match(/^\/api\/projects\/([^/]+)\/([^/]+)\/assets$/)
       if (almatch && method === 'GET') {
         const [, type, slug] = almatch
         return json(res, { ok: true, assets: listProjectAssets(type, slug) })
@@ -175,7 +246,7 @@ export function createHandler(server: ViteDevServer) {
       // Hard-sanitized server-side (basename only, must stay inside the
       // project's <subdir>); 404 if the kind is unknown or the file is gone.
       // Decoded so a sanitized kebab name with %xx still resolves.
-      const admatch = url.match(/^\/api\/projects\/(eventos|site)\/([^/]+)\/assets\/([^/]+)\/(.+)$/)
+      const admatch = url.match(/^\/api\/projects\/([^/]+)\/([^/]+)\/assets\/([^/]+)\/(.+)$/)
       if (admatch && method === 'DELETE') {
         const [, type, slug, kind, rawFile] = admatch
         let file = rawFile
@@ -196,7 +267,7 @@ export function createHandler(server: ViteDevServer) {
       // project's content dir (images/ | video/ | audio/, routed by mime) and
       // returns the relative `src` to store ("<subdir>/<file>"). The editor
       // preview can serve it immediately at /content/<type>/<slug>/<src>.
-      const amatch = url.match(/^\/api\/projects\/(eventos|site)\/([^/]+)\/assets$/)
+      const amatch = url.match(/^\/api\/projects\/([^/]+)\/([^/]+)\/assets$/)
       if (amatch && method === 'POST') {
         const [, type, slug] = amatch
         const body = await parseJsonBodyLarge(req)
@@ -248,7 +319,7 @@ export function createHandler(server: ViteDevServer) {
       }
 
       // ─── Git ─────────────────────────────────────────
-      const glmatch = url.match(/^\/api\/git\/(eventos|site)\/log$/)
+      const glmatch = url.match(/^\/api\/git\/([^/]+)\/log$/)
       if (glmatch && method === 'GET') {
         return json(res, gitLog(getRepoPath(glmatch[1])))
       }
@@ -257,7 +328,7 @@ export function createHandler(server: ViteDevServer) {
       // pending commits themselves and the last 5 commits on origin/main. Drives
       // the toolbar "Publicar" enabled state and the GitPanel listings. All
       // best-effort (no upstream / offline are handled inside the helpers).
-      const gsmatch = url.match(/^\/api\/git\/(eventos|site)\/status$/)
+      const gsmatch = url.match(/^\/api\/git\/([^/]+)\/status$/)
       if (gsmatch && method === 'GET') {
         const repo = getRepoPath(gsmatch[1])
         return json(res, {
@@ -267,7 +338,7 @@ export function createHandler(server: ViteDevServer) {
         })
       }
 
-      const gcmatch = url.match(/^\/api\/git\/(eventos|site)\/commit$/)
+      const gcmatch = url.match(/^\/api\/git\/([^/]+)\/commit$/)
       if (gcmatch && method === 'POST') {
         const { message, slug } = await parseBody(req)
         // SECURITY: scope the save commit to ONLY this site's content dir
@@ -284,9 +355,30 @@ export function createHandler(server: ViteDevServer) {
         })
       }
 
-      const gpmatch = url.match(/^\/api\/git\/(eventos|site)\/push$/)
+      const gpmatch = url.match(/^\/api\/git\/([^/]+)\/push$/)
       if (gpmatch && method === 'POST') {
         return json(res, { ok: true, result: gitPush(getRepoPath(gpmatch[1])) })
+      }
+
+      // ─── Publicar (Fase 3): push + S3 sync + deploy sidecar ───────────
+      // POST /api/publish/:workspaceId/:slug. Pushes pending commits, then (if
+      // the workspace has S3 enabled) syncs ONLY this slug's content dir to S3
+      // and writes/commits/pushes a .deploy.json sidecar. Scoped to the slug.
+      const pubmatch = url.match(/^\/api\/publish\/([^/]+)\/([^/]+)$/)
+      if (pubmatch && method === 'POST') {
+        const [, wsId, slug] = pubmatch
+        const r = await publishWorkspaceSlug(wsId, slug)
+        return json(res, r, r.ok ? 200 : 400)
+      }
+
+      // GET /api/publish/:workspaceId/:slug/status → read the .deploy.json
+      // sidecar so the Publicar panel shows "Publicado en S3 · <fecha>".
+      const pubstat = url.match(/^\/api\/publish\/([^/]+)\/([^/]+)\/status$/)
+      if (pubstat && method === 'GET') {
+        const [, wsId, slug] = pubstat
+        const ws = resolveWorkspace(wsId)
+        if (!ws) return json(res, { error: 'Workspace desconocido' }, 404)
+        return json(res, { ok: true, deploy: readDeploySidecar(ws, slug) })
       }
 
       // ─── Claude ──────────────────────────────────────
