@@ -310,6 +310,30 @@ async function pickNewWsFolder() {
   if (r?.ok && r.path) newWs.value.repoPath = r.path
 }
 
+// CLONE mode: the destination folder must NOT exist yet (git clone creates it).
+// So the picker chooses the EXISTING CONTAINER folder, and we append the repo
+// name derived from the GitHub URL (git@github.com:user/mi-repo.git → "mi-repo",
+// https://github.com/user/mi-repo → "mi-repo"). If the URL can't yield a name
+// yet, fall back to the workspace name in kebab-case, else "repo".
+function repoNameFromGitUrl(url: string): string {
+  const u = (url || '').trim()
+  if (u) {
+    // Take the last path segment after the final "/" or ":" and drop a ".git".
+    const tail = u.replace(/[/:]+$/, '').split(/[/:]/).pop() || ''
+    const name = slugify(tail.replace(/\.git$/i, ''))
+    if (name) return name
+  }
+  return slugify(newWs.value.name) || 'repo'
+}
+
+async function pickNewWsClonePath() {
+  const r = await workspaceApi.pickFolder()
+  if (r?.ok && r.path) {
+    const container = r.path.replace(/\/+$/, '')
+    newWs.value.clonePath = `${container}/${repoNameFromGitUrl(newWs.value.gitUrl)}`
+  }
+}
+
 async function createWorkspace() {
   newWsBusy.value = true
   newWsError.value = null
@@ -577,14 +601,18 @@ async function createWorkspace() {
               <label class="field-label">Carpeta del repositorio</label>
               <div class="row-with-btn">
                 <input v-model="newWs.repoPath" data-test="new-ws-repopath" placeholder="/Users/…/mi-repo" />
-                <button class="aux-btn" type="button" @click="pickNewWsFolder">Elegir carpeta…</button>
+                <button class="aux-btn" type="button" data-test="new-ws-repopath-pick" @click="pickNewWsFolder">Elegir carpeta…</button>
               </div>
             </template>
             <template v-else>
               <label class="field-label">URL de GitHub</label>
               <input v-model="newWs.gitUrl" data-test="new-ws-giturl" placeholder="git@github.com:usuario/repo.git" />
               <label class="field-label">Ruta local destino</label>
-              <input v-model="newWs.clonePath" data-test="new-ws-clonepath" placeholder="/Users/…/mi-repo" />
+              <div class="row-with-btn">
+                <input v-model="newWs.clonePath" data-test="new-ws-clonepath" placeholder="/Users/…/mi-repo" />
+                <button class="aux-btn" type="button" data-test="new-ws-clonepath-pick" @click="pickNewWsClonePath">Elegir carpeta…</button>
+              </div>
+              <p class="slug-hint">Elige la carpeta contenedora; se le agrega el nombre del repo automáticamente (git clone crea la carpeta destino).</p>
             </template>
 
             <label class="field-label">Carpeta de contenido (contentRoot)</label>

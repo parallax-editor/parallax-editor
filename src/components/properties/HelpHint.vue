@@ -278,7 +278,13 @@ onBeforeUnmount(detach)
   background: #0d0d0d; color: #e6e6e6;
   border: 1px solid #555; border-radius: 6px; padding: 10px 12px;
   font-size: 11.5px; line-height: 1.5; font-weight: 400;
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.6); z-index: 100000;
+  /* z-index must beat every overlay that is ALSO teleported to <body>. The
+     ProjectSelector modals use a backdrop at z-index 100001 (and an anchored
+     bucket dropdown at 100002); since both the modal and this popover are
+     <body> children, paint order is decided purely by z-index. A lower value
+     left the tooltip painted BEHIND the modal backdrop → "el help no sirve".
+     Sit above all of them. */
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.6); z-index: 100010;
   text-transform: none; letter-spacing: 0; white-space: normal; text-align: left;
   max-height: min(70vh, 460px); overflow-y: auto;
   overscroll-behavior: contain;
