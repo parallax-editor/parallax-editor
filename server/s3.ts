@@ -270,3 +270,51 @@ export async function publishCatalogManifest(ws: Workspace): Promise<ManifestRes
     return { ok: false, error: e?.message || 'No se pudo subir el manifest del catálogo.' }
   }
 }
+
+export interface DeleteS3Result {
+  ok: boolean
+  deleted?: number
+  error?: string
+}
+
+/**
+ * Borra de S3 TODOS los objetos del slug bajo
+ *   s3://<bucket>/<prefix?>/<contentRoot>/<slug>/
+ * El prefijo SIEMPRE termina en `/`, así nunca toca un slug hermano con prefijo
+ * compartido. Es la inversa de syncSiteToS3: se usa al ELIMINAR un proyecto para
+ * que el sitio publicado deje de existir. Acotado al slug — nada más.
+ */
+export async function deleteSiteFromS3(ws: Workspace, slug: string): Promise<DeleteS3Result> {
+  const s3cfg = ws.s3
+  if (!s3cfg || !s3cfg.enabled || !s3cfg.bucket) {
+    return { ok: false, error: 'El workspace no tiene S3 habilitado o falta el bucket.' }
+  }
+  const c = client(s3cfg.region || 'us-east-1')
+  const parts = [s3cfg.prefix, ws.contentRoot, slug].filter(Boolean)
+  const keyPrefix = parts.join('/').replace(/\/+/g, '/').replace(/^\/+/, '') + '/'
+  try {
+    let deleted = 0
+    let ContinuationToken: string | undefined
+    do {
+      const listed = await c.send(
+        new ListObjectsV2Command({ Bucket: s3cfg.bucket, Prefix: keyPrefix, ContinuationToken }),
+      )
+      const objs = (listed.Contents || [])
+        .map((o) => ({ Key: o.Key as string }))
+        .filter((o) => !!o.Key)
+      for (let i = 0; i < objs.length; i += 1000) {
+        const batch = objs.slice(i, i + 1000)
+        if (batch.length) {
+          await c.send(
+            new DeleteObjectsCommand({ Bucket: s3cfg.bucket, Delete: { Objects: batch, Quiet: true } }),
+          )
+          deleted += batch.length
+        }
+      }
+      ContinuationToken = listed.IsTruncated ? listed.NextContinuationToken : undefined
+    } while (ContinuationToken)
+    return { ok: true, deleted }
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'No se pudo borrar el sitio de S3.' }
+  }
+}

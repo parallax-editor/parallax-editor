@@ -2,7 +2,7 @@ import type { ViteDevServer } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'http'
 import { createReadStream, existsSync } from 'fs'
 import { resolve, extname } from 'path'
-import { listProjects, readProject, writeProject, createProject, duplicateProject, deleteProject, getRepoPath, getContentRelPath, getAssetPath, saveProjectAsset, assetKindFromMime, listProjectAssets, deleteProjectAsset } from './projects'
+import { listProjects, readProject, writeProject, createProject, duplicateProject, getRepoPath, getContentRelPath, getAssetPath, saveProjectAsset, assetKindFromMime, listProjectAssets, deleteProjectAsset } from './projects'
 import { gitLog, gitCommit, gitPush, gitPendingCommits, gitOriginRecent, gitAheadCount, gitConfigStatus, gitClone } from './git'
 import { runClaude, cancelClaude, isClaudeAvailable } from './claude'
 import { setupWatcher, addWatchPath } from './watcher'
@@ -10,7 +10,7 @@ import { loadComponentRegistry } from './components'
 import { activateWorkspace, resolveWorkspace, defaultWorkspaces } from './workspaces'
 import { pickFolder } from './fs'
 import { listBuckets, createBucket, readDeploySidecar } from './s3'
-import { publishWorkspaceSlug } from './publish'
+import { publishWorkspaceSlug, deleteWorkspaceSlug } from './publish'
 import { writeCatalogManifestFile } from './catalog'
 
 const MIME: Record<string, string> = {
@@ -215,11 +215,11 @@ export function createHandler(server: ViteDevServer) {
           return json(res, { ok: true })
         }
         if (method === 'DELETE') {
-          deleteProject(type, slug)
-          // Arreglo 4: refresh the catalog manifest so the removed project drops
-          // out of it (no-op for workspaces without a manifest).
-          regenManifestIfEnabled(type)
-          return json(res, { ok: true })
+          // Eliminar = inverso de publicar: borra la carpeta local, commitea+
+          // pushea la eliminación (acotada), borra los objetos del slug en S3
+          // (si está habilitado) y resube el manifest. Antes solo borraba local
+          // → el sitio publicado quedaba vivo en S3.
+          return json(res, await deleteWorkspaceSlug(type, slug))
         }
       }
 

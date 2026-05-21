@@ -10,9 +10,9 @@
 import { writeFileSync } from 'fs'
 import { resolve } from 'path'
 import { resolveWorkspace } from './workspaces'
-import { gitPush, gitCommitPath } from './git'
-import { getContentRelPath } from './projects'
-import { syncSiteToS3, publishCatalogManifest, type SyncResult } from './s3'
+import { gitPush, gitCommitPath, gitCommit } from './git'
+import { getContentRelPath, deleteProject } from './projects'
+import { syncSiteToS3, publishCatalogManifest, deleteSiteFromS3, type SyncResult } from './s3'
 import { writeCatalogManifestFile } from './catalog'
 import { markSelfWrite } from './selfWrites'
 
@@ -120,4 +120,79 @@ export async function publishWorkspaceSlug(wsId: string, slug: string): Promise<
   }
 
   return { ok: true, pushed, s3, deployedAt, warning, manifest }
+}
+
+export interface DeleteResult {
+  ok: boolean
+  pushed?: boolean
+  /** Nº de objetos borrados de S3 (si aplica). */
+  s3deleted?: number
+  /** Nº de proyectos en el manifest del catálogo regenerado (si aplica). */
+  manifest?: number
+  warning?: string
+  error?: string
+}
+
+/**
+ * Eliminar un proyecto = lo inverso de publicar. GUARDAR solo commitea; PUBLICAR
+ * sube a S3; ELIMINAR debe quitar de AMBOS lados, si no el sitio publicado queda
+ * vivo. Pasos:
+ *   1) borra la carpeta local <contentRoot>/<slug>,
+ *   2) regenera el manifest del catálogo (si aplica) — ya sin ese slug,
+ *   3) commit + push de la eliminación, ACOTADO a <contentRoot>/<slug>
+ *      (+ <contentRoot>/manifest.json si cambió; mismo guard que el guardado),
+ *   4) si S3 está habilitado, borra los objetos del slug en S3 y resube el
+ *      manifest. Best-effort en push/S3: el borrado local ya ocurrió.
+ */
+export async function deleteWorkspaceSlug(wsId: string, slug: string): Promise<DeleteResult> {
+  const ws = resolveWorkspace(wsId)
+  if (!ws) return { ok: false, error: 'Workspace desconocido.' }
+  if (!slug) return { ok: false, error: 'Falta el proyecto a eliminar.' }
+
+  // 1) Borra la carpeta local.
+  try {
+    deleteProject(wsId, slug)
+  } catch (e: any) {
+    return { ok: false, error: `No se pudo borrar la carpeta: ${e?.message || ''}` }
+  }
+
+  // 2) Regenera el manifest local (ya sin el slug eliminado).
+  let manifestRel: string | undefined
+  if (ws.s3?.publishManifest) {
+    try {
+      const r = writeCatalogManifestFile(ws)
+      if (r.ok && r.relPath) manifestRel = r.relPath
+    } catch { /* best-effort */ }
+  }
+
+  // 3) Commit + push de la eliminación, ACOTADO al slug (+ manifest si cambió).
+  let pushed = false
+  let warning: string | undefined
+  const relSlug = getContentRelPath(wsId, slug)
+  if (relSlug) {
+    try {
+      gitCommit(ws.repoPath, `delete(${slug}): eliminar proyecto`, relSlug, manifestRel ? [manifestRel] : [])
+    } catch (e: any) {
+      warning = `No se pudo commitear la eliminación: ${e?.message || 'error de git'}`
+    }
+    try {
+      gitPush(ws.repoPath)
+      pushed = true
+    } catch { /* push best-effort */ }
+  }
+
+  // 4) S3: borra los objetos del slug + resube el manifest.
+  let s3deleted: number | undefined
+  let manifest: number | undefined
+  if (ws.s3?.enabled) {
+    const d = await deleteSiteFromS3(ws, slug)
+    if (d.ok) s3deleted = d.deleted
+    else warning = warning || `El proyecto se borró localmente, pero no se pudo borrar de S3: ${d.error || ''}`
+    if (ws.s3.publishManifest) {
+      const m = await publishCatalogManifest(ws)
+      if (m.ok) manifest = m.count
+    }
+  }
+
+  return { ok: true, pushed, s3deleted, manifest, warning }
 }
