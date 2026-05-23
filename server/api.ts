@@ -6,7 +6,7 @@ import { listProjects, readProject, writeProject, createProject, duplicateProjec
 import { gitLog, gitCommit, gitPush, gitPendingCommits, gitOriginRecent, gitAheadCount, gitConfigStatus, gitClone } from './git'
 import { runClaude, cancelClaude, isClaudeAvailable } from './claude'
 import { setupWatcher, addWatchPath } from './watcher'
-import { loadComponentRegistry } from './components'
+import { loadComponentRegistry, formatComponentCatalogForPrompt } from './components'
 import { activateWorkspace, resolveWorkspace, defaultWorkspaces } from './workspaces'
 import { pickFolder } from './fs'
 import { listBuckets, createBucket, readDeploySidecar } from './s3'
@@ -456,7 +456,7 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
         // blocks delivered to claude via stream-json stdin. Uses the larger
         // body collector since image payloads exceed the small JSON parser.
         const body = await parseJsonBodyLarge(req)
-        const { prompt, cwd, runId, slug } = body
+        const { prompt, cwd, runId, slug, type } = body
         const ALLOWED_IMG = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
         const IMG_MAX_BYTES = 5 * 1024 * 1024 // mirror the >5MB asset cap
         const rawImages: any[] = Array.isArray(body?.images) ? body.images : []
@@ -476,6 +476,14 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
           }
           images.push({ mediaType, dataBase64: b64 })
         }
+        // Catálogo de componentes custom del workspace (`type`) → se inyecta en
+        // el system prompt (junto al contrato del engine) para que Claude use
+        // solo los componentes reales del sitio. Best-effort: si falla o no hay
+        // `type`, queda vacío y la corrida sigue normal.
+        let componentCatalog = ''
+        if (type) {
+          try { componentCatalog = await formatComponentCatalogForPrompt(String(type)) } catch { /* noop */ }
+        }
         // NOTE: Claude's edits are intentionally NOT auto-committed here. They
         // land on disk; the file watcher reloads them into the editor and marks
         // the doc dirty so the "Guardar" button enables — Daniela reviews and
@@ -487,6 +495,7 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
           runId ? String(runId) : undefined,
           slug ? String(slug) : undefined,
           images,
+          componentCatalog,
         ))
       }
 

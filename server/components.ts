@@ -215,3 +215,48 @@ export async function loadComponentRegistry(
     }
   }
 }
+
+// ─── Catálogo de componentes → bloque de prompt para `claude -p` ───────────────
+//
+// El contrato del engine (ai/contract.md, §7) le dice a Claude que NO invente
+// componentes: que use solo los del catálogo del SITIO ACTUAL. Ese catálogo es
+// específico del workspace (vive en su parallax.config.ts), así que el editor lo
+// inyecta dinámicamente por-llamada — nada hardcodeado. Devuelve '' cuando el
+// workspace no tiene componentes custom (p.ej. eventos: solo FormBlock).
+function describeProp(name: string, p: SerializableEditableProp): string {
+  const bits: string[] = [`${name} (${p.type})`]
+  if (p.required) bits.push('obligatorio')
+  if (p.options?.length) bits.push(`opciones: ${p.options.join('|')}`)
+  if (p.label) bits.push(`«${p.label}»`)
+  if (p.help) bits.push(p.help)
+  return `    - ${bits.join(' — ')}`
+}
+
+export async function formatComponentCatalogForPrompt(type: string): Promise<string> {
+  let registry: ComponentRegistryResponse
+  try {
+    registry = await loadComponentRegistry(type)
+  } catch {
+    return '' // nunca tumbar la corrida de Claude por esto
+  }
+  const comps = Object.values(registry.components || {})
+  if (comps.length === 0) return ''
+
+  const lines: string[] = [
+    '## Componentes custom disponibles en ESTE sitio',
+    '',
+    'Usa `type: "component"` con uno de estos `name` y solo estas props. No inventes otros.',
+    '',
+  ]
+  for (const c of comps) {
+    const desc = c.description ? ` — ${c.description}` : ''
+    lines.push(`- **${c.name}** (${c.label})${desc}`)
+    const props = Object.entries(c.editableProps || {})
+    if (props.length === 0) {
+      lines.push('    - (sin props configurables)')
+    } else {
+      for (const [k, p] of props) lines.push(describeProp(k, p))
+    }
+  }
+  return lines.join('\n')
+}

@@ -258,10 +258,13 @@ export const claudeApi = {
   // `images` (optional, TASK 3 / #67) are data URLs; the server decodes them
   // and delivers them to claude via the stream-json stdin mechanism (still
   // carrying the per-slug session flags) — no file paths are referenced.
-  run: (prompt: string, cwd: string, runId?: string, slug?: string, images?: string[]) =>
+  // `type` (optional) is the workspace id; the server uses it to inject that
+  // site's custom-component catalog into Claude's system prompt (the schema
+  // contract is always injected from the engine).
+  run: (prompt: string, cwd: string, runId?: string, slug?: string, images?: string[], type?: string) =>
     api<{ output: string; error?: string; canceled?: boolean }>('/claude', {
       method: 'POST',
-      body: JSON.stringify({ prompt, cwd, runId, slug, images }),
+      body: JSON.stringify({ prompt, cwd, runId, slug, images, type }),
     }),
   cancel: (runId: string) =>
     api<{ ok: boolean }>('/claude/cancel', {

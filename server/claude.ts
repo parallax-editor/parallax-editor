@@ -1,5 +1,10 @@
 import { spawn, execSync, type ChildProcess } from 'child_process'
 import { createHash } from 'crypto'
+// Contrato de autoría de site.json — FUENTE DE VERDAD del engine
+// (`parallax-engine/ai/contract.md`), horneado en build por
+// scripts/embed-contract.mjs. Viaja en el system prompt de CADA `claude -p` para
+// que los repos de contenido no necesiten skill y todo quede dentro del bundle.
+import { PARALLAX_CONTRACT } from './contract.generated'
 
 // ── Is the `claude` CLI usable on this machine? ──────────────────────────────
 // The toolbar's "Claude" button is only enabled when this returns true (a
@@ -78,8 +83,21 @@ export const CLAUDE_GUARDRAIL_SYSTEM_PROMPT = [
   'solo puedes ajustar el contenido del sitio actual.',
 ].join(' ')
 
-// Bandera con la que viaja el guardrail en cada argv (texto y stream-json).
-const GUARDRAIL_ARGS = ['--append-system-prompt', CLAUDE_GUARDRAIL_SYSTEM_PROMPT]
+/**
+ * System prompt completo que viaja en CADA `claude -p` (texto y stream-json):
+ *   1. el guardrail de alcance (#98),
+ *   2. el CONTRATO de autoría de site.json del engine (auto-contenido),
+ *   3. opcionalmente el CATÁLOGO de componentes del sitio activo (lo arma el
+ *      editor desde el parallax.config.ts del workspace — §7 del contrato).
+ * Así Claude tiene el schema v1.1 y los componentes disponibles SIN depender de
+ * ningún skill en el repo de contenido. Exportado para tests/verificación.
+ */
+export function buildSystemPrompt(componentCatalog?: string): string {
+  const parts = [CLAUDE_GUARDRAIL_SYSTEM_PROMPT, PARALLAX_CONTRACT]
+  const cat = (componentCatalog || '').trim()
+  if (cat) parts.push(cat)
+  return parts.join('\n\n')
+}
 
 /**
  * Deterministic RFC-4122 UUIDv5 (name-based, SHA-1) from `name` within
@@ -168,11 +186,15 @@ export function buildClaudeArgs(
   mode: 'resume' | 'create' | 'plain',
   sessionId?: string,
   streamJson = false,
+  systemPrompt?: string,
 ): string[] {
-  // #98: el guardrail viaja en CADA invocación (texto y stream-json) vía
-  // `--append-system-prompt`. Va al inicio del argv (después del -p) para
-  // dejar la cola estable (prompt argv / session flags en su posición
-  // habitual) y para que los tests puedan verificar fácilmente su presencia.
+  // #98: el guardrail + contrato + catálogo viajan en CADA invocación (texto y
+  // stream-json) vía `--append-system-prompt`. Va al inicio del argv (después
+  // del -p) para dejar la cola estable (prompt argv / session flags en su
+  // posición habitual) y para que los tests puedan verificar su presencia.
+  // `systemPrompt` por defecto = guardrail + contrato del engine; el llamador
+  // puede pasar uno enriquecido con el catálogo de componentes del workspace.
+  const sysArgs = ['--append-system-prompt', systemPrompt ?? buildSystemPrompt()]
   if (streamJson) {
     // Prompt goes via stdin (JSON user message). Keep the session flags so
     // image messages still build on / start the per-slug session.
@@ -181,14 +203,14 @@ export function buildClaudeArgs(
     // errors "requires output-format=stream-json"). The result text is then
     // the `{"type":"result",...,"result":"…"}` line — parseStreamJsonOutput
     // extracts it. `--verbose` is required for stream-json output.
-    const io = ['-p', ...GUARDRAIL_ARGS, '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose']
+    const io = ['-p', ...sysArgs, '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose']
     if (mode === 'resume' && sessionId) return [...io, '--resume', sessionId]
     if (mode === 'create' && sessionId) return [...io, '--session-id', sessionId]
     return io
   }
-  if (mode === 'resume' && sessionId) return ['-p', ...GUARDRAIL_ARGS, '--resume', sessionId, prompt]
-  if (mode === 'create' && sessionId) return ['-p', ...GUARDRAIL_ARGS, '--session-id', sessionId, prompt]
-  return ['-p', ...GUARDRAIL_ARGS, prompt]
+  if (mode === 'resume' && sessionId) return ['-p', ...sysArgs, '--resume', sessionId, prompt]
+  if (mode === 'create' && sessionId) return ['-p', ...sysArgs, '--session-id', sessionId, prompt]
+  return ['-p', ...sysArgs, prompt]
 }
 
 // Serialize ONE stream-json user message (text + base64 image blocks) for the
@@ -363,9 +385,10 @@ function runOnce(
   sessionId: string | undefined,
   runId: string | undefined,
   images: ClaudeImage[],
+  systemPrompt?: string,
 ): Promise<RunResult> {
   if (images.length > 0) {
-    const args = buildClaudeArgs(prompt, mode, sessionId, true)
+    const args = buildClaudeArgs(prompt, mode, sessionId, true, systemPrompt)
     const stdin = buildStreamJsonMessage(prompt, images)
     return spawnClaude(args, cwd, runId, stdin).then((r) => {
       // The JSON envelope wraps the assistant text; surface just the text so
@@ -374,7 +397,7 @@ function runOnce(
       return r
     })
   }
-  return spawnClaude(buildClaudeArgs(prompt, mode, sessionId), cwd, runId)
+  return spawnClaude(buildClaudeArgs(prompt, mode, sessionId, false, systemPrompt), cwd, runId)
 }
 
 /**
@@ -394,18 +417,24 @@ export async function runClaude(
   runId?: string,
   slug?: string,
   images: ClaudeImage[] = [],
+  componentCatalog?: string,
 ): Promise<RunResult> {
+  // System prompt de esta corrida: guardrail + contrato del engine + (si el
+  // workspace tiene componentes custom) su catálogo. Se calcula una sola vez y
+  // viaja igual en create/resume para que la sesión por-slug sea consistente.
+  const systemPrompt = buildSystemPrompt(componentCatalog)
+
   // No slug → legacy stateless single run (unchanged behaviour; still gains
   // the stream-json image path when images are attached).
   if (!slug) {
-    return runOnce(prompt, cwd, 'plain', undefined, runId, images)
+    return runOnce(prompt, cwd, 'plain', undefined, runId, images, systemPrompt)
   }
 
   const sessionId = sessionIdForSlug(slug)
 
   // Known-fresh this process → create directly (skip the doomed --resume).
   if (!startedSlugs.has(slug)) {
-    const created = await runOnce(prompt, cwd, 'create', sessionId, runId, images)
+    const created = await runOnce(prompt, cwd, 'create', sessionId, runId, images, systemPrompt)
     // "already in use" means the session actually exists (e.g. created by a
     // PRIOR server process / externally) — resume it instead so we keep
     // continuity rather than erroring.
@@ -415,14 +444,14 @@ export async function runClaude(
       /already in use/i.test(created.error)
     ) {
       startedSlugs.add(slug)
-      return runOnce(prompt, cwd, 'resume', sessionId, runId, images)
+      return runOnce(prompt, cwd, 'resume', sessionId, runId, images, systemPrompt)
     }
     if (!created.error && !created.canceled) startedSlugs.add(slug)
     return created
   }
 
   // Subsequent calls → resume the slug's session for continuity.
-  const resumed = await runOnce(prompt, cwd, 'resume', sessionId, runId, images)
+  const resumed = await runOnce(prompt, cwd, 'resume', sessionId, runId, images, systemPrompt)
   // Resilience: session was cleared/lost (server restarted, disk pruned) →
   // recreate it transparently so the user never sees a raw CLI error.
   if (
@@ -430,7 +459,7 @@ export async function runClaude(
     !resumed.canceled &&
     isNoSuchSession(resumed.error, resumed.output)
   ) {
-    const recreated = await runOnce(prompt, cwd, 'create', sessionId, runId, images)
+    const recreated = await runOnce(prompt, cwd, 'create', sessionId, runId, images, systemPrompt)
     if (!recreated.error && !recreated.canceled) startedSlugs.add(slug)
     return recreated
   }

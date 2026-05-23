@@ -6,11 +6,17 @@
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
+    "embed:contract": "node scripts/embed-contract.mjs",
+    "preeditor": "node scripts/embed-contract.mjs",
     "editor": "vite --open",
+    "predev": "node scripts/embed-contract.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/embed-contract.mjs",
     "build": "vite build",
+    "prebuild:server": "node scripts/embed-contract.mjs",
     "build:server": "esbuild server/standalone.ts --bundle --platform=node --format=cjs --outfile=dist-server/server.cjs --external:esbuild --external:@aws-sdk/client-s3 --external:chokidar --external:ws --external:fsevents",
     "start": "yarn build && yarn build:server && node dist-server/server.cjs",
+    "preelectron:dev": "node scripts/embed-contract.mjs",
     "electron:dev": "ELECTRON_DEV=1 electron electron/main.cjs",
     "electron:start": "yarn build && yarn build:server && electron electron/main.cjs",
     "test": "node tests/editor.test.mjs"
