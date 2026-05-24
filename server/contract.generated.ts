@@ -143,7 +143,9 @@ Campos **comunes a todos los elementos**:
   rotation?: number = 0,                       // grados
   visible?: boolean = true,
   interactive?: boolean = false,               // necesario para triggers hover/click
-  link?: { href: string, target?: "_blank"|"_self"|"_parent"|"_top" = "_blank", rel?: string, ariaLabel?: string },
+  link?: { href?: string, target?: "_blank"|"_self"|"_parent"|"_top" = "_blank", rel?: string, ariaLabel?: string, site?: string },
+  // link.site = slug de OTRO sitio del mismo deploy → al click, el engine navega
+  // a ese sitio en vivo (transición, sin recargar). Usa href O site, no ambos.
   animations?: [ Animation ] = [],
   mobile?: ElementOverrides,                   // overrides responsive (solo camino LEGACY \`sections\`)
   desktop?: ElementOverrides

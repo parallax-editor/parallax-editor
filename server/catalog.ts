@@ -41,7 +41,11 @@ export function buildCatalogItems(ws: Workspace): CatalogItem[] {
   let slugs: string[]
   try {
     slugs = readdirSync(root, { withFileTypes: true })
-      .filter((d) => d.isDirectory() && existsSync(resolve(root, d.name, 'site.json')))
+      // 'home' es el sitio del index (`/`), no un mundo del catálogo → se excluye
+      // del manifest, igual que en el sitio (nuxt.config getWorldDirs).
+      .filter(
+        (d) => d.isDirectory() && d.name !== 'home' && existsSync(resolve(root, d.name, 'site.json')),
+      )
       .map((d) => d.name)
   } catch {
     return []

@@ -14,8 +14,8 @@ import {
   getComponentRegistration,
 } from '../../stores/editor'
 import { ANCHOR_TYPES, SCROLL_BEHAVIORS, SCROLL_DIRECTIONS, PARALLAX_MODES, SEMANTIC_TAGS, SPLIT_MODES, TEXT_ALIGN, TRIGGER_TYPES, ANIMATION_TYPES, EASING_PRESETS, TRANSITION_TYPES } from 'parallax-engine/schema'
-import { projectsApi } from '../../composables/useApi'
-import type { UploadKind, ProjectAsset } from '../../composables/useApi'
+import { projectsApi, workspaceApi } from '../../composables/useApi'
+import type { UploadKind, ProjectAsset, ProjectListItem } from '../../composables/useApi'
 import { usePanelScroll } from '../../composables/usePanelScroll'
 import PropField from './PropField.vue'
 import FontSizeField from './FontSizeField.vue'
@@ -92,6 +92,8 @@ const HELP = {
   stagger: 'Retraso entre cada letra/palabra al animar (en segundos). 0 = todas a la vez.',
   linkUrl: 'Si pones una dirección, el elemento se vuelve un enlace al hacer click.',
   linkTarget: 'Dónde se abre el enlace: en una pestaña nueva o en la misma.',
+  linkMode: 'Qué hace el elemento al hacer click: "Ninguno" no es un enlace, "URL" abre una dirección externa, y "Sitio" navega a otro proyecto del mismo espacio de trabajo sin recargar la página.',
+  linkSite: 'Otro proyecto de este espacio de trabajo al que se navega al hacer click. La transición ocurre dentro de la misma página.',
   animType: 'Qué efecto se aplica (aparecer, deslizar, escalar…).',
   animTrigger: 'Cuándo se dispara la animación (al entrar en pantalla, al hacer scroll, al pasar el mouse…).',
   animFrom: 'Valor inicial. Lo que significa depende del TIPO: fadeIn/fadeOut y opacity → 0 a 1; scale → 1 = tamaño normal (ej. 1 a 1.2); translateX/translateY → píxeles (ej. 0 a 40); rotate/rotateX/rotateY → grados; blur → píxeles; skew → grados; clipPath → 0 a 100.',
@@ -282,6 +284,97 @@ function updateNestedProp(baseProp: string, key: string, value: any) {
   const current = getAtPath(`${state.selectedPath}.${baseProp}`) || {}
   setAtPath(`${state.selectedPath}.${baseProp}`, { ...current, [key]: value })
 }
+
+// ─── Element link mode: Ninguno | URL | Sitio (schema v1.1 additive) ──────────
+//
+// `element.link` is OPTIONAL { href?, target, rel?, ariaLabel?, site? }. A link
+// is EITHER an external URL (`href`) or an in-engine navigation to another site
+// of the same workspace (`site` = target slug). The mode selector exposes the
+// three states; every write goes through setAtPath('<selectedPath>.link', …) so
+// undo + dirty work (never mutate state.site directly).
+const LINK_MODE_OPTS = [
+  { value: 'none', label: 'Ninguno' },
+  { value: 'url', label: 'URL' },
+  { value: 'site', label: 'Sitio' },
+]
+
+function selectedLink(): any {
+  if (!state.selectedPath) return null
+  const l = getAtPath(`${state.selectedPath}.link`)
+  return l && typeof l === 'object' ? l : null
+}
+
+// Current mode is derived from the stored link: a `site` target wins (it's an
+// in-engine navigation), then any `href` (URL), else no link at all.
+const linkMode = computed<'none' | 'url' | 'site'>(() => {
+  const l = selectedLink()
+  if (!l) return 'none'
+  if (l.site) return 'site'
+  return 'url'
+})
+
+// Switching mode rewrites the WHOLE link object so the two link kinds never
+// leak into each other (URL drops `site`; Sitio drops `href`; Ninguno removes
+// the link). target defaults to '_blank' to mirror the schema default.
+function onLinkModeChange(next: string) {
+  if (!state.selectedPath) return
+  if (next === 'none') {
+    setAtPath(`${state.selectedPath}.link`, undefined)
+    return
+  }
+  const cur = selectedLink() || {}
+  if (next === 'url') {
+    const { site: _drop, ...rest } = cur
+    setAtPath(`${state.selectedPath}.link`, {
+      ...rest,
+      href: rest.href || '',
+      target: rest.target || '_blank',
+    })
+  } else if (next === 'site') {
+    // Drop href/target — in-engine navigation doesn't use them. Keep the first
+    // available workspace slug pre-selected so the field is never blank.
+    const { href: _h, target: _t, ...rest } = cur
+    setAtPath(`${state.selectedPath}.link`, {
+      ...rest,
+      site: cur.site || otherProjectSlugs.value[0] || '',
+    })
+  }
+}
+
+// Set the target slug for a "Sitio" link. Always rewrites a `site`-only link
+// (no href/target) through the store.
+function onLinkSiteChange(slug: string) {
+  if (!state.selectedPath) return
+  const cur = selectedLink() || {}
+  const { href: _h, target: _t, ...rest } = cur
+  setAtPath(`${state.selectedPath}.link`, { ...rest, site: slug })
+}
+
+// Workspace projects (slugs) for the "Sitio" dropdown — fetched via the SAME
+// endpoint the workspace switcher uses. Cached in a ref, refreshed on mount and
+// whenever the active workspace/project changes.
+const workspaceProjects = ref<ProjectListItem[]>([])
+
+async function refreshWorkspaceProjects() {
+  if (!state.projectType) {
+    workspaceProjects.value = []
+    return
+  }
+  try {
+    const r = await workspaceApi.projects(state.projectType)
+    workspaceProjects.value = Array.isArray(r.projects) ? r.projects : []
+  } catch {
+    /* keep last list — the dropdown just won't update until next refresh */
+  }
+}
+onMounted(refreshWorkspaceProjects)
+watch(() => state.projectType, refreshWorkspaceProjects)
+
+// The OTHER projects of this workspace (exclude the current slug) — the only
+// valid targets for an in-engine navigation.
+const otherProjectSlugs = computed<string[]>(() =>
+  workspaceProjects.value.map((p) => p.slug).filter((s) => s && s !== state.slug),
+)
 
 // ─── Section: scrollDirection (vertical | horizontal) ─────────────────────────
 // Optional enum with a schema default of 'vertical'. The select always shows a
@@ -2218,10 +2311,47 @@ function openAnimHelp(section: string | null = null) {
           </p>
         </template>
 
-        <!-- Link -->
+        <!-- Link: Ninguno | URL | Sitio. "Ninguno" removes the link entirely;
+             "URL" keeps the existing href/target fields; "Sitio" navigates
+             in-engine to another workspace project (link = { site: '<slug>' }).
+             Every write goes through setAtPath('<selectedPath>.link', …). -->
         <div class="prop-group-title">Link</div>
-        <PropField label="URL" :help="HELP.linkUrl" :modelValue="selected.data.link?.href || ''" @update:modelValue="updateNestedProp('link', 'href', $event)" />
-        <PropField label="Target" :help="HELP.linkTarget" :modelValue="selected.data.link?.target || '_blank'" type="select" :options="['_blank', '_self']" @update:modelValue="updateNestedProp('link', 'target', $event)" />
+        <div class="prop-field" data-test="link-mode-field">
+          <label class="field-label">Tipo</label>
+          <select
+            class="field-input field-control"
+            data-test="link-mode"
+            :value="linkMode"
+            @change="onLinkModeChange(($event.target as any).value)"
+          >
+            <option v-for="o in LINK_MODE_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
+          </select>
+          <HelpHint :text="HELP.linkMode" label="Tipo de link" />
+        </div>
+
+        <template v-if="linkMode === 'url'">
+          <PropField label="URL" :help="HELP.linkUrl" :modelValue="selected.data.link?.href || ''" @update:modelValue="updateNestedProp('link', 'href', $event)" />
+          <PropField label="Target" :help="HELP.linkTarget" :modelValue="selected.data.link?.target || '_blank'" type="select" :options="['_blank', '_self']" @update:modelValue="updateNestedProp('link', 'target', $event)" />
+        </template>
+
+        <template v-else-if="linkMode === 'site'">
+          <div class="prop-field" data-test="link-site-field">
+            <label class="field-label">Sitio</label>
+            <select
+              v-if="otherProjectSlugs.length"
+              class="field-input field-control"
+              data-test="link-site"
+              :value="selected.data.link?.site || ''"
+              @change="onLinkSiteChange(($event.target as any).value)"
+            >
+              <option v-for="slug in otherProjectSlugs" :key="slug" :value="slug">{{ slug }}</option>
+            </select>
+            <span v-else class="field-control link-site-empty" data-test="link-site-empty">
+              No hay otros proyectos en este espacio de trabajo.
+            </span>
+            <HelpHint :text="HELP.linkSite" label="Sitio destino" />
+          </div>
+        </template>
 
         <!-- Animations sub-panel -->
         <div class="prop-group-title anim-header">
@@ -2392,6 +2522,7 @@ function openAnimHelp(section: string | null = null) {
 .panel-header { padding: 10px 12px; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; border-bottom: 1px solid #333; flex-shrink: 0; }
 .panel-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 .prop-unknown-note { font-size: 11px; color: #c98a3a; line-height: 1.4; padding: 4px 0 8px; }
+.link-site-empty { font-size: 11px; color: #8a8a8a; line-height: 1.4; }
 .empty-state { padding: 24px 12px; color: #666; text-align: center; font-size: 12px; }
 .props-content { padding: 8px 12px; }
 .prop-section-title { font-weight: 600; font-size: 14px; margin-bottom: 8px; text-transform: capitalize; }
