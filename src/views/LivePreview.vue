@@ -40,10 +40,13 @@ import {
 } from '../composables/usePreviewSite'
 
 // ── Project identity from the query string ────────────────────────────────
+// `type` es el id del workspace — CUALQUIERA, no solo eventos/site (antes esto
+// estaba hardcodeado y un workspace nuevo mostraba "Falta el proyecto"). Se usa
+// como prefijo de assets (/content/<id>/…) y para la key del snapshot/canal.
 const params = new URLSearchParams(window.location.search)
-const projectType = (params.get('type') as 'eventos' | 'site' | null) || null
+const projectType = params.get('type') || null
 const slug = params.get('slug')
-const validType = projectType === 'eventos' || projectType === 'site'
+const validType = !!projectType
 
 // The raw canonical doc + device handed over from the editor tab. Re-derived
 // into the engine-ready render copy by buildPreviewSite (shared with canvas).
