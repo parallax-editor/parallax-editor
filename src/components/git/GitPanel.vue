@@ -254,7 +254,8 @@ onMounted(loadStatus)
           <span class="log-msg" :title="entry.message">{{ entry.message }}</span>
           <span class="log-date">{{ relativeDate(entry.date) }}</span>
         </div>
-        <div v-if="pending.length === 0" class="empty">No hay cambios pendientes</div>
+        <div v-if="!ready" class="empty loading-row"><span class="mini-spinner" /> Cargando commits…</div>
+        <div v-else-if="pending.length === 0" class="empty">No hay cambios pendientes</div>
       </div>
     </div>
 
@@ -277,7 +278,8 @@ onMounted(loadStatus)
           <span class="log-msg" :title="entry.message">{{ entry.message }}</span>
           <span class="log-date">{{ relativeDate(entry.date) }}</span>
         </div>
-        <div v-if="originRecent.length === 0" class="empty">Sin información del remoto</div>
+        <div v-if="!ready" class="empty loading-row"><span class="mini-spinner" /> Cargando…</div>
+        <div v-else-if="originRecent.length === 0" class="empty">Sin información del remoto</div>
       </div>
     </div>
 
@@ -361,6 +363,14 @@ onMounted(loadStatus)
 .log-entry.clickable { cursor: pointer; border-radius: 4px; padding-left: 4px; padding-right: 4px; }
 .log-entry.clickable:hover { background: #2a2a2a; }
 .log-entry.clickable:focus-visible { outline: 1px solid var(--accent-strong); }
+
+.empty.loading-row { display: flex; align-items: center; gap: 8px; }
+.mini-spinner {
+  width: 13px; height: 13px; border-radius: 50%;
+  border: 2px solid #3a3a3a; border-top-color: var(--accent-strong);
+  display: inline-block; animation: git-spin 0.7s linear infinite; flex-shrink: 0;
+}
+@keyframes git-spin { to { transform: rotate(360deg); } }
 
 /* ── Modal de diff por commit ─────────────────────────────────────────────── */
 .diff-overlay {

@@ -258,7 +258,9 @@ onMounted(loadProject)
 </script>
 
 <template>
-  <div v-if="loading" class="loading-screen">Cargando...</div>
+  <div v-if="loading" class="loading-screen" data-test="editor-loading">
+    <span class="loading-spinner" aria-label="Cargando" role="status" />
+  </div>
   <div v-else class="editor-layout">
     <Toolbar
       @save="save"
@@ -325,6 +327,15 @@ onMounted(loadProject)
 
 <style scoped>
 .loading-screen { display: flex; align-items: center; justify-content: center; height: 100vh; color: #888; }
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 3px solid #333;
+  border-top-color: var(--accent-strong);
+  animation: editor-spin 0.7s linear infinite;
+}
+@keyframes editor-spin { to { transform: rotate(360deg); } }
 /* Root is a fixed-height column: 100dvh (falls back to vh) so the whole
    layout is height-bounded. min-height:0 lets the flex children actually
    shrink instead of growing to content. */
