@@ -1,11 +1,16 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
+import { readFileSync } from 'fs'
 import type { IncomingMessage, ServerResponse } from 'http'
 
 // Absolute path to server/ so the watcher can scope changes to JUST the
 // API/middleware code (never client files → never an HMR/restart loop).
 const SERVER_DIR = resolve(__dirname, 'server')
+
+// Versión de la app, horneada en el bundle del SPA (visible en el editor). Sale
+// de package.json — `yarn release` (npm version) la bumpea antes de empaquetar.
+const APP_VERSION = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8')).version
 
 export default defineConfig({
   plugins: [
@@ -107,6 +112,9 @@ export default defineConfig({
       },
     },
   ],
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+  },
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),

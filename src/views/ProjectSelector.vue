@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { projectsApi, workspaceApi, s3Api } from '../composables/useApi'
+import { APP_VERSION } from '../version'
 import type { ProjectListItem, Workspace } from '../composables/useApi'
 import ProjectCard from '../components/selector/ProjectCard.vue'
 import HelpHint from '../components/properties/HelpHint.vue'
@@ -378,7 +379,7 @@ async function createWorkspace() {
   <div class="selector">
     <header class="hero">
       <div class="hero-text">
-        <h1 class="title">Parallax Editor</h1>
+        <h1 class="title">Parallax Editor <span class="app-version" data-test="app-version">v{{ APP_VERSION }}</span></h1>
         <p class="subtitle">Selecciona un proyecto para editar</p>
       </div>
     </header>
@@ -756,6 +757,7 @@ async function createWorkspace() {
 .slug-caption code { color: #6aa9e9; font-family: monospace; background: #1a1a1a; padding: 2px 6px; border-radius: 4px; }
 .slug-hint { font-size: 11px; color: #777; margin: 4px 0 0; }
 .ws-hint { font-size: 12px; color: #9a9a9a; background: #232323; border: 1px solid #2e2e2e; border-radius: 8px; padding: 8px 10px; margin: 4px 0 6px; line-height: 1.5; }
+.app-version { font-size: 12px; font-weight: 500; color: #6b7280; vertical-align: middle; margin-left: 8px; -webkit-text-fill-color: #6b7280; }
 .row-with-btn { display: flex; gap: 8px; align-items: center; }
 .row-with-btn input { flex: 1 1 auto; }
 .aux-btn { background: #333; border: 1px solid #555; color: #e0e0e0; border-radius: 6px; padding: 9px 12px; cursor: pointer; font-size: 13px; white-space: nowrap; }
