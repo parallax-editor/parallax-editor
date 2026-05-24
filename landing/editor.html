@@ -11,9 +11,21 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="style.css" />
   <style>
-    /* Nota de detección de chip bajo los botones de descarga. */
-    .dl-hint { margin: 12px 0 0; font-size: 13px; line-height: 1.5; opacity: 0.66; max-width: 34rem; }
+    /* Nota de detección de chip bajo los botones de descarga. Bastante aire
+       arriba para que NO quede pegada a los botones. Centrada y angosta. */
+    .dl-hint {
+      margin: 34px auto 0;
+      font-size: 13px;
+      line-height: 1.6;
+      opacity: 0.62;
+      max-width: 30rem;
+      text-align: center;
+    }
     .dl-hint:empty { display: none; }
+    /* La nota "Primera vez…" también con aire arriba. */
+    .note { margin-top: 22px; }
+    /* Mantiene "elige Abrir" / "(confirma Abrir…)" sin partirse a media frase. */
+    .note .nowrap { white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -143,8 +155,9 @@
           </div>
           <p class="dl-hint js-dl-hint"></p>
           <p class="note">
-            <strong>Primera vez (app sin firma):</strong> haz clic derecho sobre la
-            app → <kbd>Abrir</kbd> → <kbd>Abrir</kbd>.
+            <strong>Primera vez (app sin firma):</strong> haz clic derecho sobre la app
+            y <span class="nowrap">elige <kbd>Abrir</kbd></span>
+            <span class="nowrap">(confirma <kbd>Abrir</kbd> de nuevo)</span>.
             <br>
             Compatible con Mac Intel y Apple Silicon.
           </p>
