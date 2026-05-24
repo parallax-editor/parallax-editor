@@ -163,10 +163,17 @@ export function cancelClaude(runId: string): boolean {
   return true
 }
 
-interface RunResult { output: string; error?: string; canceled?: boolean }
+interface RunResult { output: string; error?: string; canceled?: boolean; timedOut?: boolean }
 
 // An attached image as delivered by the client (data URL → decoded here).
 export interface ClaudeImage { mediaType: string; dataBase64: string }
+
+// Timeout por corrida de `claude -p`. Antes eran 60s (vía la opción `timeout` de
+// spawn) — demasiado corto para una tarea real (analizar imágenes + escribir
+// site.json + sesión), que terminaba matada y mostrada como "Cancelado". 5 min
+// por defecto, configurable por env. Ahora usamos un timer PROPIO (no el de
+// spawn) para poder distinguir el timeout de una cancelación del usuario.
+const CLAUDE_TIMEOUT_MS = Number(process.env.CLAUDE_TIMEOUT_MS) || 300000
 
 // Build the argv for a single `claude -p` invocation. `mode`:
 //   'resume'  → -p --resume <uuid> <prompt>   (continue the slug's session)
@@ -312,13 +319,22 @@ function spawnClaude(
     const hasStdin = typeof stdin === 'string'
     const proc = spawn('claude', args, {
       cwd,
-      timeout: 60000,
       stdio: [hasStdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
     })
 
     let stdout = ''
     let stderr = ''
     let canceled = false
+    let timedOut = false
+    // Timeout PROPIO (no la opción `timeout` de spawn) para poder DISTINGUIR un
+    // timeout de una cancelación del usuario: ambos matan con SIGTERM, así que
+    // marcamos `timedOut` ANTES de matar y el close handler lo reporta como
+    // timeout (mensaje claro) en vez de "Cancelado".
+    const killTimer = setTimeout(() => {
+      timedOut = true
+      try { proc.kill('SIGTERM') } catch { /* already gone */ }
+      setTimeout(() => { try { proc.kill('SIGKILL') } catch { /* gone */ } }, 2000)
+    }, CLAUDE_TIMEOUT_MS)
 
     if (typeof stdin === 'string') {
       // stream-json input path: deliver the JSON user message then EOF so
@@ -331,6 +347,7 @@ function spawnClaude(
     if (runId) running.set(runId, proc)
 
     const done = (result: RunResult) => {
+      clearTimeout(killTimer)
       if (runId) running.delete(runId)
       resolve(result)
     }
@@ -339,6 +356,11 @@ function spawnClaude(
     proc.stderr?.on('data', (d) => { stderr += d.toString() })
 
     proc.on('close', (code, signal) => {
+      // Timeout PROPIO primero: aunque mate con SIGTERM (como el cancel), aquí
+      // `timedOut` ya está marcado → lo reportamos como timeout, no "Cancelado".
+      if (timedOut) {
+        return done({ output: stdout, timedOut: true })
+      }
       // A kill (cancel) arrives as a signal (SIGTERM/SIGKILL) or null exit
       // code → report a clean cancellation, not an error, so the UI doesn't
       // show a scary message.
@@ -392,8 +414,8 @@ function runOnce(
     const stdin = buildStreamJsonMessage(prompt, images)
     return spawnClaude(args, cwd, runId, stdin).then((r) => {
       // The JSON envelope wraps the assistant text; surface just the text so
-      // the chat UI shows a clean reply (errors are passed through as-is).
-      if (!r.error && !r.canceled) return { ...r, output: parseStreamJsonOutput(r.output) }
+      // the chat UI shows a clean reply (errors/cancel/timeout pass through).
+      if (!r.error && !r.canceled && !r.timedOut) return { ...r, output: parseStreamJsonOutput(r.output) }
       return r
     })
   }

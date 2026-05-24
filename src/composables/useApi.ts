@@ -292,7 +292,7 @@ export const claudeApi = {
   // site's custom-component catalog into Claude's system prompt (the schema
   // contract is always injected from the engine).
   run: (prompt: string, cwd: string, runId?: string, slug?: string, images?: string[], type?: string) =>
-    api<{ output: string; error?: string; canceled?: boolean }>('/claude', {
+    api<{ output: string; error?: string; canceled?: boolean; timedOut?: boolean }>('/claude', {
       method: 'POST',
       body: JSON.stringify({ prompt, cwd, runId, slug, images, type }),
     }),

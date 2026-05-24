@@ -48,6 +48,11 @@ natural o analizando carpetas de imágenes.
   que existe). **No la "descompongas"** en varios \`png\` con nombres inventados
   (\`helecho.jpg\`, \`flor.jpg\`, \`criatura.jpg\`…) que no son archivos reales: aunque
   veas varias cosas dentro de la imagen, sigue siendo un único archivo.
+- **NUNCA copies la estructura ni los assets de OTRO proyecto.** Aunque en el repo
+  haya otros mundos/eventos de ejemplo (p.ej. \`bestiario-botanico\`), **no tomes su
+  \`site.json\` como base ni reutilices sus rutas de imagen** — sus archivos viven en
+  SU carpeta, no en la de este sitio. Construye SIEMPRE a partir de los archivos
+  reales que existen en \`content/<slug>/\` del proyecto actual.
 - Si piden algo fuera de este alcance, **rehúsa amablemente en español** y explica
   que desde aquí solo ajustas el contenido del sitio actual.
 

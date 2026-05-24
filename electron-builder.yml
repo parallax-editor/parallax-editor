@@ -45,6 +45,8 @@ mac:
   target:
     - dmg
   category: public.app-category.developer-tools
+  # Ícono de la app (PÆ). Generado con iconutil desde build/icon-1024.png.
+  icon: build/icon.icns
   # Firma ad-hoc (sin identidad de Apple Developer). App interna.
   identity: null
   # Descripciones de uso (TCC): macOS las muestra al pedir acceso a estas

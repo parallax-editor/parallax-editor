@@ -274,7 +274,10 @@ onMounted(loadStatus)
       </div>
     </div>
 
-    <!-- Modal de diff: qué se cambió en ese commit (git show) -->
+    <!-- Modal de diff (Teleport a <body>: dentro del panel, su position:fixed
+         quedaba atrapado por el ancestro con overflow → no respetaba el viewport
+         ni scrolleaba. Teleportado mide contra el viewport y el body scrollea). -->
+    <Teleport to="body">
     <div
       v-if="diffOpen"
       class="diff-overlay"
@@ -303,6 +306,7 @@ onMounted(loadStatus)
         </div>
       </div>
     </div>
+    </Teleport>
   </div>
 </template>
 
@@ -379,13 +383,17 @@ onMounted(loadStatus)
   gap: 10px;
   padding: 12px 14px;
   border-bottom: 1px solid #2e2e2e;
+  flex-shrink: 0; /* el header no se encoge; el body es el que scrollea */
 }
 .diff-titlewrap { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 .diff-hash { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--accent-strong); flex-shrink: 0; }
 .diff-msg { font-size: 13px; color: #ddd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .diff-close { background: none; border: none; color: #999; font-size: 22px; line-height: 1; cursor: pointer; }
 .diff-close:hover { color: #fff; }
-.diff-body { overflow: auto; padding: 0; }
+/* flex:1 + min-height:0 → el body OCUPA el espacio restante y SCROLLEA dentro
+   del modal (sin min-height:0 un hijo flex no se encoge bajo su contenido y no
+   aparece el scroll). */
+.diff-body { flex: 1; min-height: 0; overflow: auto; padding: 0; }
 .diff-state { padding: 24px; color: #9a9a9a; font-size: 13px; }
 .diff-state.error { color: #ff7676; }
 .diff-pre {
