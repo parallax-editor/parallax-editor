@@ -186,9 +186,14 @@ async function save() {
     // manual Cmd+S, the Guardar button and autosave (all funnel here).
     const commitMsg = buildCommitMessage(state.slug, state.originalSite, state.site)
     await projectsApi.save(state.projectType, state.slug, state.site)
-    // Pass the slug so the server scopes the commit to ONLY this site's content
-    // dir (security: never `git add -A` the whole content repo).
-    await gitApi.commit(state.projectType, commitMsg, state.slug)
+    // git opcional: si el workspace no usa git, Guardar solo escribe a disco (el
+    // PUT de arriba) — sin commit. (El server también lo no-opea por seguridad.)
+    const ws = wsState.list.find((w) => w.id === state.projectType)
+    if (ws?.useGit !== false) {
+      // Pass the slug so the server scopes the commit to ONLY this site's content
+      // dir (security: never `git add -A` the whole content repo).
+      await gitApi.commit(state.projectType, commitMsg, state.slug)
+    }
     state.originalSite = JSON.stringify(state.site)
     // Let an open GitPanel refresh its log so history isn't stale (GAP7).
     state.gitLogNonce++

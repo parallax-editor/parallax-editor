@@ -178,7 +178,7 @@ async function remove(slug: string) {
 
 // ── Workspace config modal (gear) ─────────────────────────────────────────────
 const wsConfigId = ref<string | null>(null)
-const cfg = ref<Workspace>({ id: '', name: '', repoPath: '', contentRoot: 'content' })
+const cfg = ref<Workspace>({ id: '', name: '', repoPath: '', contentRoot: 'content', useGit: true })
 const bucketSuggestions = ref<string[]>([])
 const wsBusy = ref(false)
 const wsModalError = ref<string | null>(null)
@@ -190,6 +190,7 @@ function openConfig(id: string) {
   cfg.value = JSON.parse(JSON.stringify({
     id: ws.id, name: ws.name, repoPath: ws.repoPath, gitRemote: ws.gitRemote || '',
     contentRoot: ws.contentRoot,
+    useGit: ws.useGit !== false,
     s3: ws.s3 ? { ...ws.s3 } : { enabled: false, bucket: '', prefix: '', region: 'us-east-1' },
   }))
   wsModalError.value = null
@@ -275,8 +276,9 @@ async function saveConfig() {
     updateWorkspace(wsConfigId.value, {
       name: cfg.value.name,
       repoPath: cfg.value.repoPath,
-      gitRemote: cfg.value.gitRemote || undefined,
+      gitRemote: cfg.value.useGit ? (cfg.value.gitRemote || undefined) : undefined,
       contentRoot: cfg.value.contentRoot,
+      useGit: cfg.value.useGit,
       s3: cfg.value.s3,
     })
     // If we edited the active workspace, re-activate + reload projects.
@@ -305,12 +307,12 @@ async function deleteWorkspace() {
 
 // ── New workspace modal ───────────────────────────────────────────────────────
 const showNewWs = ref(false)
-const newWs = ref({ name: '', repoPath: '', mode: 'folder' as 'folder' | 'clone', gitUrl: '', clonePath: '', contentRoot: 'content' })
+const newWs = ref({ name: '', repoPath: '', mode: 'folder' as 'folder' | 'clone', gitUrl: '', clonePath: '', contentRoot: 'content', useGit: true })
 const newWsBusy = ref(false)
 const newWsError = ref<string | null>(null)
 
 function openNewWs() {
-  newWs.value = { name: '', repoPath: '', mode: 'folder', gitUrl: '', clonePath: '', contentRoot: 'content' }
+  newWs.value = { name: '', repoPath: '', mode: 'folder', gitUrl: '', clonePath: '', contentRoot: 'content', useGit: true }
   newWsError.value = null
   showNewWs.value = true
 }
@@ -349,7 +351,8 @@ async function createWorkspace() {
   newWsError.value = null
   try {
     let repoPath = newWs.value.repoPath.trim()
-    if (newWs.value.mode === 'clone') {
+    // Clonar solo tiene sentido con git; un workspace sin git es una carpeta.
+    if (newWs.value.useGit && newWs.value.mode === 'clone') {
       const r = await workspaceApi.clone(newWs.value.gitUrl.trim(), newWs.value.clonePath.trim())
       if (!r?.ok || !r.path) { newWsError.value = r?.error || 'No se pudo clonar.'; return }
       repoPath = r.path
@@ -360,6 +363,7 @@ async function createWorkspace() {
       name,
       repoPath,
       contentRoot: newWs.value.contentRoot.trim() || 'content',
+      useGit: newWs.value.useGit,
       s3: { enabled: false, bucket: '', prefix: '', region: 'us-east-1' },
     })
     showNewWs.value = false
@@ -511,8 +515,19 @@ async function createWorkspace() {
               <button class="aux-btn" type="button" data-test="ws-cfg-pick" @click="pickRepoFolder">Elegir carpeta…</button>
             </div>
 
-            <label class="field-label">Remoto de Git (opcional)</label>
-            <input v-model="cfg.gitRemote" placeholder="git@github.com:usuario/repo.git" />
+            <label class="check-row" style="margin-top:10px">
+              <input type="checkbox" v-model="cfg.useGit" data-test="ws-cfg-usegit" />
+              Usar control de versiones (git)
+            </label>
+            <p v-if="!cfg.useGit" class="ws-hint" data-test="ws-cfg-nogit-hint">
+              Sin git: la carpeta no necesita ser repositorio, Guardar solo escribe en disco
+              y Publicar sube solo a S3 (o se deshabilita si no hay S3).
+            </p>
+
+            <template v-if="cfg.useGit">
+              <label class="field-label">Remoto de Git (opcional)</label>
+              <input v-model="cfg.gitRemote" placeholder="git@github.com:usuario/repo.git" />
+            </template>
 
             <label class="field-label">Carpeta de contenido (contentRoot)</label>
             <input v-model="cfg.contentRoot" data-test="ws-cfg-contentroot" placeholder="content o content/portafolio" />
@@ -603,7 +618,21 @@ async function createWorkspace() {
             <label class="field-label">Nombre del workspace</label>
             <input v-model="newWs.name" data-test="new-ws-name" placeholder="Ej: Eventos, Portafolio" />
 
-            <div class="mode-tabs">
+            <label class="check-row" style="margin-top:10px">
+              <input
+                type="checkbox"
+                v-model="newWs.useGit"
+                data-test="new-ws-usegit"
+                @change="!newWs.useGit && (newWs.mode = 'folder')"
+              />
+              Usar control de versiones (git)
+            </label>
+            <p v-if="!newWs.useGit" class="ws-hint" data-test="new-ws-nogit-hint">
+              Sin git: es solo una carpeta local. Guardar escribe a disco y Publicar sube solo a S3.
+            </p>
+
+            <!-- Clonar solo aplica con git; sin git el workspace es una carpeta. -->
+            <div class="mode-tabs" v-if="newWs.useGit">
               <button :class="{ active: newWs.mode === 'folder' }" @click="newWs.mode = 'folder'" data-test="new-ws-mode-folder">Carpeta local</button>
               <button :class="{ active: newWs.mode === 'clone' }" @click="newWs.mode = 'clone'" data-test="new-ws-mode-clone">Clonar de GitHub</button>
             </div>
@@ -726,6 +755,7 @@ async function createWorkspace() {
 .slug-caption { font-size: 13px; color: #aaa; margin-top: 10px; }
 .slug-caption code { color: #6aa9e9; font-family: monospace; background: #1a1a1a; padding: 2px 6px; border-radius: 4px; }
 .slug-hint { font-size: 11px; color: #777; margin: 4px 0 0; }
+.ws-hint { font-size: 12px; color: #9a9a9a; background: #232323; border: 1px solid #2e2e2e; border-radius: 8px; padding: 8px 10px; margin: 4px 0 6px; line-height: 1.5; }
 .row-with-btn { display: flex; gap: 8px; align-items: center; }
 .row-with-btn input { flex: 1 1 auto; }
 .aux-btn { background: #333; border: 1px solid #555; color: #e0e0e0; border-radius: 6px; padding: 9px 12px; cursor: pointer; font-size: 13px; white-space: nowrap; }

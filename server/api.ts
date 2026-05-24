@@ -396,6 +396,11 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
 
       const gcmatch = url.match(/^\/api\/git\/([^/]+)\/commit$/)
       if (gcmatch && method === 'POST') {
+        // git opcional: si el workspace no usa git, Guardar solo escribe a disco
+        // (el PUT ya lo hizo) — sin commit.
+        if (resolveWorkspace(gcmatch[1])?.useGit === false) {
+          return json(res, { ok: true, result: 'no-git' })
+        }
         const { message, slug } = await parseBody(req)
         // SECURITY: scope the save commit to ONLY this site's content dir
         // (content/<slug> | content/portafolio/<slug>). Without a slug we

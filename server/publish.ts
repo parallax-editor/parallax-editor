@@ -34,15 +34,24 @@ export async function publishWorkspaceSlug(wsId: string, slug: string): Promise<
   if (!ws) return { ok: false, error: 'Workspace desconocido.' }
   if (!slug) return { ok: false, error: 'Falta el sitio a publicar.' }
 
-  // 1) Push pending commits first. push may legitimately error if there's no
-  //    upstream / nothing to push — that's a warning, not a hard failure.
+  const useGit = ws.useGit !== false
+  // Sin git NI S3 no hay nada que publicar (la UI deshabilita el botón, pero por
+  // si acaso devolvemos un error claro en vez de un no-op silencioso).
+  if (!useGit && !ws.s3?.enabled) {
+    return { ok: false, error: 'Este workspace no usa git ni tiene S3: no hay a dónde publicar. Activa S3 en su configuración.' }
+  }
+
+  // 1) Push pending commits first (solo si el workspace usa git). push may
+  //    legitimately error if there's no upstream / nothing to push — warning.
   let pushed = false
   let warning: string | undefined
-  try {
-    gitPush(ws.repoPath)
-    pushed = true
-  } catch (e: any) {
-    warning = `No se pudo hacer push: ${e?.message || 'error de git'} (continuo con S3 si aplica).`
+  if (useGit) {
+    try {
+      gitPush(ws.repoPath)
+      pushed = true
+    } catch (e: any) {
+      warning = `No se pudo hacer push: ${e?.message || 'error de git'} (continuo con S3 si aplica).`
+    }
   }
 
   // 2) S3 sync (only if enabled).
@@ -71,7 +80,9 @@ export async function publishWorkspaceSlug(wsId: string, slug: string): Promise<
       // fue exitoso, un fallo aquí es solo informativo.
       try {
         const fileRes = writeCatalogManifestFile(ws)
-        if (fileRes.ok && fileRes.changed && fileRes.relPath) {
+        // El commit/push del manifest solo aplica si el workspace usa git; el
+        // upload a S3 ya ocurrió arriba. Sin git, el archivo queda en disco.
+        if (useGit && fileRes.ok && fileRes.changed && fileRes.relPath) {
           gitCommitPath(ws.repoPath, `catalog: actualizar manifest.json`, fileRes.relPath)
           try {
             gitPush(ws.repoPath)
@@ -107,8 +118,10 @@ export async function publishWorkspaceSlug(wsId: string, slug: string): Promise<
   }
 
   // 4) Commit + push the sidecar, SCOPED to <contentRoot>/<slug>/.deploy.json.
+  //    Solo si el workspace usa git; sin git el sidecar queda en disco (sirve
+  //    igual para el badge "Publicado en S3").
   const relSlug = getContentRelPath(ws.id, slug) // e.g. content/portafolio/<slug>
-  if (relSlug) {
+  if (useGit && relSlug) {
     const sidecarRel = `${relSlug}/.deploy.json`
     const fecha = new Date(deployedAt).toLocaleDateString('es-ES')
     gitCommitPath(ws.repoPath, `deploy(${slug}): publicado en S3 ${fecha}`, sidecarRel)

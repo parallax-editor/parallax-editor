@@ -2,6 +2,7 @@
 import { ref, onMounted, watch, computed } from 'vue'
 import { gitApi, publishApi, type GitStatusCommit, type DeploySidecar } from '../../composables/useApi'
 import { state } from '../../stores/editor'
+import { activeWorkspace } from '../../stores/workspaces'
 import { validateSite } from 'parallax-engine/schema'
 import { useDialog } from '../../composables/useDialog'
 import { usePanelScroll } from '../../composables/usePanelScroll'
@@ -35,9 +36,15 @@ const deploy = ref<DeploySidecar | null>(null)
 // commits pendientes por subir, o un sitio que aún no está en S3 (primera
 // publicación). Si no hay pendientes y ya está publicado → nada que hacer →
 // deshabilitado. (El botón de la barra superior siempre abre el panel.)
-const canPublish = computed(
-  () => !!state.site && !loading.value && (pending.value.length > 0 || !deploy.value?.deployed),
-)
+// git opcional: un workspace sin git no tiene historial de commits; Publicar
+// solo sube a S3 (o se deshabilita si no hay S3).
+const noGit = computed(() => activeWorkspace.value?.useGit === false)
+const hasS3 = computed(() => !!activeWorkspace.value?.s3?.enabled)
+const canPublish = computed(() => {
+  if (!state.site || loading.value) return false
+  if (noGit.value) return hasS3.value // sin git: publicar = subir a S3
+  return pending.value.length > 0 || !deploy.value?.deployed
+})
 
 const deployLabel = computed(() => {
   if (!deploy.value?.deployed) return 'No publicado en S3'
@@ -235,6 +242,13 @@ onMounted(loadStatus)
 
     <div v-if="pushResult" class="push-result" data-test="git-result">{{ pushResult }}</div>
 
+    <!-- Workspace sin git: no hay historial de commits; Publicar solo sube a S3. -->
+    <div v-if="noGit" class="nogit-note" data-test="git-nogit-note">
+      Este workspace no usa git. Guardar escribe en disco;
+      {{ hasS3 ? 'Publicar sube los cambios a S3.' : 'activa S3 en la configuración para poder publicar.' }}
+    </div>
+
+    <template v-if="!noGit">
     <!-- (a) Cambios locales que aún no están en el sitio publicado -->
     <div class="git-section">
       <div class="section-title">Pendientes por publicar</div>
@@ -282,6 +296,7 @@ onMounted(loadStatus)
         <div v-else-if="originRecent.length === 0" class="empty">Sin información del remoto</div>
       </div>
     </div>
+    </template>
 
     <!-- Modal de diff (Teleport a <body>: dentro del panel, su position:fixed
          quedaba atrapado por el ancestro con overflow → no respetaba el viewport
@@ -410,7 +425,13 @@ onMounted(loadStatus)
 /* flex:1 + min-height:0 → el body OCUPA el espacio restante y SCROLLEA dentro
    del modal (sin min-height:0 un hijo flex no se encoge bajo su contenido y no
    aparece el scroll). */
-.diff-body { flex: 1; min-height: 0; overflow: auto; padding: 0; }
+.diff-body { flex: 1; min-height: 0; overflow: auto; padding: 0; scrollbar-color: #3a3a3a #161616; }
+/* Barra de scroll oscura (acorde al tema), no la gris del SO. */
+.diff-body::-webkit-scrollbar { width: 11px; height: 11px; }
+.diff-body::-webkit-scrollbar-track { background: #161616; }
+.diff-body::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 8px; border: 2px solid #161616; }
+.diff-body::-webkit-scrollbar-thumb:hover { background: #4d4d4d; }
+.nogit-note { font-size: 12px; color: #9a9a9a; background: #232323; border: 1px solid #2e2e2e; border-radius: 8px; padding: 10px 12px; margin: 8px 0; line-height: 1.5; }
 .diff-state { padding: 24px; color: #9a9a9a; font-size: 13px; }
 .diff-state.error { color: #ff7676; }
 .diff-pre {

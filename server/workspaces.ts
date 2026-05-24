@@ -52,6 +52,12 @@ export interface Workspace {
   /** Content root RELATIVE to repoPath, e.g. 'content' | 'content/portafolio'. */
   contentRoot: string
   s3?: WorkspaceS3
+  /**
+   * ¿El workspace usa git? Default true (seeds eventos/site + back-compat). Si es
+   * false: la carpeta NO necesita ser repo git, Guardar solo escribe a disco (sin
+   * commit) y Publicar sube SOLO a S3 (sin push), o se deshabilita si no hay S3.
+   */
+  useGit?: boolean
 }
 
 // ── Legacy default workspaces (back-compat) ──────────────────────────────────
@@ -64,6 +70,7 @@ const LEGACY_WORKSPACES: Record<string, Workspace> = {
     name: 'Eventos',
     repoPath: resolve(BASE, '..', 'daniela-reyes-eventos'),
     contentRoot: 'content',
+    useGit: true,
     s3: { enabled: true, bucket: 'daniela-reyes-eventos', prefix: '', region: 'us-east-1' },
   },
   site: {
@@ -71,6 +78,7 @@ const LEGACY_WORKSPACES: Record<string, Workspace> = {
     name: 'Portafolio',
     repoPath: resolve(BASE, '..', 'daniela-reyes-site'),
     contentRoot: 'content/portafolio',
+    useGit: true,
     // publishManifest: el portafolio es público y tiene catálogo → al publicar
     // un mundo regeneramos /content/portafolio/manifest.json en S3.
     s3: { enabled: true, bucket: 'daniela-reyes-site', prefix: '', region: 'us-east-1', publishManifest: true },
@@ -119,8 +127,15 @@ export function activateWorkspace(raw: any): ActivateResult {
   if (!existsSync(repoPath) || !statSync(repoPath).isDirectory()) {
     return { ok: false, error: `La carpeta no existe: ${repoPath}` }
   }
-  if (!existsSync(resolve(repoPath, '.git'))) {
-    return { ok: false, error: 'La carpeta no es un repositorio git (falta .git).' }
+  // git opcional: por defecto true (seeds + back-compat). Solo exigimos `.git`
+  // cuando el workspace usa git; un workspace "solo disco / S3" puede ser
+  // cualquier carpeta.
+  const useGit = raw.useGit !== false
+  if (useGit && !existsSync(resolve(repoPath, '.git'))) {
+    return {
+      ok: false,
+      error: 'La carpeta no es un repositorio git (falta .git). Si no quieres usar git, desactiva "Usar control de versiones (git)" en la configuración del workspace.',
+    }
   }
   const contentRoot = typeof raw.contentRoot === 'string' && raw.contentRoot.trim()
     ? raw.contentRoot.trim().replace(/^\/+|\/+$/g, '')
@@ -154,6 +169,7 @@ export function activateWorkspace(raw: any): ActivateResult {
     repoPath,
     gitRemote: typeof raw.gitRemote === 'string' ? raw.gitRemote : undefined,
     contentRoot,
+    useGit,
     s3,
   }
   activated.set(id, ws)
