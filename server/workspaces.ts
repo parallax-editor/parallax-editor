@@ -20,7 +20,7 @@
 // never explicitly activated can fall back to the legacy resolution (see
 // resolveWorkspace below).
 
-import { existsSync, statSync, accessSync, constants } from 'fs'
+import { existsSync, statSync, accessSync, mkdirSync, constants } from 'fs'
 import { resolve, isAbsolute } from 'path'
 
 const BASE = process.cwd()
@@ -148,8 +148,15 @@ export function activateWorkspace(raw: any): ActivateResult {
   if (!contentAbs.startsWith(repoPath)) {
     return { ok: false, error: 'El contentRoot debe estar dentro del repositorio.' }
   }
+  // Si el contentRoot no existe (p.ej. un workspace solo-disco recién creado en
+  // una carpeta vacía), lo creamos. El guard de contención de arriba garantiza
+  // que resuelve DENTRO de repoPath, así que el mkdir nunca escapa del repo.
   if (!existsSync(contentAbs)) {
-    return { ok: false, error: `El contentRoot no existe: ${contentRoot}` }
+    try {
+      mkdirSync(contentAbs, { recursive: true })
+    } catch (e: any) {
+      return { ok: false, error: `No se pudo crear la carpeta de contenido (${contentRoot}): ${e?.message || ''}` }
+    }
   }
 
   let s3: WorkspaceS3 | undefined
