@@ -239,7 +239,7 @@ export interface Diagnostics {
   git: { configured: boolean; name: string; email: string }
   claude: { available: boolean }
   aws: { configured: boolean; source: string | null }
-  bins: { git: string | null; claude: string | null; aws: string | null; node: string }
+  bins: { git: string | null; claude: string | null; node: string }
 }
 export const diagnosticsApi = {
   // Environment health (git/claude/aws + resolved binary paths). Drives DoctorView.

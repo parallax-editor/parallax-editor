@@ -26,8 +26,8 @@ let disposeMenu: (() => void) | null = null
 const gitOk = computed(() => !!diag.value?.git?.configured)
 const claudeOk = computed(() => !!diag.value?.claude?.available)
 const awsOk = computed(() => !!diag.value?.aws?.configured)
-// git es bloqueante; claude/aws son advertencias (aws es opcional).
-const hasBlocker = computed(() => !gitOk.value)
+// Nada bloquea: git, claude y aws son OPCIONALES (workspaces solo-disco/S3 no
+// necesitan git; el editor funciona sin Claude/AWS). El doctor SIEMPRE se cierra.
 
 async function load() {
   loading.value = true
@@ -60,19 +60,12 @@ onMounted(async () => {
   // Menú nativo "Ayuda → Diagnóstico".
   disposeMenu = electron.onOpenDoctor(() => { show() })
 
-  // Auto-mostrar en el primer arranque, o si git no está configurado.
+  // Auto-mostrar SOLO en el primer arranque. git/claude/aws son opcionales, así
+  // que NO se fuerza la pantalla en arranques posteriores aunque falte alguno —
+  // siempre queda accesible desde el menú "Ayuda → Diagnóstico".
   let onboarded = false
   try { onboarded = localStorage.getItem(ONBOARDED_KEY) === '1' } catch { /* noop */ }
-  if (!onboarded) {
-    await show()
-  } else {
-    // Chequeo silencioso: si falta git (bloqueante), abrir igual.
-    try {
-      const d = await diagnosticsApi.get()
-      diag.value = d
-      if (!d.git?.configured) { open.value = true; if (electron.isElectron) autoStart.value = await electron.getAutoStart() }
-    } catch { /* sin backend todavía: no forzamos */ }
-  }
+  if (!onboarded) await show()
 })
 
 onBeforeUnmount(() => { if (disposeMenu) disposeMenu() })
@@ -84,7 +77,7 @@ function statusClass(ok: boolean, optional = false) {
 </script>
 
 <template>
-  <div v-if="open" class="doctor-backdrop" @click.self="!hasBlocker && dismiss()">
+  <div v-if="open" class="doctor-backdrop" @click.self="dismiss()">
     <div class="doctor" role="dialog" aria-modal="true" aria-label="Diagnóstico del editor" data-test="doctor">
       <header class="doctor-head">
         <h2>Diagnóstico del editor</h2>
@@ -94,16 +87,17 @@ function statusClass(ok: boolean, optional = false) {
       <div v-if="loading && !diag" class="doctor-loading">Revisando entorno…</div>
 
       <div v-else class="checks">
-        <!-- GIT (bloqueante) -->
-        <div class="check" :class="statusClass(gitOk)" data-test="doctor-git">
+        <!-- GIT (opcional: solo workspaces con git) -->
+        <div class="check" :class="statusClass(gitOk, true)" data-test="doctor-git">
           <span class="dot" />
           <div class="body">
-            <div class="title">Git {{ gitOk ? 'configurado' : 'sin configurar' }}</div>
+            <div class="title">Git {{ gitOk ? 'configurado' : 'sin configurar (opcional)' }}</div>
             <div v-if="gitOk" class="detail">
               {{ diag?.git.name }} &lt;{{ diag?.git.email }}&gt;
             </div>
             <div v-else class="detail">
-              Necesario para guardar y publicar. Configúralo en la Terminal:
+              Solo necesario para workspaces con control de versiones. Los
+              workspaces solo en disco o con S3 no lo necesitan. Si lo quieres:
               <code>git config --global user.name "Tu Nombre"</code>
               <code>git config --global user.email "tu@correo.com"</code>
             </div>
@@ -145,10 +139,10 @@ function statusClass(ok: boolean, optional = false) {
       <button class="details-toggle" type="button" @click="showDetails = !showDetails">
         {{ showDetails ? '▾' : '▸' }} Detalles técnicos
       </button>
-      <pre v-if="showDetails && diag" class="details">git:   {{ diag.bins.git || '(no encontrado en PATH)' }}
+      <pre v-if="showDetails && diag" class="details">git:    {{ diag.bins.git || '(no encontrado en PATH)' }}
 claude: {{ diag.bins.claude || '(no encontrado en PATH)' }}
-aws:   {{ diag.bins.aws || '(no encontrado en PATH)' }}
-node:  {{ diag.bins.node }}</pre>
+node:   {{ diag.bins.node }}
+aws:    SDK JS (no usa el CLI; lee ~/.aws o variables de entorno)</pre>
 
       <footer class="doctor-foot">
         <button type="button" class="btn ghost" :disabled="loading" @click="load" data-test="doctor-retry">
@@ -157,12 +151,10 @@ node:  {{ diag.bins.node }}</pre>
         <button
           type="button"
           class="btn primary"
-          :disabled="hasBlocker"
-          :title="hasBlocker ? 'Configura git para continuar' : ''"
           @click="dismiss"
           data-test="doctor-continue"
         >
-          {{ hasBlocker ? 'Falta configurar git' : 'Entendido' }}
+          Entendido
         </button>
       </footer>
     </div>

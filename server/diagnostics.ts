@@ -60,7 +60,8 @@ export interface Diagnostics {
   git: ReturnType<typeof gitConfigStatus>
   claude: { available: boolean }
   aws: AwsStatus
-  bins: { git: string | null; claude: string | null; aws: string | null; node: string }
+  // aws NO va aquí: el editor usa el SDK JS (lee ~/.aws / env), nunca el CLI.
+  bins: { git: string | null; claude: string | null; node: string }
 }
 
 export function getDiagnostics(): Diagnostics {
@@ -71,7 +72,6 @@ export function getDiagnostics(): Diagnostics {
     bins: {
       git: which('git'),
       claude: which('claude'),
-      aws: which('aws'),
       node: process.execPath,
     },
   }
