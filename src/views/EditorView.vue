@@ -6,6 +6,7 @@ import { useShortcuts } from '../composables/useShortcuts'
 import { useWebSocket } from '../composables/useWebSocket'
 import { usePanelResize } from '../composables/usePanelResize'
 import { useLiveBroadcast, openLivePreview } from '../composables/useLivePreview'
+import { useElectron } from '../composables/useElectron'
 import {
   state, loadSite, isDirty, fetchComponentRegistry, selectedNodes,
   duplicateSelected, deleteSelected, addSection, addElement, resolveAddElementLayerPath,
@@ -68,6 +69,13 @@ function onBeforeUnload(e: BeforeUnloadEvent) {
 }
 onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
 onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload))
+
+// Reporta el estado dirty al proceso principal de Electron para que avise al
+// cerrar la ventana (X / Cmd+W) con cambios sin guardar. Al salir del editor
+// (desmontar /edit) marcamos limpio para no bloquear el cierre desde el home.
+const electron = useElectron()
+watch(isDirty, (d) => electron.setDirty(d), { immediate: true })
+onBeforeUnmount(() => electron.setDirty(false))
 
 async function loadProject() {
   loading.value = true

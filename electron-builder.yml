@@ -21,6 +21,12 @@ copyright: © Daniela Reyes
 
 asar: false
 
+# Nombre con sufijo de arquitectura SIEMPRE (x64 y arm64), para distinguir los
+# dos dmg en S3 (`Parallax Editor-<v>-x64.dmg` / `-arm64.dmg`). Por defecto
+# electron-builder no le pone sufijo a x64; lo forzamos para que el release
+# encuentre ambos y la página de descarga elija por chip.
+artifactName: ${productName}-${version}-${arch}.${ext}
+
 directories:
   output: dist-electron
 
@@ -42,11 +48,12 @@ files:
   - "!tsconfig*.json"
 
 mac:
-  # El ARCH se fija en los scripts con --x64 (dist:mac/dist:dir): la Mac de
-  # Daniela es Intel. Un build x64 corre NATIVO en Intel y, vía Rosetta 2,
-  # también en Apple Silicon → cubre todas las Macs con un solo dmg. (Un build
-  # arm64 NO abre en Intel: "no es compatible con esta Mac".) Requiere el binario
-  # de esbuild x64 en node_modules (@esbuild/darwin-x64).
+  # `dist:mac` compila AMBAS arquitecturas (--x64 --arm64) → dos dmg nativos:
+  # x64 para Intel y arm64 para Apple Silicon. La página de descarga detecta el
+  # chip y baja el correcto. (Antes era solo x64 + Rosetta; ahora cada Mac corre
+  # nativo.) El build x64 en una Mac arm requiere @esbuild/darwin-x64 en
+  # node_modules (lo asegura scripts/ensure-x64-esbuild.mjs); el arm64 usa el
+  # nativo @esbuild/darwin-arm64.
   target:
     - dmg
   category: public.app-category.developer-tools

@@ -10,6 +10,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="style.css" />
+  <style>
+    /* Nota de detección de chip bajo los botones de descarga. */
+    .dl-hint { margin: 12px 0 0; font-size: 13px; line-height: 1.5; opacity: 0.66; max-width: 34rem; }
+    .dl-hint:empty { display: none; }
+  </style>
 </head>
 <body>
 
@@ -44,11 +49,14 @@
           y publica tu sitio con un clic. Pensado para crear sin escribir código.
         </p>
         <div class="hero-cta reveal d4">
-          <a class="btn btn-primary" href="latest.dmg" download>
-            Descargar para Mac (.dmg) <span class="arrow">↓</span>
+          <a class="btn btn-primary js-dl js-dl-apple" href="latest-arm64.dmg" download>
+            Descargar — Apple Silicon <span class="arrow">↓</span>
           </a>
-          <a class="btn btn-ghost" href="index.html">← Volver al inicio</a>
+          <a class="btn btn-ghost js-dl js-dl-intel" href="latest-x64.dmg" download>
+            Descargar — Intel <span class="arrow">↓</span>
+          </a>
         </div>
+        <p class="dl-hint js-dl-hint reveal d4"></p>
       </div>
     </section>
 
@@ -126,11 +134,14 @@
             inmersivos hoy mismo.
           </p>
           <div class="dl-actions">
-            <a class="btn btn-primary" href="latest.dmg" download>
-              Descargar para Mac (.dmg) <span class="arrow">↓</span>
+            <a class="btn btn-primary js-dl js-dl-apple" href="latest-arm64.dmg" download>
+              Descargar — Apple Silicon <span class="arrow">↓</span>
             </a>
-            <a class="btn btn-ghost" href="index.html">Conocer el motor</a>
+            <a class="btn btn-ghost js-dl js-dl-intel" href="latest-x64.dmg" download>
+              Descargar — Intel <span class="arrow">↓</span>
+            </a>
           </div>
+          <p class="dl-hint js-dl-hint"></p>
           <p class="note">
             <strong>Primera vez (app sin firma):</strong> haz clic derecho sobre la
             app → <kbd>Abrir</kbd> → <kbd>Abrir</kbd>.
@@ -166,6 +177,42 @@
         });
       }, { threshold: 0.16 });
       document.querySelectorAll('.in-view').forEach(function (el) { io.observe(el); });
+    })();
+
+    // ── Detección de chip (Apple Silicon vs Intel) ──────────────────────────
+    // Hay DOS dmg: latest-arm64.dmg (Apple Silicon) y latest-x64.dmg (Intel).
+    // Si el navegador expone la arquitectura (Chromium: userAgentData), marcamos
+    // el botón recomendado como primario y el otro como secundario, con una nota.
+    // Si NO se puede detectar (Safari), se quedan los dos botones iguales para
+    // que el usuario elija. Sin JS: ambos botones visibles (links directos).
+    (function () {
+      var apples = document.querySelectorAll('.js-dl-apple');
+      var intels = document.querySelectorAll('.js-dl-intel');
+      var hints = document.querySelectorAll('.js-dl-hint');
+      function setHint(t) { hints.forEach(function (h) { h.textContent = t; }); }
+      function promote(winners, losers) {
+        winners.forEach(function (b) { b.classList.add('btn-primary'); b.classList.remove('btn-ghost'); });
+        losers.forEach(function (b) { b.classList.add('btn-ghost'); b.classList.remove('btn-primary'); });
+      }
+      function apply(arch) {
+        if (arch === 'apple') {
+          promote(apples, intels);
+          setHint('Detectamos tu Mac: Apple Silicon (M1/M2/M3…). ¿Es una Mac Intel? usa el otro botón.');
+        } else if (arch === 'intel') {
+          promote(intels, apples);
+          setHint('Detectamos tu Mac: Intel. ¿Es una Mac con chip Apple (M1/M2/M3…)? usa el otro botón.');
+        } else {
+          setHint('Elige según tu Mac: chip Apple (M1/M2/M3…) o Intel. ¿No sabes? Menú  → "Acerca de esta Mac".');
+        }
+      }
+      var uad = navigator.userAgentData;
+      if (uad && uad.getHighEntropyValues) {
+        uad.getHighEntropyValues(['architecture']).then(function (d) {
+          apply(d && d.architecture === 'arm' ? 'apple' : (d && d.architecture === 'x86' ? 'intel' : null));
+        }).catch(function () { apply(null); });
+      } else {
+        apply(null);
+      }
     })();
   </script>
 </body>

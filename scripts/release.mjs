@@ -48,21 +48,34 @@ run(`npm version ${bump} -m "release: v%s"`)
 const version = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')).version
 console.log(`  → v${version}`)
 
-// 3) Empaquetar el .dmg.
-console.log('\n▶ Empaquetando .dmg (yarn dist:mac)…')
+// 3) Empaquetar AMBOS .dmg (x64 + arm64). dist:mac corre --x64 --arm64.
+console.log('\n▶ Empaquetando .dmg x64 + arm64 (yarn dist:mac)…')
 run('yarn dist:mac')
-// Buscar el .dmg por patrón (el sufijo de arch varía: -x64 / -arm64).
 const dmgDir = resolve(ROOT, 'dist-electron')
-const dmgName = readdirSync(dmgDir).find((f) => f.startsWith(`Parallax Editor-${version}`) && f.endsWith('.dmg'))
-if (!dmgName) fail(`No se encontró el .dmg de v${version} en ${dmgDir}`)
-const dmg = resolve(dmgDir, dmgName)
+const dmgs = readdirSync(dmgDir).filter(
+  (f) => f.startsWith(`Parallax Editor-${version}-`) && f.endsWith('.dmg'),
+)
+const x64Name = dmgs.find((f) => f.includes('-x64'))
+const arm64Name = dmgs.find((f) => f.includes('-arm64'))
+if (!x64Name || !arm64Name) {
+  fail(`Faltan dmgs de v${version} (x64/arm64) en ${dmgDir}. Encontrados: ${dmgs.join(', ') || 'ninguno'}`)
+}
 
-// 4) Subir a S3 (público). Key sin espacios.
-const key = dmgName.replace(/ /g, '-')
+// 4) Subir a S3 (público). Cada arch: el .dmg versionado + su latest-<arch>.dmg.
 const DMG_CT = '--content-type application/x-apple-diskimage'
 console.log(`\n▶ Subiendo a s3://${BUCKET}/ …`)
-run(`aws s3 cp "${dmg}" "s3://${BUCKET}/${key}" --region ${REGION} ${DMG_CT}`)
-run(`aws s3 cp "${dmg}" "s3://${BUCKET}/latest.dmg" --region ${REGION} ${DMG_CT} --cache-control no-cache`)
+function uploadDmg(name, latestKey) {
+  const dmg = resolve(dmgDir, name)
+  const key = name.replace(/ /g, '-')
+  run(`aws s3 cp "${dmg}" "s3://${BUCKET}/${key}" --region ${REGION} ${DMG_CT}`)
+  run(`aws s3 cp "${dmg}" "s3://${BUCKET}/${latestKey}" --region ${REGION} ${DMG_CT} --cache-control no-cache`)
+  return key
+}
+const x64Key = uploadDmg(x64Name, 'latest-x64.dmg')
+const arm64Key = uploadDmg(arm64Name, 'latest-arm64.dmg')
+// `latest.dmg` (sin sufijo) sigue apuntando a x64: back-compat + corre en
+// cualquier Mac vía Rosetta si alguien usa el link viejo.
+run(`aws s3 cp "${resolve(dmgDir, x64Name)}" "s3://${BUCKET}/latest.dmg" --region ${REGION} ${DMG_CT} --cache-control no-cache`)
 
 // 4b) versions.json (índice acumulado): leer el de S3, agregar esta versión, resubir.
 let versions = []
@@ -71,7 +84,9 @@ try {
   if (!Array.isArray(versions)) versions = []
 } catch { /* primer release: empieza vacío */ }
 versions = versions.filter((v) => v && v.version !== version)
-versions.unshift({ version, file: key, date: new Date().toISOString() })
+// `file` = x64 (back-compat con consumidores viejos); x64/arm64 explícitos para
+// la página de descarga.
+versions.unshift({ version, file: x64Key, x64: x64Key, arm64: arm64Key, date: new Date().toISOString() })
 const versionsPath = resolve(ROOT, 'dist-electron', 'versions.json')
 writeFileSync(versionsPath, JSON.stringify(versions, null, 2))
 run(`aws s3 cp "${versionsPath}" "s3://${BUCKET}/versions.json" --region ${REGION} --content-type application/json --cache-control no-cache`)
@@ -86,5 +101,6 @@ run('git push')
 run('git push --tags')
 
 console.log(`\n✓ Release v${version} publicado.`)
-console.log(`  Página:  ${WEB}`)
-console.log(`  Última:  ${WEB}/latest.dmg`)
+console.log(`  Página:           ${WEB}/editor.html`)
+console.log(`  Última (Intel):   ${WEB}/latest-x64.dmg`)
+console.log(`  Última (Apple):   ${WEB}/latest-arm64.dmg`)

@@ -38,4 +38,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // El renderer reporta las capacidades del workspace ACTIVO ({ useGit, hasS3 })
   // para que el menú nativo habilite/deshabilite Git y Publicar.
   setWorkspaceCapabilities: (caps) => ipcRenderer.send('workspace:capabilities', caps),
+  // El renderer reporta si hay cambios SIN GUARDAR. El main lo usa para avisar
+  // al cerrar la ventana (X / Cmd+Q) y no perder trabajo.
+  setDirty: (dirty) => ipcRenderer.send('editor:dirty', !!dirty),
 })

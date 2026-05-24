@@ -33,6 +33,9 @@ const PRELOAD = path.join(__dirname, 'preload.cjs')
 
 /** Referencias vivas para cierre limpio. */
 let mainWindow = null
+/** ¿El editor tiene cambios sin guardar? Lo reporta el renderer (IPC
+ *  'editor:dirty'); el main avisa al cerrar la ventana para no perder trabajo. */
+let editorDirty = false
 /** Resultado de start() del server standalone: { port, server, close }. */
 let standaloneServer = null
 
@@ -128,6 +131,28 @@ function createWindow(loadTarget) {
     }
     shell.openExternal(url)
     return { action: 'deny' }
+  })
+
+  // Aviso al cerrar con cambios SIN GUARDAR (X de la ventana / Cmd+W). El
+  // diálogo es SÍNCRONO porque el handler de 'close' debe decidir en el momento
+  // si cancela el cierre; uno asíncrono dejaría cerrar igual. Si el usuario
+  // confirma salir, destruimos la ventana (no re-pasa por 'close').
+  mainWindow.on('close', (e) => {
+    if (!editorDirty) return
+    e.preventDefault()
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: 'warning',
+      buttons: ['Cancelar', 'Salir sin guardar'],
+      defaultId: 0,
+      cancelId: 0,
+      title: 'Cambios sin guardar',
+      message: 'Tienes cambios sin guardar',
+      detail: 'Si cierras ahora se perderá lo que no hayas guardado. ¿Salir de todas formas?',
+    })
+    if (choice === 1) {
+      editorDirty = false
+      mainWindow.destroy()
+    }
   })
 
   mainWindow.on('closed', () => {
@@ -355,6 +380,11 @@ function registerIpc() {
       inEditor: !!(caps && caps.inEditor),
     }
     buildMenu()
+  })
+
+  // El renderer reporta cambios sin guardar (para el aviso al cerrar la ventana).
+  ipcMain.on('editor:dirty', (_e, dirty) => {
+    editorDirty = !!dirty
   })
 }
 

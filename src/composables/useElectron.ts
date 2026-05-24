@@ -14,6 +14,7 @@ interface ElectronBridge {
   onOpenDoctor: (cb: () => void) => () => void
   onMenuAction: (cb: (action: string) => void) => () => void
   setWorkspaceCapabilities: (caps: { useGit: boolean; hasS3: boolean; inEditor: boolean }) => void
+  setDirty: (dirty: boolean) => void
 }
 
 function bridge(): ElectronBridge | null {
@@ -61,6 +62,15 @@ export function useElectron() {
       if (!el) return
       try {
         el.setWorkspaceCapabilities(caps)
+      } catch {
+        /* no-op */
+      }
+    },
+    /** Reporta si hay cambios sin guardar (para el aviso al cerrar). Web: no-op. */
+    setDirty(dirty: boolean): void {
+      if (!el) return
+      try {
+        el.setDirty(dirty)
       } catch {
         /* no-op */
       }
