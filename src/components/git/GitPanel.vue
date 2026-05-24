@@ -4,8 +4,15 @@ import { gitApi, publishApi, type GitStatusCommit, type DeploySidecar } from '..
 import { state } from '../../stores/editor'
 import { validateSite } from 'parallax-engine/schema'
 import { useDialog } from '../../composables/useDialog'
+import { usePanelScroll } from '../../composables/usePanelScroll'
 
 const dialog = useDialog()
+// Lenis (engine) registra un wheel NO-pasivo en window y preventDefault'ea TODO,
+// así que el overflow nativo no scrollea con la rueda. usePanelScroll detiene el
+// wheel en captura (sin preventDefault) para que el elemento sí scrollee. Una
+// instancia para el panel y otra para el modal de diff (cada una liga 1 elemento).
+const { panelScrollRef: gitScrollRef } = usePanelScroll()
+const { panelScrollRef: diffScrollRef } = usePanelScroll()
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -184,7 +191,7 @@ onMounted(loadStatus)
 </script>
 
 <template>
-  <div class="git-panel" data-test="git-panel">
+  <div class="git-panel" data-test="git-panel" :ref="gitScrollRef">
     <div class="git-header">
       <span class="git-title">Publicar</span>
       <div class="git-header-actions">
@@ -292,7 +299,7 @@ onMounted(loadStatus)
           </div>
           <button class="diff-close" title="Cerrar" aria-label="Cerrar" @click="closeDiff">&times;</button>
         </div>
-        <div class="diff-body">
+        <div class="diff-body" :ref="diffScrollRef">
           <div v-if="diffLoading" class="diff-state">Cargando cambios…</div>
           <div v-else-if="diffError" class="diff-state error">{{ diffError }}</div>
           <div v-else class="diff-pre" data-test="git-diff-content">
