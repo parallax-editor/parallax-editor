@@ -113,7 +113,12 @@ async function loadProject() {
 // saves only if she wants. Claude never auto-commits (#120). The watcher already
 // suppresses the editor's OWN writes, so this only fires for external changes.
 async function applyExternalChange() {
-  const data = await projectsApi.get(props.type, props.slug)
+  // Usa state.projectType/state.slug (el sitio REALMENTE cargado), NO props.* de
+  // la ruta: el guard del WebSocket también filtra por state.slug, así que ambos
+  // deben coincidir. (Antes usaba props.slug y, si la ruta y el estado se
+  // desincronizaban, recargaba el sitio equivocado.)
+  if (!state.projectType || !state.slug) return
+  const data = await projectsApi.get(state.projectType, state.slug)
   if (!data || data.error) return
   const result = validateSite(data)
   state.errors = result.ok ? [] : result.errors.map((e) => `${e.path}: ${e.message}`)
@@ -340,6 +345,16 @@ useWebSocket((data) => {
 useShortcuts(save)
 
 onMounted(loadProject)
+
+// Vue Router REUTILIZA esta vista al ir de /edit/<tipo>/A a /edit/<tipo>/B
+// (misma ruta, distinto param) → onMounted NO se vuelve a disparar. Sin esto,
+// `state.slug` se quedaba en el PRIMER sitio abierto aunque la URL cambiara, y
+// Guardar/recargar operaban sobre ese slug viejo (siempre "el primero"). Al
+// cambiar type/slug recargamos el proyecto correcto.
+watch(
+  () => [props.type, props.slug],
+  () => { void loadProject() },
+)
 </script>
 
 <template>
