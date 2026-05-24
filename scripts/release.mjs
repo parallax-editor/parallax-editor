@@ -16,7 +16,7 @@
 // Lo corre el DEV (usa el aws del host). Daniela solo descarga del link público.
 
 import { execSync } from 'node:child_process'
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, readdirSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { uploadPage } from './page.mjs'
@@ -49,11 +49,14 @@ console.log(`  → v${version}`)
 // 3) Empaquetar el .dmg.
 console.log('\n▶ Empaquetando .dmg (yarn dist:mac)…')
 run('yarn dist:mac')
-const dmg = resolve(ROOT, 'dist-electron', `Parallax Editor-${version}-arm64.dmg`)
-if (!existsSync(dmg)) fail(`No se encontró el .dmg esperado: ${dmg}`)
+// Buscar el .dmg por patrón (el sufijo de arch varía: -x64 / -arm64).
+const dmgDir = resolve(ROOT, 'dist-electron')
+const dmgName = readdirSync(dmgDir).find((f) => f.startsWith(`Parallax Editor-${version}`) && f.endsWith('.dmg'))
+if (!dmgName) fail(`No se encontró el .dmg de v${version} en ${dmgDir}`)
+const dmg = resolve(dmgDir, dmgName)
 
-// 4) Subir a S3 (público).
-const key = `Parallax-Editor-${version}-arm64.dmg`
+// 4) Subir a S3 (público). Key sin espacios.
+const key = dmgName.replace(/ /g, '-')
 const DMG_CT = '--content-type application/x-apple-diskimage'
 console.log(`\n▶ Subiendo a s3://${BUCKET}/ …`)
 run(`aws s3 cp "${dmg}" "s3://${BUCKET}/${key}" --region ${REGION} ${DMG_CT}`)

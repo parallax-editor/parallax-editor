@@ -42,6 +42,11 @@ files:
   - "!tsconfig*.json"
 
 mac:
+  # El ARCH se fija en los scripts con --x64 (dist:mac/dist:dir): la Mac de
+  # Daniela es Intel. Un build x64 corre NATIVO en Intel y, vía Rosetta 2,
+  # también en Apple Silicon → cubre todas las Macs con un solo dmg. (Un build
+  # arm64 NO abre en Intel: "no es compatible con esta Mac".) Requiere el binario
+  # de esbuild x64 en node_modules (@esbuild/darwin-x64).
   target:
     - dmg
   category: public.app-category.developer-tools
