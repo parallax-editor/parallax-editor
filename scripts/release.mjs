@@ -19,10 +19,12 @@ import { execSync } from 'node:child_process'
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { uploadPage } from './page.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const BUCKET = 'parallax-editor-versions'
+// Bucket público (web hosting) con la landing + las descargas. La landing
+// (index.html/editor.html/style.css/icon.png) se sube con `yarn deploy:landing`;
+// el release solo sube el .dmg + latest.dmg + versions.json (no toca la landing).
+const BUCKET = 'parallax-engine'
 const REGION = 'us-east-1'
 const WEB = `http://${BUCKET}.s3-website-${REGION}.amazonaws.com`
 
@@ -74,9 +76,9 @@ const versionsPath = resolve(ROOT, 'dist-electron', 'versions.json')
 writeFileSync(versionsPath, JSON.stringify(versions, null, 2))
 run(`aws s3 cp "${versionsPath}" "s3://${BUCKET}/versions.json" --region ${REGION} --content-type application/json --cache-control no-cache`)
 
-// 4c) Página de descargas (logo icon.png + index.html). Fuente única en
-// scripts/page.mjs (también corrible suelto: `node scripts/page.mjs`).
-uploadPage(versions)
+// (La landing — index.html/editor.html/style.css/icon.png — NO se toca aquí;
+//  es estática y se publica con `yarn deploy:landing`. El release solo mueve el
+//  .dmg + latest.dmg + versions.json.)
 
 // 5) Push del commit + tag.
 console.log('\n▶ Push del commit + tag…')

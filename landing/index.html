@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Parallax Engine — Sitios web inmersivos con profundidad</title>
+  <meta name="description" content="Parallax Engine es el motor en Vue 3 para crear sitios web inmersivos: capas con profundidad, parallax por scroll, animaciones y transiciones entre mundos. El corazón del sistema web de Daniela Reyes." />
+  <link rel="icon" type="image/png" href="icon.png" />
+  <link rel="apple-touch-icon" href="icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ambient depth field -->
+  <div class="field" aria-hidden="true">
+    <span></span><span></span><span></span>
+  </div>
+
+  <!-- nav -->
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="index.html" aria-label="Parallax Engine — inicio">
+        <img src="icon.png" alt="Logotipo Parallax Engine" />
+        <span class="name">Parallax&nbsp;<em>Engine</em></span>
+      </a>
+      <nav class="nav-links">
+        <a href="#que-es">Qué es</a>
+        <a href="#capacidades">Capacidades</a>
+        <a href="editor.html">Editor</a>
+        <a class="btn btn-ghost btn-sm" href="editor.html">Conoce el Editor</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="content">
+
+    <!-- hero -->
+    <section class="hero">
+      <div class="wrap">
+        <p class="eyebrow reveal d1">Motor de experiencias web · Vue 3</p>
+        <h1 class="reveal d2">Sitios que cobran <em>profundidad</em><br>a medida que te desplazas.</h1>
+        <p class="lede reveal d3">
+          Parallax Engine compone páginas web inmersivas a partir de capas con
+          profundidad real: parallax por scroll, movimiento del ratón y giroscopio,
+          animaciones y transiciones entre mundos. Es el corazón del sistema web de
+          Daniela Reyes.
+        </p>
+        <div class="hero-cta reveal d4">
+          <a class="btn btn-primary" href="editor.html">
+            Conoce el Editor <span class="arrow">→</span>
+          </a>
+          <a class="btn btn-ghost" href="#capacidades">Ver capacidades</a>
+        </div>
+
+        <!-- literal depth illustration -->
+        <div class="stack reveal d5" aria-hidden="true">
+          <div class="plane p1"><span>Fondo</span></div>
+          <div class="plane p2"><span>Capa media</span></div>
+          <div class="plane p3"><span>Profundidad</span></div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- qué es -->
+    <section class="block" id="que-es">
+      <div class="wrap">
+        <div class="section-head in-view">
+          <p class="kicker">Qué es</p>
+          <h2>Un motor para construir <em>mundos</em>, no solo páginas.</h2>
+          <p>
+            En lugar de maquetar bloques planos, Parallax Engine apila imágenes PNG
+            en capas con profundidad y las anima. El resultado son escenas vivas que
+            responden al desplazamiento, al ratón y a la inclinación del dispositivo,
+            y que pasan de un mundo a otro con transiciones cuidadas. Todo es
+            responsive y está pensado para sentirse fluido en cualquier pantalla.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- capacidades -->
+    <section class="block" id="capacidades" style="padding-top:0">
+      <div class="wrap">
+        <div class="section-head in-view">
+          <p class="kicker">Capacidades</p>
+          <h2>Seis ideas que dan vida a cada escena.</h2>
+        </div>
+
+        <div class="features in-view">
+          <article class="feature">
+            <span class="num">01</span>
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+              <rect x="3" y="3" width="14" height="14" rx="2"/>
+              <rect x="7" y="7" width="14" height="14" rx="2" fill="rgba(243,239,231,0.06)"/>
+            </svg>
+            <h3>Profundidad y parallax</h3>
+            <p>Capas PNG con distintos planos que se mueven con el scroll, el ratón y el giroscopio para crear una sensación real de tridimensionalidad.</p>
+          </article>
+
+          <article class="feature">
+            <span class="num">02</span>
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+              <path d="M12 3v6"/><path d="M12 15v6"/>
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M5 12H3"/><path d="M21 12h-2"/>
+            </svg>
+            <h3>Animaciones</h3>
+            <p>Entradas, bucles, estados al pasar el cursor y al hacer clic. Cada elemento puede tener su propio comportamiento expresivo.</p>
+          </article>
+
+          <article class="feature">
+            <span class="num">03</span>
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+              <path d="M4 7h11"/><path d="M15 7l-3-3"/><path d="M15 7l-3 3"/>
+              <path d="M20 17H9"/><path d="M9 17l3-3"/><path d="M9 17l3 3"/>
+            </svg>
+            <h3>Transiciones entre mundos</h3>
+            <p>Navega de una escena a otra con transiciones continuas que mantienen el ritmo y la narrativa de la experiencia.</p>
+          </article>
+
+          <article class="feature">
+            <span class="num">04</span>
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+              <rect x="2" y="4" width="20" height="13" rx="2"/>
+              <path d="M8 20h8"/><path d="M12 17v3"/>
+            </svg>
+            <h3>Responsive</h3>
+            <p>Las escenas se adaptan a móvil, tablet y escritorio sin perder la composición ni la sensación de profundidad.</p>
+          </article>
+
+          <article class="feature">
+            <span class="num">05</span>
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <path d="M3 9h18"/><path d="M9 21V9"/>
+            </svg>
+            <h3>Editor visual</h3>
+            <p>Una app de escritorio estilo Illustrator para componer arrastrando capas. Crear sitios sin escribir una sola línea de código.</p>
+          </article>
+
+          <article class="feature">
+            <span class="num">06</span>
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+              <path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/>
+              <circle cx="18" cy="18" r="2.2"/>
+            </svg>
+            <h3>Asistencia con IA</h3>
+            <p>Claude integrado en el editor para redactar, ajustar y proponer cambios sobre el contenido, en lenguaje natural.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- editor teaser / CTA -->
+    <section class="block" id="editor">
+      <div class="wrap">
+        <div class="download-card in-view">
+          <span class="badge">El compañero perfecto</span>
+          <h2>Diseña tus mundos con el <em>Parallax Editor</em>.</h2>
+          <p class="sub">
+            Una app de escritorio para macOS que convierte el motor en una mesa de
+            trabajo visual: arrastra capas, edita contenido, pide ayuda a la IA y
+            publica con un clic. Sin código.
+          </p>
+          <div class="dl-actions">
+            <a class="btn btn-primary" href="editor.html">
+              Conoce el Editor <span class="arrow">→</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- footer -->
+  <footer class="foot">
+    <div class="wrap foot-inner">
+      <a class="brand" href="index.html">
+        <img src="icon.png" alt="Parallax Engine" style="width:30px;height:30px;border-radius:8px" />
+        <span class="name">Parallax&nbsp;<em>Engine</em></span>
+      </a>
+      <p>El motor del sistema web de Daniela Reyes.</p>
+      <div class="foot-links">
+        <a href="index.html">Inicio</a>
+        <a href="editor.html">Editor</a>
+        <a href="#capacidades">Capacidades</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // scroll-reveal for sections
+    (function () {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) { e.target.classList.add('seen'); io.unobserve(e.target); }
+        });
+      }, { threshold: 0.16 });
+      document.querySelectorAll('.in-view').forEach(function (el) { io.observe(el); });
+
+      // subtle pointer parallax on the hero stack
+      var stack = document.querySelector('.stack');
+      if (stack && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        var planes = stack.querySelectorAll('.plane');
+        window.addEventListener('pointermove', function (ev) {
+          var x = (ev.clientX / window.innerWidth - 0.5);
+          var y = (ev.clientY / window.innerHeight - 0.5);
+          planes.forEach(function (p, i) {
+            var depth = (i + 1) * 10;
+            p.style.translate = (x * depth) + 'px ' + (y * depth) + 'px';
+          });
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

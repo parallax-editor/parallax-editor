@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Parallax Editor — Crea sitios inmersivos sin código</title>
+  <meta name="description" content="El Parallax Editor es una app de escritorio para macOS, estilo Illustrator, para componer sitios inmersivos arrastrando capas, con asistencia de IA y publicación con un clic." />
+  <link rel="icon" type="image/png" href="icon.png" />
+  <link rel="apple-touch-icon" href="icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="field" aria-hidden="true">
+    <span></span><span></span><span></span>
+  </div>
+
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="index.html" aria-label="Parallax Engine — inicio">
+        <img src="icon.png" alt="Logotipo Parallax Engine" />
+        <span class="name">Parallax&nbsp;<em>Engine</em></span>
+      </a>
+      <nav class="nav-links">
+        <a href="index.html">Motor</a>
+        <a href="#como-funciona">Cómo funciona</a>
+        <a class="btn btn-ghost btn-sm" href="#descargar">Descargar</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="content">
+
+    <!-- hero -->
+    <section class="hero">
+      <div class="wrap">
+        <p class="eyebrow reveal d1">App de escritorio · macOS</p>
+        <h1 class="reveal d2">Compón mundos arrastrando <em>capas</em>.</h1>
+        <p class="lede reveal d3">
+          El Parallax Editor es un editor visual estilo Illustrator que pone el
+          motor en tus manos: organiza capas, edita el contenido, apóyate en la IA
+          y publica tu sitio con un clic. Pensado para crear sin escribir código.
+        </p>
+        <div class="hero-cta reveal d4">
+          <a class="btn btn-primary" href="latest.dmg" download>
+            Descargar para Mac (.dmg) <span class="arrow">↓</span>
+          </a>
+          <a class="btn btn-ghost" href="index.html">← Volver al inicio</a>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- cómo funciona -->
+    <section class="block" id="como-funciona">
+      <div class="wrap">
+        <div class="split">
+          <!-- editor mock visual -->
+          <div class="visual in-view" aria-hidden="true">
+            <div class="bar"><i></i><i></i><i></i></div>
+            <div class="canvas">
+              <div class="layer l1">Capa 1</div>
+              <div class="layer l2">Capa 2</div>
+              <div class="layer l3">Capa 3</div>
+              <div class="grab"></div>
+            </div>
+          </div>
+
+          <!-- steps -->
+          <div class="in-view">
+            <div class="section-head" style="margin-bottom:8px">
+              <p class="kicker">Cómo funciona</p>
+              <h2>Del lienzo a la web, <em>sin fricción</em>.</h2>
+            </div>
+            <ol class="steps">
+              <li>
+                <span class="s-num">01</span>
+                <div>
+                  <h4>Editor visual</h4>
+                  <p>Arrastra, escala y ordena capas en un lienzo familiar, como en una herramienta de diseño profesional.</p>
+                </div>
+              </li>
+              <li>
+                <span class="s-num">02</span>
+                <div>
+                  <h4>Editar contenido</h4>
+                  <p>Cambia textos, imágenes y ajustes de cada escena directamente, viendo el resultado al instante.</p>
+                </div>
+              </li>
+              <li>
+                <span class="s-num">03</span>
+                <div>
+                  <h4>Asistente Claude</h4>
+                  <p>Pide cambios en lenguaje natural y deja que la IA redacte, ajuste y proponga mejoras sobre tu sitio.</p>
+                </div>
+              </li>
+              <li>
+                <span class="s-num">04</span>
+                <div>
+                  <h4>Publicar</h4>
+                  <p>Cuando todo está listo, publica con un clic y comparte tu mundo con el mundo.</p>
+                </div>
+              </li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- descarga -->
+    <section class="block" id="descargar">
+      <div class="wrap">
+        <div class="download-card in-view">
+          <div class="plinth">
+            <img src="icon.png" alt="Parallax Editor" />
+          </div>
+          <span class="badge">Descarga gratuita</span>
+          <h2>Lleva el motor a tu <em>escritorio</em>.</h2>
+          <p class="sub">
+            Descarga el Parallax Editor y empieza a componer tus propios sitios
+            inmersivos hoy mismo.
+          </p>
+          <div class="dl-actions">
+            <a class="btn btn-primary" href="latest.dmg" download>
+              Descargar para Mac (.dmg) <span class="arrow">↓</span>
+            </a>
+            <a class="btn btn-ghost" href="index.html">Conocer el motor</a>
+          </div>
+          <p class="note">
+            <strong>Primera vez (app sin firma):</strong> haz clic derecho sobre la
+            app → <kbd>Abrir</kbd> → <kbd>Abrir</kbd>.
+            <br>
+            Compatible con Mac Intel y Apple Silicon.
+          </p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-inner">
+      <a class="brand" href="index.html">
+        <img src="icon.png" alt="Parallax Engine" style="width:30px;height:30px;border-radius:8px" />
+        <span class="name">Parallax&nbsp;<em>Engine</em></span>
+      </a>
+      <p>El motor del sistema web de Daniela Reyes.</p>
+      <div class="foot-links">
+        <a href="index.html">Inicio</a>
+        <a href="editor.html">Editor</a>
+        <a href="#descargar">Descargar</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) { e.target.classList.add('seen'); io.unobserve(e.target); }
+        });
+      }, { threshold: 0.16 });
+      document.querySelectorAll('.in-view').forEach(function (el) { io.observe(el); });
+    })();
+  </script>
+</body>
+</html>

@@ -23,6 +23,7 @@
     "dist:dir": "node scripts/ensure-x64-esbuild.mjs && yarn build && yarn build:server && electron-builder --dir --x64",
     "dist:mac": "node scripts/ensure-x64-esbuild.mjs && yarn build && yarn build:server && electron-builder --mac --x64",
     "release": "node scripts/release.mjs",
+    "deploy:landing": "node scripts/deploy-landing.mjs",
     "test": "node tests/editor.test.mjs"
   },
   "dependencies": {
