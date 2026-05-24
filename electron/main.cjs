@@ -18,7 +18,7 @@
 // el diálogo NATIVO de carpeta vía IPC (mejor que osascript y concede permiso
 // TCC sobre la carpeta elegida).
 
-const { app, BrowserWindow, Menu, dialog, shell, ipcMain } = require('electron')
+const { app, BrowserWindow, Menu, dialog, shell, ipcMain, nativeImage } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const { fixPath } = require('./path-fix.cjs')
@@ -287,8 +287,27 @@ function registerIpc() {
   })
 }
 
+// Ícono del Dock en macOS. El ícono de electron-builder SOLO aplica a la app
+// empaquetada; en `electron:dev` (binario crudo de Electron) el Dock muestra el
+// átomo por defecto. Aquí lo seteamos en runtime con el PÆ. En la app empaquetada
+// ../build no existe (es buildResource, no va dentro del .app) → se omite y manda
+// el .icns empotrado.
+function setDockIcon() {
+  if (process.platform !== 'darwin' || !app.dock) return
+  try {
+    const iconPath = path.resolve(__dirname, '..', 'build', 'icon-1024.png')
+    if (fs.existsSync(iconPath)) {
+      const img = nativeImage.createFromPath(iconPath)
+      if (!img.isEmpty()) app.dock.setIcon(img)
+    }
+  } catch {
+    /* no-op: el ícono es cosmético, no debe tumbar el arranque */
+  }
+}
+
 // ─── Ciclo de vida ─────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
+  setDockIcon()
   registerIpc()
   buildMenu()
 
