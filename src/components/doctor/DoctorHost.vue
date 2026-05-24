@@ -139,10 +139,10 @@ function statusClass(ok: boolean, optional = false) {
       <button class="details-toggle" type="button" @click="showDetails = !showDetails">
         {{ showDetails ? '▾' : '▸' }} Detalles técnicos
       </button>
-      <pre v-if="showDetails && diag" class="details">git:    {{ diag.bins.git || '(no encontrado en PATH)' }}
+      <pre v-if="showDetails && diag" class="details">git:    {{ diag.bins.git || '(no encontrado — opcional)' }}
 claude: {{ diag.bins.claude || '(no encontrado en PATH)' }}
-node:   {{ diag.bins.node }}
-aws:    SDK JS (no usa el CLI; lee ~/.aws o variables de entorno)</pre>
+aws:    SDK JS (lee ~/.aws o variables de entorno; no usa CLI)
+runtime: incluido en la app (no necesitas instalar Node)</pre>
 
       <footer class="doctor-foot">
         <button type="button" class="btn ghost" :disabled="loading" @click="load" data-test="doctor-retry">

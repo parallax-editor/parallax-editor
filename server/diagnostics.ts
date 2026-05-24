@@ -60,8 +60,10 @@ export interface Diagnostics {
   git: ReturnType<typeof gitConfigStatus>
   claude: { available: boolean }
   aws: AwsStatus
-  // aws NO va aquí: el editor usa el SDK JS (lee ~/.aws / env), nunca el CLI.
-  bins: { git: string | null; claude: string | null; node: string }
+  // Solo las CLIs que importan en la máquina del usuario. NO va `node` (Electron
+  // trae su propio runtime embebido — el usuario NO necesita Node instalado) ni
+  // `aws` (el editor usa el SDK JS, lee ~/.aws / env, nunca el CLI).
+  bins: { git: string | null; claude: string | null }
 }
 
 export function getDiagnostics(): Diagnostics {
@@ -72,7 +74,6 @@ export function getDiagnostics(): Diagnostics {
     bins: {
       git: which('git'),
       claude: which('claude'),
-      node: process.execPath,
     },
   }
 }
