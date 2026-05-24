@@ -22,6 +22,7 @@
     "electron:start": "yarn build && yarn build:server && electron electron/main.cjs",
     "dist:dir": "yarn build && yarn build:server && electron-builder --dir",
     "dist:mac": "yarn build && yarn build:server && electron-builder --mac",
+    "release": "node scripts/release.mjs",
     "test": "node tests/editor.test.mjs"
   },
   "dependencies": {
