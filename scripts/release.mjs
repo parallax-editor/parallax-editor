@@ -19,6 +19,7 @@ import { execSync } from 'node:child_process'
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { uploadPage } from './page.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const BUCKET = 'parallax-editor-versions'
@@ -70,14 +71,9 @@ const versionsPath = resolve(ROOT, 'dist-electron', 'versions.json')
 writeFileSync(versionsPath, JSON.stringify(versions, null, 2))
 run(`aws s3 cp "${versionsPath}" "s3://${BUCKET}/versions.json" --region ${REGION} --content-type application/json --cache-control no-cache`)
 
-// 4c) index.html: página de descarga simple (el bucket es web-hosting).
-const rows = versions
-  .map((v) => `<li><a href="${encodeURIComponent(v.file)}">v${v.version}</a> — ${new Date(v.date).toLocaleDateString('es-ES')}</li>`)
-  .join('')
-const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Parallax Editor — descargas</title><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#111;color:#eee;max-width:640px;margin:48px auto;padding:0 20px;line-height:1.5}a{color:#7fa8d6}h1{font-weight:700;margin-bottom:4px}.latest{display:inline-block;background:#0066cc;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;margin:16px 0}ul{padding-left:18px}li{margin:6px 0;color:#bbb}.note{color:#777;font-size:13px;margin-top:28px}</style></head><body><h1>Parallax Editor</h1><p>Última versión: <strong>v${version}</strong></p><a class="latest" href="latest.dmg">Descargar última (.dmg)</a><h3>Todas las versiones</h3><ul>${rows}</ul><p class="note">Primera vez que la abres (app sin firma): clic derecho sobre la app → <strong>Abrir</strong> → Abrir.</p></body></html>`
-const indexPath = resolve(ROOT, 'dist-electron', 'index.html')
-writeFileSync(indexPath, html)
-run(`aws s3 cp "${indexPath}" "s3://${BUCKET}/index.html" --region ${REGION} --content-type "text/html; charset=utf-8" --cache-control no-cache`)
+// 4c) Página de descargas (logo icon.png + index.html). Fuente única en
+// scripts/page.mjs (también corrible suelto: `node scripts/page.mjs`).
+uploadPage(versions)
 
 // 5) Push del commit + tag.
 console.log('\n▶ Push del commit + tag…')
