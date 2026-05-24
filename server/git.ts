@@ -6,6 +6,31 @@ function git(args: string, cwd: string): string {
   return execSync(`git ${args}`, { cwd, encoding: 'utf-8', timeout: 30000 }).trim()
 }
 
+/**
+ * Diff completo de un commit (`git show`), para el modal "ver qué se hizo
+ * commit". SEGURIDAD: el hash se valida como nombre de objeto hex (sin
+ * metacaracteres ni flags) y se pasa por execFileSync (no por shell). La salida
+ * se acota para que un commit enorme (muchos assets) no inunde la UI; los
+ * binarios aparecen como "Binary files … differ" (texto del propio git).
+ */
+export function gitShow(cwd: string, hash: string): { ok: boolean; diff?: string; error?: string } {
+  if (!/^[0-9a-fA-F]{4,40}$/.test(hash)) {
+    return { ok: false, error: 'Hash de commit inválido.' }
+  }
+  try {
+    const out = execFileSync(
+      'git',
+      ['show', '--stat', '--patch', '--no-color', '--format=medium', hash, '--'],
+      { cwd, encoding: 'utf-8', timeout: 30000, maxBuffer: 16 * 1024 * 1024 },
+    )
+    const MAX = 200_000
+    const diff = out.length > MAX ? out.slice(0, MAX) + '\n\n… (diff truncado)' : out
+    return { ok: true, diff }
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'No se pudo obtener el diff del commit.' }
+  }
+}
+
 export function gitLog(cwd: string, limit = 20): { hash: string; message: string; date: string }[] {
   try {
     const raw = git(`log --oneline --format="%H|%s|%ci" -n ${limit}`, cwd)

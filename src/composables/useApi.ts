@@ -151,6 +151,12 @@ export interface GitStatus {
 
 export const gitApi = {
   log: (type: string) => api(`/git/${type}/log`),
+  // Diff completo de un commit (modal "ver qué se hizo commit"). `hash` debe ser
+  // hex; el server lo revalida.
+  show: (type: string, hash: string) =>
+    api<{ ok: boolean; diff?: string; error?: string }>(
+      `/git/${type}/show/${encodeURIComponent(hash)}`,
+    ),
   // Publicar status: ahead-count + pending-to-push commits + last 5 on
   // origin/main. Best-effort server-side (no upstream / offline → empty/0).
   status: (type: string) => api<GitStatus>(`/git/${type}/status`),
@@ -175,12 +181,19 @@ export interface WorkspaceS3 {
 export interface Workspace {
   id: string
   name: string
-  /** Absolute path to the git repo on this machine. */
+  /** Absolute path to the workspace folder on this machine. */
   repoPath: string
   gitRemote?: string
   /** Content root RELATIVE to repoPath ('content' | 'content/portafolio'). */
   contentRoot: string
   s3?: WorkspaceS3
+  /**
+   * ¿El workspace usa git? Default true (seeds eventos/site + back-compat).
+   * Si es false: la carpeta NO necesita ser repo git, Guardar solo escribe en
+   * disco (sin commit) y Publicar sube SOLO a S3 (sin push) — o se deshabilita
+   * si no hay S3. El editor nunca ejecuta git en un workspace con useGit=false.
+   */
+  useGit?: boolean
 }
 
 export const workspaceApi = {
@@ -200,11 +213,17 @@ export const workspaceApi = {
     api<{ ok?: boolean; projects?: ProjectListItem[]; error?: string }>(
       `/workspaces/${encodeURIComponent(id)}/projects`,
     ),
-  // Open the native Finder folder picker (macOS). canceled:true on Cancel.
-  pickFolder: () =>
-    api<{ ok: boolean; path?: string; canceled?: boolean; error?: string }>('/fs/pick-folder', {
+  // Open a native folder picker. In the packaged Electron app this goes through
+  // the main process' dialog.showOpenDialog (also grants TCC access to the
+  // chosen folder); in the plain browser (`yarn editor`) it falls back to the
+  // server-side osascript route. canceled:true on Cancel.
+  pickFolder: async (): Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }> => {
+    const el = (globalThis as any).electronAPI
+    if (el?.pickFolder) return el.pickFolder()
+    return api<{ ok: boolean; path?: string; canceled?: boolean; error?: string }>('/fs/pick-folder', {
       method: 'POST',
-    }),
+    })
+  },
   // Clone a GitHub repo to a local absolute path (host git/ssh).
   clone: (gitUrl: string, localPath: string) =>
     api<{ ok: boolean; path?: string; error?: string }>('/workspace/clone', {
@@ -214,6 +233,17 @@ export const workspaceApi = {
   // Is the host's global git user.name/email set? Drives the setup banner.
   gitConfigStatus: () =>
     api<{ configured: boolean; name: string; email: string }>('/git/config-status'),
+}
+
+export interface Diagnostics {
+  git: { configured: boolean; name: string; email: string }
+  claude: { available: boolean }
+  aws: { configured: boolean; source: string | null }
+  bins: { git: string | null; claude: string | null; aws: string | null; node: string }
+}
+export const diagnosticsApi = {
+  // Environment health (git/claude/aws + resolved binary paths). Drives DoctorView.
+  get: () => api<Diagnostics>('/diagnostics'),
 }
 
 export const s3Api = {

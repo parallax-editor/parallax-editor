@@ -5,10 +5,36 @@ Editor local tipo Illustrator para crear y editar sitios parallax. Solo corre en
 ## Comandos
 
 ```bash
-yarn editor     # Arranca en http://localhost:3000 (abre browser)
-yarn dev        # Lo mismo sin abrir browser
-yarn test       # Smoke test
+yarn editor       # Web: arranca en http://localhost:3000 (abre browser)
+yarn dev          # Web: lo mismo sin abrir browser
+yarn test         # Smoke test
+yarn electron:dev # App de escritorio apuntando al dev server :3000 (necesita `yarn editor` aparte)
+yarn dist:dir     # Empaqueta la app SIN dmg (rápido, para validar) → dist-electron/mac-arm64/
+yarn dist:mac     # Genera el .dmg ad-hoc → dist-electron/Parallax Editor-<v>-arm64.dmg
 ```
+
+## Empaquetado de escritorio (Electron, Fase 3/4)
+
+La app envuelve el editor en una ventana nativa. Tres modos: **web** (`yarn editor`),
+**dev-as-app** (`yarn electron:dev` → carga :3000) y **empaquetada** (`.dmg`). En
+modo empaquetado, `electron/main.cjs` arranca el server standalone IN-PROCESS
+(`server/standalone.ts` → `start()`), que sirve el SPA de `dist/` + la API + WS sin Vite.
+
+- **`electron/path-fix.cjs`** — corrige `process.env.PATH` al arrancar (apps abiertas
+  desde Finder NO ven `/opt/homebrew/bin` etc.), si no `claude`/`git` "no se encuentran".
+- **`electron/preload.cjs`** — único puente IPC (contextIsolation ON): diálogo nativo de
+  carpeta, auto-inicio al encender, y abrir-doctor desde el menú. El cliente lo consume
+  vía `src/composables/useElectron.ts`; en web degrada solo (osascript / no-op).
+- **Pantalla doctor** (`src/components/doctor/DoctorHost.vue` + `GET /api/diagnostics`,
+  `server/diagnostics.ts`) — primer arranque / menú "Ayuda → Diagnóstico": valida
+  git/claude/aws + toggle de auto-inicio.
+- **`electron-builder.yml`** — `.dmg` ad-hoc (sin firma; abrir con clic derecho → Abrir).
+  `asar:false` (binarios nativos sueltos = más robusto). Solo copia `dependencies` de
+  producción → `esbuild`/`chokidar`/`ws` viven en dependencies (el server bundleado los
+  requiere en runtime); `parallax-engine` va en devDependencies (se empotra en los bundles).
+- **Contexto de Claude empaquetado**: el contrato del engine se hornea en
+  `server/contract.generated.ts` (`scripts/embed-contract.mjs`, pre-hooks de build/dev) y
+  viaja dentro del `.dmg` — la máquina NO necesita el repo del engine. Ver CLAUDE.md raíz.
 
 ## Arquitectura
 

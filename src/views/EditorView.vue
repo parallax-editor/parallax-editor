@@ -245,6 +245,10 @@ onBeforeUnmount(() => {
 // writes (#56), so this only fires for genuinely external changes.
 useWebSocket((data) => {
   if (data.type !== 'file-changed' || !state.slug || !data.path?.includes(state.slug)) return
+  // Cambio externo en este proyecto (p.ej. Claude escribió site.json o agregó/
+  // quitó una imagen): refresca el documento Y propaga assetsNonce para que los
+  // paneles que listan recursos (autocomplete, Recursos) no queden obsoletos.
+  state.assetsNonce++
   applyExternalChange()
 })
 
@@ -292,7 +296,7 @@ onMounted(loadProject)
           ><span class="grip" /></div>
           <div
             class="bottom-panel"
-            :style="bottomPanel === 'claude' ? { height: sizes.claude.value + 'px' } : undefined"
+            :style="bottomPanel ? { height: sizes.claude.value + 'px' } : undefined"
           >
             <!-- Claude's post-reply reload must be FLUID (applyExternalChange):
                  a full loadProject() here was wiping the selection, preview

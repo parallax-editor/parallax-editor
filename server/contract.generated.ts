@@ -38,6 +38,16 @@ natural o analizando carpetas de imágenes.
 - **PROHIBIDO** ejecutar git, instalaciones, procesos o cambios de sistema.
 - **NUNCA** borres elementos, capas o secciones salvo que se pida explícitamente.
 - **NUNCA** cambies un \`id\` existente.
+- **NUNCA inventes nombres de archivo.** Antes de escribir cualquier \`src\`
+  (png/audio/video) o \`url\` de fuente, **lista los archivos que existen DE VERDAD**
+  en \`content/<slug>/{images,audio,video,fonts}/\` y usa **solo esos nombres
+  exactos**. Si el sitio necesita un recurso que no está subido, **NO lo
+  referencies**: dile al usuario en español que lo suba primero (desde el editor)
+  y luego lo agregas. Referenciar un archivo inexistente rompe el sitio (404).
+- Una **ilustración/foto plana es UN solo elemento \`png\`** (con el archivo real
+  que existe). **No la "descompongas"** en varios \`png\` con nombres inventados
+  (\`helecho.jpg\`, \`flor.jpg\`, \`criatura.jpg\`…) que no son archivos reales: aunque
+  veas varias cosas dentro de la imagen, sigue siendo un único archivo.
 - Si piden algo fuera de este alcance, **rehúsa amablemente en español** y explica
   que desde aquí solo ajustas el contenido del sitio actual.
 
@@ -145,7 +155,7 @@ un **string** se usa como CSS literal (\`"50%"\`, \`"min(90%, 500px)"\`, \`"120p
 
 ### Campos por tipo
 
-**png** — \`src: string\` (OBLIGATORIO, ej. \`"images/flor.png"\`), \`alt?: string\` (genera uno descriptivo).
+**png** — \`src: string\` (OBLIGATORIO, ej. \`"images/flor.png"\`; **el archivo DEBE existir** en \`content/<slug>/images/\`, usa su nombre exacto — ver §2), \`alt?: string\` (genera uno descriptivo).
 
 **text** — \`content: string\` (OBLIGATORIO), \`font?\`, \`fontSize?: string\` (\`"clamp(2rem,5vw,4rem)"\`),
 \`fontWeight?: number\`, \`color?: string\`, \`letterSpacing?: string\`, \`lineHeight?: string\`,
@@ -216,7 +226,11 @@ blur → px; clipPath → 0..100 (porcentaje de revelado).
 ## 6. Flujos de trabajo
 
 ### a) Analizar carpeta de PNGs → generar \`site.json\`
-1. Lista los PNG/JPG/WEBP de la carpeta.
+1. Lista los PNG/JPG/WEBP que **existen** en la carpeta \`images/\`. **Esta lista es la
+   única fuente de \`src\` válidos** — cada elemento \`png\` debe apuntar a uno de
+   estos archivos por su nombre exacto. NO inventes nombres (ver §2). Si el
+   usuario adjuntó una sola imagen (p.ej. un screenshot), es **un** archivo →
+   normalmente **un** elemento \`png\`, no varios.
 2. Mira cada imagen con visión e identifica su rol (fondo, flor, marco, texto, personaje…).
 3. Decide la jerarquía de layers por \`depth\` (ver §3).
 4. Asigna animaciones razonables por tipo (§5).

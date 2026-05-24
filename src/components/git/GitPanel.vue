@@ -139,6 +139,47 @@ async function publish() {
   state.gitLogNonce++
 }
 
+// ─── Diff por commit (modal "ver qué se hizo commit") ──────────────────────────
+const diffOpen = ref(false)
+const diffLoading = ref(false)
+const diffText = ref('')
+const diffError = ref('')
+const diffEntry = ref<GitStatusCommit | null>(null)
+
+async function openDiff(entry: GitStatusCommit) {
+  if (!state.projectType || !entry?.hash) return
+  diffEntry.value = entry
+  diffOpen.value = true
+  diffLoading.value = true
+  diffText.value = ''
+  diffError.value = ''
+  try {
+    const r = await gitApi.show(state.projectType, entry.hash)
+    if (r.ok && r.diff != null) diffText.value = r.diff
+    else diffError.value = r.error || 'No se pudo obtener el diff.'
+  } catch (e: any) {
+    diffError.value = e?.message || 'No se pudo obtener el diff.'
+  } finally {
+    diffLoading.value = false
+  }
+}
+function closeDiff() { diffOpen.value = false }
+
+// Clasifica cada línea del `git show` para colorear el diff (+/-/hunk/meta).
+const diffLines = computed(() =>
+  diffText.value.split('\n').map((text) => {
+    let kind = 'ctx'
+    if (text.startsWith('+++') || text.startsWith('---')) kind = 'meta'
+    else if (text.startsWith('+')) kind = 'add'
+    else if (text.startsWith('-')) kind = 'del'
+    else if (text.startsWith('@@')) kind = 'hunk'
+    else if (
+      /^(diff |index |commit |Author:|Date:|Binary files|new file|deleted file|rename )/.test(text)
+    ) kind = 'meta'
+    return { text, kind }
+  }),
+)
+
 onMounted(loadStatus)
 </script>
 
@@ -194,8 +235,13 @@ onMounted(loadStatus)
         <div
           v-for="entry in pending"
           :key="entry.hash"
-          class="log-entry"
+          class="log-entry clickable"
           data-test="git-pending-entry"
+          role="button"
+          tabindex="0"
+          title="Ver los cambios de este commit"
+          @click="openDiff(entry)"
+          @keydown.enter="openDiff(entry)"
         >
           <span class="log-hash">{{ entry.hash?.slice(0, 7) }}</span>
           <span class="log-msg" :title="entry.message">{{ entry.message }}</span>
@@ -212,8 +258,13 @@ onMounted(loadStatus)
         <div
           v-for="entry in originRecent"
           :key="entry.hash"
-          class="log-entry"
+          class="log-entry clickable"
           data-test="git-origin-entry"
+          role="button"
+          tabindex="0"
+          title="Ver los cambios de este commit"
+          @click="openDiff(entry)"
+          @keydown.enter="openDiff(entry)"
         >
           <span class="log-hash">{{ entry.hash?.slice(0, 7) }}</span>
           <span class="log-msg" :title="entry.message">{{ entry.message }}</span>
@@ -222,14 +273,48 @@ onMounted(loadStatus)
         <div v-if="originRecent.length === 0" class="empty">Sin información del remoto</div>
       </div>
     </div>
+
+    <!-- Modal de diff: qué se cambió en ese commit (git show) -->
+    <div
+      v-if="diffOpen"
+      class="diff-overlay"
+      data-test="git-diff-modal"
+      @click.self="closeDiff"
+    >
+      <div class="diff-modal" role="dialog" aria-modal="true" aria-label="Cambios del commit">
+        <div class="diff-head">
+          <div class="diff-titlewrap">
+            <code class="diff-hash">{{ diffEntry?.hash?.slice(0, 7) }}</code>
+            <span class="diff-msg" :title="diffEntry?.message">{{ diffEntry?.message }}</span>
+          </div>
+          <button class="diff-close" title="Cerrar" aria-label="Cerrar" @click="closeDiff">&times;</button>
+        </div>
+        <div class="diff-body">
+          <div v-if="diffLoading" class="diff-state">Cargando cambios…</div>
+          <div v-else-if="diffError" class="diff-state error">{{ diffError }}</div>
+          <div v-else class="diff-pre" data-test="git-diff-content">
+            <div
+              v-for="(l, i) in diffLines"
+              :key="i"
+              class="diff-line"
+              :class="l.kind"
+            >{{ l.text || ' ' }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.git-panel { padding: 12px; }
-.git-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.git-title { font-weight: 600; font-size: 13px; }
-.git-header-actions { display: flex; align-items: center; gap: 8px; }
+/* El panel ocupa la altura del bottom-panel y hace scroll interno (antes no
+   tenía altura ni overflow → se desbordaba y el scroll no servía). */
+.git-panel { padding: 12px; height: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: hidden; }
+/* Header pegado arriba para que "Publicar" no se vaya con el scroll. */
+.git-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; position: sticky; top: -12px; padding-top: 4px; background: #1e1e1e; z-index: 2; }
+.git-title { font-weight: 600; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Acciones nunca se encogen → el botón "Publicar" no se corta. */
+.git-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .git-close {
   background: none; border: none; color: #999; font-size: 20px; line-height: 1;
   cursor: pointer; padding: 0 4px; border-radius: 4px;
@@ -254,10 +339,66 @@ onMounted(loadStatus)
 .push-result { font-size: 11px; color: #f90; margin-bottom: 8px; white-space: pre-wrap; }
 .git-section { margin-bottom: 10px; }
 .section-title { color: #888; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px; }
-.git-log { max-height: 110px; overflow-y: auto; }
-.log-entry { display: flex; gap: 8px; align-items: center; padding: 3px 0; font-size: 12px; }
+/* Sin scroll interno propio: el panel entero scrollea (un solo scroll, no anidado). */
+.git-log {}
+.log-entry { display: flex; gap: 8px; align-items: center; padding: 3px 0; font-size: 12px; min-width: 0; }
 .log-hash { color: var(--accent-strong); font-family: monospace; flex-shrink: 0; }
-.log-msg { color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+/* min-width:0 → el mensaje largo se recorta con ellipsis en vez de ensanchar
+   la fila (lo que empujaba el header y cortaba el botón "Publicar"). */
+.log-msg { color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .log-date { color: #777; font-size: 11px; flex-shrink: 0; }
+.log-entry.clickable { cursor: pointer; border-radius: 4px; padding-left: 4px; padding-right: 4px; }
+.log-entry.clickable:hover { background: #2a2a2a; }
+.log-entry.clickable:focus-visible { outline: 1px solid var(--accent-strong); }
+
+/* ── Modal de diff por commit ─────────────────────────────────────────────── */
+.diff-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100000;
+  padding: 24px;
+}
+.diff-modal {
+  width: min(900px, 100%);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  background: #1e1e1e;
+  border: 1px solid #3a3a3a;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+.diff-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #2e2e2e;
+}
+.diff-titlewrap { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+.diff-hash { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--accent-strong); flex-shrink: 0; }
+.diff-msg { font-size: 13px; color: #ddd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diff-close { background: none; border: none; color: #999; font-size: 22px; line-height: 1; cursor: pointer; }
+.diff-close:hover { color: #fff; }
+.diff-body { overflow: auto; padding: 0; }
+.diff-state { padding: 24px; color: #9a9a9a; font-size: 13px; }
+.diff-state.error { color: #ff7676; }
+.diff-pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  padding: 8px 0;
+}
+.diff-line { white-space: pre; padding: 0 14px; }
+.diff-line.add { background: rgba(52, 211, 153, 0.12); color: #8ee6b8; }
+.diff-line.del { background: rgba(248, 113, 113, 0.12); color: #f3a0a0; }
+.diff-line.hunk { color: #7fa8d6; }
+.diff-line.meta { color: #8a8a8a; }
+.diff-line.ctx { color: #c8c8c8; }
 .empty { color: #666; font-size: 12px; }
 </style>

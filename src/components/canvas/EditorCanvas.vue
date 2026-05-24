@@ -179,6 +179,10 @@ const previewSite = computed(() => {
     state.projectType,
     state.slug,
     state.deviceMode,
+    // Cache-bust: al borrar/reemplazar un asset (assetsNonce++), las URLs del
+    // preview cambian → no se sirve el bitmap cacheado y la imagen borrada
+    // desaparece de la mesa. También hace de dependencia reactiva del computed.
+    state.assetsNonce,
   )
   if (!copy) return null
   // TASK 2 (#81): never let the engine render its own CustomCursor in the

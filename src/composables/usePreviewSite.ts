@@ -52,10 +52,18 @@ export function buildPreviewSite(
   projectType: string | null,
   slug: string | null,
   deviceMode: DeviceMode,
+  // Cache-bust opcional (p.ej. state.assetsNonce): se añade como `?v=<token>` a
+  // las URLs locales prefijadas. Al borrar/reemplazar un asset el token cambia →
+  // el navegador NO sirve la copia en caché → una imagen borrada deja de
+  // aparecer (antes seguía pintándose el bitmap cacheado) y una reemplazada se
+  // actualiza al instante. No aplica a URLs http(s) absolutas.
+  cacheBust?: string | number,
 ): any {
   if (!site) return null
   const base =
     projectType && slug ? `/content/${projectType}/${slug}/` : null
+  const q =
+    cacheBust != null && String(cacheBust) !== '' ? `?v=${cacheBust}` : ''
   const copy: any = JSON.parse(JSON.stringify(site))
   copy.sections = JSON.parse(
     JSON.stringify(resolveSections(site as any, deviceMode)),
@@ -64,13 +72,13 @@ export function buildPreviewSite(
   delete copy.editorLocks
   if (!base) return copy
   if (copy.meta && isRelativeAsset(copy.meta.ogImage))
-    copy.meta.ogImage = base + copy.meta.ogImage
+    copy.meta.ogImage = base + copy.meta.ogImage + q
   if (copy.meta && isRelativeAsset(copy.meta.favicon))
-    copy.meta.favicon = base + copy.meta.favicon
+    copy.meta.favicon = base + copy.meta.favicon + q
   if (copy.meta && Array.isArray(copy.meta.fonts)) {
     for (const f of copy.meta.fonts) {
       if (f && f.source === 'custom' && isRelativeAsset(f.url))
-        f.url = base + f.url
+        f.url = base + f.url + q
     }
   }
   for (const section of copy.sections || []) {
@@ -80,10 +88,10 @@ export function buildPreviewSite(
           (el.type === 'png' || el.type === 'audio') &&
           isRelativeAsset(el.src)
         )
-          el.src = base + el.src
+          el.src = base + el.src + q
         if (el.type === 'video') {
-          if (isRelativeAsset(el.src)) el.src = base + el.src
-          if (isRelativeAsset(el.poster)) el.poster = base + el.poster
+          if (isRelativeAsset(el.src)) el.src = base + el.src + q
+          if (isRelativeAsset(el.poster)) el.poster = base + el.poster + q
         }
       }
     }

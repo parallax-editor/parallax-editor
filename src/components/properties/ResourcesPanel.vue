@@ -113,7 +113,9 @@ async function reload() {
 
 onMounted(reload)
 // Re-fetch if the active project changes while the panel is mounted.
-watch(() => [state.projectType, state.slug], reload)
+// assetsNonce: refresca también ante cambios de OTROS paneles o del watcher
+// (cambio externo / Claude), no solo al cambiar de proyecto.
+watch(() => [state.projectType, state.slug, state.assetsNonce], reload)
 
 defineExpose({ reload })
 
@@ -171,7 +173,9 @@ async function uploadOne(kind: ProjectAssetKind, file: File) {
     // TASK #102: confirm atomic commit (✓ Guardado y versionado / ⚠ sin
     // versionar). Fires for both add and delete; auto-dismisses in ~1.5s.
     showCommitToast(r.commit)
-    await reload()
+    // Bump compartido → refresca este panel (vía watch) y los autocompletes
+    // de PropertiesPanel / ComponentPropsEditor sin reentrar al proyecto.
+    state.assetsNonce++
   } catch (e: any) {
     groupError.value = { ...groupError.value, [gk]: e?.message || 'Error al subir el archivo' }
   } finally {
@@ -202,7 +206,9 @@ async function onDelete(kind: ProjectAssetKind, file: ProjectAsset) {
     if (modalFile.value && modalFile.value.name === file.name) closeModal()
     // TASK #102: same toast as upload — confirms the delete was committed.
     showCommitToast(r.commit)
-    await reload()
+    // Bump compartido → refresca este panel (vía watch) y los autocompletes
+    // de PropertiesPanel / ComponentPropsEditor sin reentrar al proyecto.
+    state.assetsNonce++
   } catch (e: any) {
     groupError.value = { ...groupError.value, [`add-${kind}`]: e?.message || 'Error al eliminar' }
   } finally {

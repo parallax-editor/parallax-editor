@@ -201,7 +201,9 @@ async function refreshImages() {
   }
 }
 onMounted(refreshImages)
-watch(() => [state.projectType, state.slug], refreshImages)
+// assetsNonce: refresca cuando cualquier panel sube/borra un asset o el
+// watcher ve un cambio externo (sin reentrar al proyecto).
+watch(() => [state.projectType, state.slug, state.assetsNonce], refreshImages)
 const imageOptions = computed<ComboOption[]>(() =>
   projectImages.value.map((a) => ({
     value: a.src,
@@ -239,7 +241,7 @@ async function onImagePick(key: string, e: Event) {
       return
     }
     setProp(key, r.src)
-    refreshImages()
+    state.assetsNonce++
   } catch (err: any) {
     uploadError.value = err?.message || 'Error al subir la imagen'
   } finally {

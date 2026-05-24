@@ -10,15 +10,26 @@
 //                           y carga http://localhost:<port>. Sirve el SPA ya
 //                           compilado de dist/ + la API/WS sin Vite.
 //
-// Seguridad: contextIsolation ON, nodeIntegration OFF, sin preload (no hace
-// falta IPC — el selector de carpeta usa osascript host-side en server/fs.ts).
+// Seguridad: contextIsolation ON, nodeIntegration OFF, preload mínimo que
+// expone SOLO diálogo de carpeta / auto-inicio / abrir-doctor (ver preload.cjs).
+//
+// FASE 3: además (a) corregimos el PATH (apps lanzadas desde Finder no ven
+// /opt/homebrew/bin etc., y `claude`/`git` "no se encontrarían"), y (b) usamos
+// el diálogo NATIVO de carpeta vía IPC (mejor que osascript y concede permiso
+// TCC sobre la carpeta elegida).
 
-const { app, BrowserWindow, Menu, dialog, shell } = require('electron')
+const { app, BrowserWindow, Menu, dialog, shell, ipcMain } = require('electron')
 const path = require('path')
 const fs = require('fs')
+const { fixPath } = require('./path-fix.cjs')
+
+// CRÍTICO: corregir el PATH ANTES de cualquier spawn (el server in-process
+// lanza `claude`/`git`). Idempotente; no-op nocivo en dev.
+fixPath()
 
 const IS_DEV = process.env.ELECTRON_DEV === '1'
 const DEV_URL = 'http://localhost:3000'
+const PRELOAD = path.join(__dirname, 'preload.cjs')
 
 /** Referencias vivas para cierre limpio. */
 let mainWindow = null
@@ -78,7 +89,7 @@ function createWindow(loadTarget) {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      // sin preload: no necesitamos IPC por ahora.
+      preload: PRELOAD,
     },
   })
 
@@ -86,9 +97,35 @@ function createWindow(loadTarget) {
     mainWindow.show()
   })
 
-  // Enlaces externos (target=_blank o window.open) → navegador del sistema, no
-  // ventanas nuevas de Electron.
+  // window.open / target=_blank:
+  //  • URL del MISMO origen (http://localhost:<port>, p.ej. la "Vista en vivo"
+  //    que hace window.open('/live?…')) → abrir como VENTANA Electron en la
+  //    misma sesión. Crítico: comparte localStorage + BroadcastChannel con la
+  //    ventana del editor, que es como se le pasa el documento a la preview
+  //    (handoff same-origin). Si se abriera en el navegador del sistema, sería
+  //    otro origen y la preview saldría vacía — sobre todo empaquetado.
+  //  • Enlaces EXTERNOS (otros dominios) → navegador del sistema.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const u = new URL(url)
+      if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: {
+            width: 1280,
+            height: 800,
+            backgroundColor: '#1e1e1e',
+            webPreferences: {
+              contextIsolation: true,
+              nodeIntegration: false,
+              preload: PRELOAD,
+            },
+          },
+        }
+      }
+    } catch {
+      /* url no parseable → tratar como externo */
+    }
     shell.openExternal(url)
     return { action: 'deny' }
   })
@@ -168,9 +205,25 @@ function buildMenu() {
     ],
   }
 
+  // "Ayuda → Diagnóstico" abre la pantalla doctor (Fase 4) en el renderer.
+  const helpMenu = {
+    label: 'Ayuda',
+    role: 'help',
+    submenu: [
+      {
+        label: 'Diagnóstico…',
+        click: () => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('open-doctor')
+          }
+        },
+      },
+    ],
+  }
+
   const template = []
   if (isMac) template.push(appMenu)
-  template.push(editMenu, viewMenu)
+  template.push(editMenu, viewMenu, helpMenu)
 
   // En no-mac dejamos un menú mínimo igualmente (la app es macOS-first, pero
   // que no quede sin "Salir").
@@ -200,8 +253,43 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
+// ─── IPC nativo (preload → main) ─────────────────────────────────────────────
+function registerIpc() {
+  // Diálogo NATIVO de carpeta. Concede permiso TCC sobre la carpeta elegida
+  // (clave para clonar/abrir workspaces en ~/Documents sin error de permisos).
+  ipcMain.handle('dialog:pick-folder', async () => {
+    const res = await dialog.showOpenDialog(mainWindow ?? undefined, {
+      title: 'Elegir carpeta',
+      buttonLabel: 'Elegir',
+      properties: ['openDirectory', 'createDirectory'],
+    })
+    if (res.canceled || !res.filePaths || res.filePaths.length === 0) {
+      return { ok: false, canceled: true }
+    }
+    return { ok: true, path: res.filePaths[0] }
+  })
+
+  // Auto-inicio al encender la Mac (mismo setting que el checkbox del menú).
+  ipcMain.handle('login-item:get', () => {
+    try {
+      return { ok: true, enabled: app.getLoginItemSettings().openAtLogin }
+    } catch {
+      return { ok: false, enabled: false }
+    }
+  })
+  ipcMain.handle('login-item:set', (_e, enabled) => {
+    try {
+      app.setLoginItemSettings({ openAtLogin: !!enabled })
+      return { ok: true, enabled: app.getLoginItemSettings().openAtLogin }
+    } catch (err) {
+      return { ok: false, error: String((err && err.message) || err) }
+    }
+  })
+}
+
 // ─── Ciclo de vida ─────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
+  registerIpc()
   buildMenu()
 
   try {

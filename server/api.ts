@@ -3,10 +3,11 @@ import type { Server as HttpServer } from 'http'
 import { createReadStream, existsSync } from 'fs'
 import { resolve, extname } from 'path'
 import { listProjects, readProject, writeProject, createProject, duplicateProject, getRepoPath, getContentRelPath, getAssetPath, saveProjectAsset, assetKindFromMime, listProjectAssets, deleteProjectAsset } from './projects'
-import { gitLog, gitCommit, gitPush, gitPendingCommits, gitOriginRecent, gitAheadCount, gitConfigStatus, gitClone } from './git'
+import { gitLog, gitShow, gitCommit, gitPush, gitPendingCommits, gitOriginRecent, gitAheadCount, gitConfigStatus, gitClone } from './git'
 import { runClaude, cancelClaude, isClaudeAvailable } from './claude'
 import { setupWatcher, addWatchPath } from './watcher'
 import { loadComponentRegistry, formatComponentCatalogForPrompt } from './components'
+import { getDiagnostics } from './diagnostics'
 import { activateWorkspace, resolveWorkspace, defaultWorkspaces } from './workspaces'
 import { pickFolder } from './fs'
 import { listBuckets, createBucket, readDeploySidecar } from './s3'
@@ -161,6 +162,13 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
         return json(res, gitConfigStatus())
       }
 
+      // ─── Diagnóstico de entorno (Fase 4 — pantalla doctor) ───
+      // GET /api/diagnostics → estado de git / claude / aws + dónde resolvió
+      // cada binario. Lo consume DoctorView (primer arranque / menú Ayuda).
+      if (url === '/api/diagnostics' && method === 'GET') {
+        return json(res, getDiagnostics())
+      }
+
       // ─── S3 buckets (Fase 3) ─────────────────────────
       if (url === '/api/s3/buckets' && method === 'GET') {
         return json(res, await listBuckets())
@@ -171,7 +179,11 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
       }
 
       // ─── Asset serving ───────────────────────────────
-      const assetMatch = url.match(/^\/content\/([^/]+)\/([^/]+)\/(.+)$/)
+      // El query string (p.ej. el cache-bust `?v=N` que el preview añade para
+      // refrescar imágenes borradas/reemplazadas) NO es parte de la ruta del
+      // archivo — quítalo antes de resolver el asset, si no `foo.jpg?v=0` se
+      // busca como nombre literal y da 404.
+      const assetMatch = url.split('?')[0].match(/^\/content\/([^/]+)\/([^/]+)\/(.+)$/)
       if (assetMatch && method === 'GET') {
         const [, type, slug, assetPath] = assetMatch
         const filePath = getAssetPath(type, slug, assetPath)
@@ -359,6 +371,13 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
       const glmatch = url.match(/^\/api\/git\/([^/]+)\/log$/)
       if (glmatch && method === 'GET') {
         return json(res, gitLog(getRepoPath(glmatch[1])))
+      }
+
+      // Diff completo de un commit (modal "ver qué se hizo commit"). El hash se
+      // valida en el patrón (hex) y de nuevo en gitShow.
+      const gshow = url.match(/^\/api\/git\/([^/]+)\/show\/([0-9a-fA-F]{4,40})$/)
+      if (gshow && method === 'GET') {
+        return json(res, gitShow(getRepoPath(gshow[1]), gshow[2]))
       }
 
       // Publicar status: how many commits are pending (ahead of upstream), the

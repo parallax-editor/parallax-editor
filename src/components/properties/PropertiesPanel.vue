@@ -639,7 +639,8 @@ async function uploadAssetFile(file: File, kind: UploadKind) {
     // canvas/preview prefixes it with /content/<type>/<slug>/.
     setAtPath(`${state.selectedPath}.src`, r.src)
     if (r.warning) uploadWarning.value = r.warning
-    refreshProjectAssets()
+    // Refresca la lista de recursos de ESTE y los demás paneles (vía el watch).
+    state.assetsNonce++
   } catch (e: any) {
     uploadError.value = e?.message || 'Error al subir el archivo'
   } finally {
@@ -722,7 +723,10 @@ async function refreshProjectAssets() {
   }
 }
 onMounted(refreshProjectAssets)
-watch(() => [state.projectType, state.slug], refreshProjectAssets)
+// assetsNonce: refresca también cuando otro panel sube/borra un asset o el
+// file-watcher ve un cambio externo (p.ej. Claude agregó una imagen) — sin
+// tener que salir y reentrar al proyecto.
+watch(() => [state.projectType, state.slug, state.assetsNonce], refreshProjectAssets)
 
 // Image suggestions: each carries a thumbnail (served URL) so the dropdown
 // previews the picture, plus the file size as a hint.
@@ -889,7 +893,7 @@ async function uploadMetaAsset(
     // custom font. setAtPath (via the apply callback) records undo + dirty;
     // saved JSON stays relative (consumers prefix it for the real sites).
     apply(r.src)
-    refreshProjectAssets()
+    state.assetsNonce++
     if (r.warning) {
       metaUploadWarning.value = { ...metaUploadWarning.value, [id]: r.warning }
     }

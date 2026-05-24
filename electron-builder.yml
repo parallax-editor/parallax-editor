@@ -1,0 +1,58 @@
+# ─── Empaquetado de la app de escritorio (FASE 3) ────────────────────────────
+#
+# Genera un .dmg ad-hoc (SIN firma ni notarización: no requiere cuenta de Apple
+# Developer). Daniela tendrá que abrirlo la primera vez con clic derecho → Abrir
+# (Gatekeeper). Es una herramienta interna, nunca se distribuye públicamente.
+#
+# asar: false — empaqueta los archivos sueltos (sin el archivo único app.asar).
+# Para una app interna esto es MÁS robusto: esbuild y fsevents traen binarios
+# nativos que dentro de un asar requerirían "asarUnpack" y suelen dar problemas;
+# sueltos simplemente funcionan. Coste: arranque un pelín más lento. Aceptable.
+#
+# node_modules: electron-builder copia SOLO las dependencies de producción (poda
+# devDependencies). Por eso esbuild/chokidar/ws viven en "dependencies" (el
+# server bundleado los requiere en runtime). parallax-engine va en
+# devDependencies a propósito: el editor lo empotra en dist/ y dist-server/, no
+# lo necesita en runtime, y así electron-builder NO copia su symlink al paquete.
+
+appId: com.danielareyes.parallax-editor
+productName: Parallax Editor
+copyright: © Daniela Reyes
+
+asar: false
+
+directories:
+  output: dist-electron
+
+# Solo negaciones → se combinan con los includes por defecto (app files +
+# dependencies de producción). Quitamos fuente/tests/config que no se usan en
+# runtime, y el repo del engine (ya empotrado en los bundles).
+files:
+  - "!src/**/*"
+  - "!server/**/*"
+  - "!tests/**/*"
+  - "!scripts/**/*"
+  - "!hooks/**/*"
+  - "!**/*.map"
+  - "!*.md"
+  - "!bootstrap.sh"
+  - "!index.html"
+  - "!electron-builder.yml"
+  - "!vite.config.*"
+  - "!tsconfig*.json"
+
+mac:
+  target:
+    - dmg
+  category: public.app-category.developer-tools
+  # Firma ad-hoc (sin identidad de Apple Developer). App interna.
+  identity: null
+  # Descripciones de uso (TCC): macOS las muestra al pedir acceso a estas
+  # carpetas protegidas cuando el usuario elige/clona un workspace ahí.
+  extendInfo:
+    NSDocumentsFolderUsageDescription: "Parallax Editor necesita acceder a las carpetas que elijas para abrir y guardar tus sitios."
+    NSDesktopFolderUsageDescription: "Parallax Editor necesita acceder a las carpetas que elijas para abrir y guardar tus sitios."
+    NSDownloadsFolderUsageDescription: "Parallax Editor necesita acceder a las carpetas que elijas para abrir y guardar tus sitios."
+
+dmg:
+  title: Parallax Editor

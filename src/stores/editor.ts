@@ -150,6 +150,14 @@ export interface EditorState {
   // Bumped after every successful save/commit so an open GitPanel can refresh
   // its log reactively (history was stale after autosave/manual save — GAP7).
   gitLogNonce: number
+  // Bumped whenever the project's ASSETS change (any panel uploads/deletes an
+  // asset, or the file-watcher sees an external change). Every panel that LISTS
+  // resources (PropertiesPanel autocomplete, ComponentPropsEditor image picker,
+  // ResourcesPanel) watches this so the lists/thumbnails never go stale mid-
+  // session — previously they only refreshed on mount, so a newly uploaded (or
+  // Claude-added) image didn't appear until you exited and re-entered the
+  // project. Single shared signal = all asset consumers stay in sync.
+  assetsNonce: number
 }
 
 export const state = reactive<EditorState>({
@@ -186,6 +194,7 @@ export const state = reactive<EditorState>({
   componentRegistry: {},
   componentRegistryError: null,
   gitLogNonce: 0,
+  assetsNonce: 0,
 })
 
 /**
