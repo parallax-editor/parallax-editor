@@ -516,9 +516,14 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
         // the doc dirty so the "Guardar" button enables — Daniela reviews and
         // decides whether to keep them (manual Guardar → commit). See the
         // file-changed handler in EditorView.vue.
+        // cwd autoritativo: la carpeta del workspace (`type`), no lo que mande el
+        // cliente — así Claude SIEMPRE corre en el repo correcto (un workspace
+        // nuevo ya no hereda el repo del portafolio). Fallback al cwd del cliente
+        // y luego al del proceso.
+        const repoCwd = (type && getRepoPath(String(type))) || cwd || process.cwd()
         return json(res, await runClaude(
           prompt,
-          cwd || process.cwd(),
+          repoCwd,
           runId ? String(runId) : undefined,
           slug ? String(slug) : undefined,
           images,
