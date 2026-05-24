@@ -1,6 +1,6 @@
 {
   "name": "parallax-editor",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Editor local tipo Illustrator para sitios parallax de Daniela Reyes.",
   "private": true,
   "type": "module",
