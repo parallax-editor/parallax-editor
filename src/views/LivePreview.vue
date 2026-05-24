@@ -25,7 +25,7 @@
 // active-view resolution from the shared core are applied.
 
 import { ref, shallowRef, computed, onMounted, onBeforeUnmount, h, type Component } from 'vue'
-import { ParallaxSite, FormBlock } from 'parallax-engine'
+import { ParallaxSite, FormBlock, WorldTransition } from 'parallax-engine'
 import type { Site } from 'parallax-engine/schema'
 // Reuse the SAME custom-component host the editor canvas uses, so the registry
 // is identical (FormBlock + every parallax.config custom component, e.g.
@@ -45,7 +45,10 @@ import {
 // como prefijo de assets (/content/<id>/…) y para la key del snapshot/canal.
 const params = new URLSearchParams(window.location.search)
 const projectType = params.get('type') || null
-const slug = params.get('slug')
+// originalSlug = el sitio que se edita (recibe snapshot/canal del editor).
+// currentSlug = el que se VE ahora; cambia al navegar in-engine (link.site).
+const originalSlug = params.get('slug')
+const currentSlug = ref(params.get('slug'))
 const validType = !!projectType
 
 // The raw canonical doc + device handed over from the editor tab. Re-derived
@@ -69,6 +72,9 @@ interface LivePayload {
 
 function applyPayload(p: unknown) {
   if (!p || typeof p !== 'object') return
+  // El snapshot/canal alimenta el sitio que se EDITA. Si navegamos a un hermano
+  // (currentSlug ≠ originalSlug), ignoramos los updates para no pisar lo que se ve.
+  if (currentSlug.value !== originalSlug) return
   const payload = p as LivePayload
   if (!payload.site || typeof payload.site !== 'object') return
   rawSite.value = payload.site
@@ -77,6 +83,39 @@ function applyPayload(p: unknown) {
   }
   errorMsg.value = null
   nonce.value++
+}
+
+// ── Navegación in-engine entre sitios (link.site) en la Vista en vivo ──────────
+// Al click en un elemento con link.site, el engine emite `navigate(slug)`. Aquí
+// traemos el site.json GUARDADO de ese slug (del propio /content del editor) y
+// transicionamos en vivo con WorldTransition. (En el canvas del editor esto NO
+// pasa: ahí va mode="dev" y ElementLink no navega.)
+const prevPreview = shallowRef<any | null>(null)
+const transitioning = ref(false)
+const txCfg = ref<{ type: any; duration: number }>({ type: 'fade', duration: 600 })
+
+async function go(targetSlug: string) {
+  if (!validType || !targetSlug || targetSlug === currentSlug.value) return
+  try {
+    const res = await fetch(`/content/${projectType}/${encodeURIComponent(targetSlug)}/site.json`)
+    if (!res.ok) return
+    const raw = await res.json()
+    if (!raw || typeof raw !== 'object') return
+    const t = raw?.meta?.transition
+    txCfg.value = { type: t?.in || t?.out || 'fade', duration: t?.duration || 600 }
+    prevPreview.value = previewSite.value // snapshot del sitio actual (ya construido)
+    rawSite.value = raw
+    currentSlug.value = targetSlug
+    nonce.value++
+    transitioning.value = !!prevPreview.value
+    document.title = `Vista en vivo · ${targetSlug}`
+  } catch {
+    /* no-op: una navegación fallida no rompe la vista */
+  }
+}
+function onTransitionComplete() {
+  transitioning.value = false
+  prevPreview.value = null
 }
 
 // The engine-ready render copy: shared asset-prefix + active-view resolution,
@@ -88,7 +127,7 @@ const previewSite = computed(() => {
     return buildPreviewSite(
       rawSite.value,
       validType ? projectType : null,
-      slug,
+      currentSlug.value,
       deviceMode.value,
     )
   } catch (e: any) {
@@ -137,8 +176,8 @@ const components = computed<Record<string, Component>>(() => {
 // ── Tab→tab handoff wiring ────────────────────────────────────────────────
 let channel: BroadcastChannel | null = null
 function onStorage(e: StorageEvent) {
-  if (!validType || !slug) return
-  if (e.key !== liveStorageKey(projectType as string, slug)) return
+  if (!validType || !originalSlug) return
+  if (e.key !== liveStorageKey(projectType as string, originalSlug)) return
   if (!e.newValue) return
   try {
     applyPayload(JSON.parse(e.newValue))
@@ -148,13 +187,13 @@ function onStorage(e: StorageEvent) {
 }
 
 onMounted(() => {
-  document.title = slug ? `Vista en vivo · ${slug}` : 'Vista en vivo'
-  if (!validType || !slug) {
+  document.title = originalSlug ? `Vista en vivo · ${originalSlug}` : 'Vista en vivo'
+  if (!validType || !originalSlug) {
     errorMsg.value =
       'Falta el proyecto. Abre "Vista en vivo" desde el editor con un proyecto abierto.'
     return
   }
-  const sKey = liveStorageKey(projectType as string, slug)
+  const sKey = liveStorageKey(projectType as string, originalSlug)
   // 1. First paint from the snapshot the editor tab stashed pre-open.
   try {
     const raw = localStorage.getItem(sKey)
@@ -166,7 +205,7 @@ onMounted(() => {
   if (typeof BroadcastChannel !== 'undefined') {
     try {
       channel = new BroadcastChannel(
-        liveChannelName(projectType as string, slug),
+        liveChannelName(projectType as string, originalSlug),
       )
       channel.onmessage = (ev) => applyPayload(ev.data)
     } catch {
@@ -196,15 +235,34 @@ onBeforeUnmount(() => {
 <template>
   <!-- Full real viewport, NO editor chrome. -->
   <div class="live-root" data-test="live-root">
+    <!-- Transición in-engine al navegar entre sitios (link.site). -->
+    <WorldTransition
+      v-if="transitioning && previewSite"
+      :from="prevPreview"
+      :to="previewSite"
+      :transition="txCfg"
+      @complete="onTransitionComplete"
+    >
+      <template #from>
+        <ParallaxSite v-if="prevPreview" :site="prevPreview" :components="components" mode="prod" />
+      </template>
+      <template #to>
+        <ParallaxSite :key="nonce" :site="previewSite" :components="components" mode="prod" @navigate="go" />
+      </template>
+    </WorldTransition>
+
     <ParallaxSite
-      v-if="previewSite"
+      v-else-if="previewSite"
       :key="nonce"
       :site="previewSite"
       :components="components"
       mode="prod"
+      @navigate="go"
     />
+
     <div v-else class="live-waiting" data-test="live-waiting">
-      {{ errorMsg || 'Cargando…' }}
+      <span v-if="!errorMsg" class="live-spinner" aria-label="Cargando" role="status" />
+      <p v-if="errorMsg" class="live-waiting-msg">{{ errorMsg }}</p>
     </div>
   </div>
 </template>
@@ -231,8 +289,10 @@ body,
   position: fixed;
   inset: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 14px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: #666;
   font-size: 15px;
@@ -240,4 +300,14 @@ body,
   text-align: center;
   padding: 24px;
 }
+.live-spinner {
+  width: 38px;
+  height: 38px;
+  border: 3px solid rgba(0, 0, 0, 0.12);
+  border-top-color: #444;
+  border-radius: 50%;
+  animation: live-spin 0.8s linear infinite;
+}
+@keyframes live-spin { to { transform: rotate(360deg); } }
+.live-waiting-msg { margin: 0; max-width: 28rem; }
 </style>

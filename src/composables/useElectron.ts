@@ -12,6 +12,7 @@ interface ElectronBridge {
   getAutoStart: () => Promise<{ ok: boolean; enabled: boolean }>
   setAutoStart: (enabled: boolean) => Promise<{ ok: boolean; enabled: boolean; error?: string }>
   onOpenDoctor: (cb: () => void) => () => void
+  onMenuAction: (cb: (action: string) => void) => () => void
 }
 
 function bridge(): ElectronBridge | null {
@@ -48,6 +49,11 @@ export function useElectron() {
     onOpenDoctor(cb: () => void): () => void {
       if (!el) return () => {}
       return el.onOpenDoctor(cb)
+    },
+    /** Suscribe a las acciones del menú nativo (id de acción). Devuelve disposer. */
+    onMenuAction(cb: (action: string) => void): () => void {
+      if (!el) return () => {}
+      return el.onMenuAction(cb)
     },
   }
 }

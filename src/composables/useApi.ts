@@ -167,6 +167,9 @@ export const gitApi = {
     api(`/git/${type}/commit`, { method: 'POST', body: JSON.stringify({ message, slug }) }),
   push: (type: string) =>
     api(`/git/${type}/push`, { method: 'POST' }),
+  // Traer cambios del remoto (menú Git → "Traer cambios").
+  pull: (type: string) =>
+    api<{ ok: boolean; result?: string; error?: string }>(`/git/${type}/pull`, { method: 'POST' }),
 }
 
 // ─── Workspaces (Fase 2) + S3 (Fase 3) ──────────────────────────────────────

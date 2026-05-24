@@ -5,9 +5,14 @@ import { projectsApi, gitApi } from '../composables/useApi'
 import { useShortcuts } from '../composables/useShortcuts'
 import { useWebSocket } from '../composables/useWebSocket'
 import { usePanelResize } from '../composables/usePanelResize'
-import { useLiveBroadcast } from '../composables/useLivePreview'
-import { state, loadSite, isDirty, fetchComponentRegistry, selectedNodes } from '../stores/editor'
-import { wsState, loadWorkspaces, selectWorkspace } from '../stores/workspaces'
+import { useLiveBroadcast, openLivePreview } from '../composables/useLivePreview'
+import {
+  state, loadSite, isDirty, fetchComponentRegistry, selectedNodes,
+  duplicateSelected, deleteSelected, addSection, addElement, resolveAddElementLayerPath,
+  toggleLock, toggleVisibility, selectGlobal,
+} from '../stores/editor'
+import { wsState, loadWorkspaces, selectWorkspace, activeWorkspace } from '../stores/workspaces'
+import { onMenu } from '../composables/useMenu'
 import { validateSite, assignIds } from 'parallax-engine/schema'
 import { resolveSections } from 'parallax-engine'
 import { buildCommitMessage } from '../composables/commitMessage'
@@ -239,8 +244,54 @@ watch(
   { deep: false },
 )
 
+// ─── Acciones del menú nativo (las del editor) ─────────────────────────────────
+// App.vue recibe el IPC y lo reemite por el bus; aquí manejamos SOLO las acciones
+// de edición. Las que no apliquen se ignoran.
+async function handleMenu(action: string) {
+  switch (action) {
+    case 'file.save': save(); break
+    case 'file.import': selectGlobal('resources'); break
+    case 'edit.duplicate': duplicateSelected(); break
+    case 'edit.delete': deleteSelected(); break
+    case 'element.add': { const lp = resolveAddElementLayerPath(); if (lp) addElement(lp, 'text'); break }
+    case 'element.addSection': addSection(); break
+    case 'element.toggleLock': if (state.selectedPath) toggleLock(state.selectedPath); break
+    case 'element.toggleVisible': if (state.selectedPath) toggleVisibility(state.selectedPath); break
+    case 'deploy.publish':
+    case 'git.history':
+    case 'git.status': bottomPanel.value = 'git'; break
+    case 'deploy.preview': openLivePreview(); break
+    case 'deploy.openSite': {
+      const b = activeWorkspace.value?.s3?.bucket
+      if (b) window.open(`http://${b}.s3-website-us-east-1.amazonaws.com`, '_blank')
+      break
+    }
+    case 'git.pull': {
+      if (!state.projectType) break
+      const r = await gitApi.pull(state.projectType)
+      if (r?.ok) {
+        state.gitLogNonce++
+        applyExternalChange()
+        await dialog.alert({ title: 'Cambios traídos', message: r.result || 'Repositorio actualizado.' })
+      } else {
+        await dialog.alert({ title: 'No se pudo traer cambios', message: r?.error || 'Error de git.' })
+      }
+      break
+    }
+    case 'view.togglePreview': state.previewMode = state.previewMode === 'edit' ? 'preview' : 'edit'; break
+    case 'view.toggleGrid': state.gridVisible = !state.gridVisible; break
+    case 'window.claude': bottomPanel.value = bottomPanel.value === 'claude' ? null : 'claude'; break
+    case 'window.resources': selectGlobal('resources'); break
+    case 'window.site': selectGlobal('site'); break
+    case 'window.theme': selectGlobal('theme'); break
+    // window.layers / window.properties: paneles always-on → no-op.
+  }
+}
+const disposeMenu = onMenu((a) => { void handleMenu(a) })
+
 onBeforeUnmount(() => {
   if (autosaveTimer) clearTimeout(autosaveTimer)
+  disposeMenu()
 })
 
 // File watcher: an external change (a finished `claude -p` run from the chat,

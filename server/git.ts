@@ -140,6 +140,16 @@ export function gitPush(cwd: string): string {
   return git('push', cwd)
 }
 
+// Traer cambios del remoto (menú Git → "Traer cambios"). --ff-only para no crear
+// merges sorpresa: si diverge, falla con un mensaje claro en vez de mezclar.
+export function gitPull(cwd: string): { ok: boolean; result?: string; error?: string } {
+  try {
+    return { ok: true, result: git('pull --ff-only', cwd) }
+  } catch (e: any) {
+    return { ok: false, error: (e && e.message) || 'No se pudo traer cambios (pull).' }
+  }
+}
+
 // ── Git global config status (Fase 2) ────────────────────────────────────────
 // The editor clones/commits/pushes on Daniela's behalf using the host's git.
 // If `git config --global user.name`/`user.email` are unset, commits will fail

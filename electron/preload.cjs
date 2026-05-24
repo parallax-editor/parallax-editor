@@ -27,4 +27,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Devolvemos un disposer por si el componente quiere desuscribirse.
     return () => ipcRenderer.removeListener('open-doctor', handler)
   },
+  // Acciones del menú nativo (Archivo/Edición/Elemento/Git/Publicar/Ver/…). El
+  // main manda un id de acción ('file.save', 'git.pull', …) y el renderer lo
+  // despacha a la función correspondiente (ver src/composables/useMenu.ts).
+  onMenuAction: (cb) => {
+    const handler = (_e, action) => cb(action)
+    ipcRenderer.on('menu:action', handler)
+    return () => ipcRenderer.removeListener('menu:action', handler)
+  },
 })

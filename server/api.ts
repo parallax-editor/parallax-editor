@@ -3,7 +3,7 @@ import type { Server as HttpServer } from 'http'
 import { createReadStream, existsSync } from 'fs'
 import { resolve, extname } from 'path'
 import { listProjects, readProject, writeProject, createProject, duplicateProject, getRepoPath, getContentRelPath, getAssetPath, saveProjectAsset, assetKindFromMime, listProjectAssets, deleteProjectAsset } from './projects'
-import { gitLog, gitShow, gitCommit, gitPush, gitPendingCommits, gitOriginRecent, gitAheadCount, gitConfigStatus, gitClone } from './git'
+import { gitLog, gitShow, gitCommit, gitPush, gitPull, gitPendingCommits, gitOriginRecent, gitAheadCount, gitConfigStatus, gitClone } from './git'
 import { runClaude, cancelClaude, isClaudeAvailable } from './claude'
 import { setupWatcher, addWatchPath } from './watcher'
 import { loadComponentRegistry, formatComponentCatalogForPrompt } from './components'
@@ -432,6 +432,16 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
       const gpmatch = url.match(/^\/api\/git\/([^/]+)\/push$/)
       if (gpmatch && method === 'POST') {
         return json(res, { ok: true, result: gitPush(getRepoPath(gpmatch[1])) })
+      }
+
+      // Traer cambios del remoto (menú Git → "Traer cambios"). No-op si el
+      // workspace no usa git.
+      const gpull = url.match(/^\/api\/git\/([^/]+)\/pull$/)
+      if (gpull && method === 'POST') {
+        if (resolveWorkspace(gpull[1])?.useGit === false) {
+          return json(res, { ok: false, error: 'Este workspace no usa git.' })
+        }
+        return json(res, gitPull(getRepoPath(gpull[1])))
       }
 
       // ─── Publicar (Fase 3): push + S3 sync + deploy sidecar ───────────

@@ -141,44 +141,60 @@ function createWindow(loadTarget) {
   }
 }
 
-// ─── Menú nativo ──────────────────────────────────────────────────────────────
+// ─── Menú nativo (estilo Illustrator) ──────────────────────────────────────────
+// Los ítems con `role` usan acciones nativas de Electron (deshacer/zoom/etc.).
+// Los ítems de la app mandan un id por IPC (`menu:action`) que el renderer
+// despacha (ver src/composables/useMenu.ts + App.vue/EditorView.vue).
+function sendMenu(action) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('menu:action', action)
+}
+
 function buildMenu() {
   const isMac = process.platform === 'darwin'
-  const loginEnabled = (() => {
-    try {
-      return app.getLoginItemSettings().openAtLogin
-    } catch {
-      return false
-    }
-  })()
+  // Ítem que dispara una acción de app por IPC.
+  const mi = (label, action, accelerator) => ({ label, accelerator, click: () => sendMenu(action) })
+  // Checkbox "Iniciar al encender" (fresco cada vez para no compartir objeto).
+  const makeLoginItem = () => ({
+    label: 'Iniciar al encender la Mac',
+    type: 'checkbox',
+    checked: (() => { try { return app.getLoginItemSettings().openAtLogin } catch { return false } })(),
+    click: (item) => {
+      try {
+        app.setLoginItemSettings({ openAtLogin: item.checked })
+        item.checked = app.getLoginItemSettings().openAtLogin
+      } catch (err) {
+        console.error('[electron] No se pudo cambiar el inicio automático:', err)
+      }
+    },
+  })
 
   const appMenu = {
     label: app.name,
     submenu: [
       { role: 'about', label: 'Acerca de Parallax Editor' },
+      mi('Buscar actualizaciones…', 'app.checkUpdates'),
       { type: 'separator' },
-      {
-        label: 'Iniciar al encender la Mac',
-        type: 'checkbox',
-        checked: loginEnabled,
-        // Solo tiene sentido en macOS/Windows; en Linux es no-op.
-        click: (item) => {
-          try {
-            app.setLoginItemSettings({ openAtLogin: item.checked })
-            // Reflejar el estado real (por si el SO lo rechaza).
-            item.checked = app.getLoginItemSettings().openAtLogin
-          } catch (err) {
-            console.error('[electron] No se pudo cambiar el inicio automático:', err)
-          }
-        },
-      },
+      makeLoginItem(),
       { type: 'separator' },
       { role: 'quit', label: 'Salir' },
     ],
   }
 
+  const fileMenu = {
+    label: 'Archivo',
+    submenu: [
+      mi('Nuevo proyecto…', 'file.new', 'CmdOrCtrl+N'),
+      mi('Abrir / Cambiar de proyecto', 'file.open', 'CmdOrCtrl+O'),
+      { type: 'separator' },
+      mi('Guardar', 'file.save', 'CmdOrCtrl+S'),
+      mi('Importar imágenes…', 'file.import'),
+      { type: 'separator' },
+      mi('Cerrar proyecto', 'file.close', 'CmdOrCtrl+W'),
+    ],
+  }
+
   const editMenu = {
-    label: 'Editar',
+    label: 'Edición',
     submenu: [
       { role: 'undo', label: 'Deshacer' },
       { role: 'redo', label: 'Rehacer' },
@@ -186,68 +202,91 @@ function buildMenu() {
       { role: 'cut', label: 'Cortar' },
       { role: 'copy', label: 'Copiar' },
       { role: 'paste', label: 'Pegar' },
+      mi('Duplicar', 'edit.duplicate', 'CmdOrCtrl+D'),
+      mi('Eliminar', 'edit.delete'),
+      { type: 'separator' },
       { role: 'selectAll', label: 'Seleccionar todo' },
+    ],
+  }
+
+  const elementMenu = {
+    label: 'Elemento',
+    submenu: [
+      mi('Agregar elemento', 'element.add'),
+      mi('Agregar sección', 'element.addSection'),
+      { type: 'separator' },
+      mi('Bloquear / Desbloquear', 'element.toggleLock'),
+      mi('Mostrar / Ocultar', 'element.toggleVisible'),
+    ],
+  }
+
+  const gitMenu = {
+    label: 'Git',
+    submenu: [
+      mi('Traer cambios (pull)', 'git.pull'),
+      mi('Ver historial / commits', 'git.history'),
+      mi('Estado del repositorio', 'git.status'),
+    ],
+  }
+
+  const deployMenu = {
+    label: 'Publicar',
+    submenu: [
+      mi('Publicar a S3', 'deploy.publish'),
+      mi('Vista en vivo', 'deploy.preview'),
+      mi('Abrir sitio publicado', 'deploy.openSite'),
     ],
   }
 
   const viewMenu = {
     label: 'Ver',
     submenu: [
-      { role: 'reload', label: 'Recargar' },
-      { role: 'forceReload', label: 'Forzar recarga' },
-      { role: 'toggleDevTools', label: 'Herramientas de desarrollo' },
+      mi('Edición / Vista previa', 'view.togglePreview'),
+      mi('Cuadrícula y guías', 'view.toggleGrid'),
       { type: 'separator' },
       { role: 'resetZoom', label: 'Zoom real' },
       { role: 'zoomIn', label: 'Acercar' },
       { role: 'zoomOut', label: 'Alejar' },
       { type: 'separator' },
+      { role: 'reload', label: 'Recargar' },
+      { role: 'forceReload', label: 'Forzar recarga' },
+      { role: 'toggleDevTools', label: 'Herramientas de desarrollo' },
+      { type: 'separator' },
       { role: 'togglefullscreen', label: 'Pantalla completa' },
     ],
   }
 
-  // "Ayuda → Diagnóstico" abre la pantalla doctor (Fase 4) en el renderer.
+  const windowMenu = {
+    label: 'Ventana',
+    submenu: [
+      mi('Asistente Claude', 'window.claude'),
+      mi('Recursos', 'window.resources'),
+      mi('Sitio', 'window.site'),
+      mi('Tema', 'window.theme'),
+    ],
+  }
+
+  // "Ayuda → Diagnóstico" abre la pantalla doctor (canal 'open-doctor' existente).
   const helpMenu = {
     label: 'Ayuda',
     role: 'help',
     submenu: [
       {
         label: 'Diagnóstico…',
-        click: () => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('open-doctor')
-          }
-        },
+        click: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('open-doctor') },
       },
+      mi('Guía de uso', 'help.guide'),
+      mi('Versión / Descargas', 'help.downloads'),
     ],
   }
 
   const template = []
   if (isMac) template.push(appMenu)
-  template.push(editMenu, viewMenu, helpMenu)
+  template.push(fileMenu, editMenu, elementMenu, gitMenu, deployMenu, viewMenu, windowMenu, helpMenu)
 
-  // En no-mac dejamos un menú mínimo igualmente (la app es macOS-first, pero
-  // que no quede sin "Salir").
+  // No-mac: sin appMenu → metemos "Iniciar al encender" + Salir al final de Archivo.
   if (!isMac) {
-    template.unshift({
-      label: 'Archivo',
-      submenu: [
-        {
-          label: 'Iniciar al encender',
-          type: 'checkbox',
-          checked: loginEnabled,
-          click: (item) => {
-            try {
-              app.setLoginItemSettings({ openAtLogin: item.checked })
-              item.checked = app.getLoginItemSettings().openAtLogin
-            } catch (err) {
-              console.error('[electron] No se pudo cambiar el inicio automático:', err)
-            }
-          },
-        },
-        { type: 'separator' },
-        { role: 'quit', label: 'Salir' },
-      ],
-    })
+    fileMenu.submenu.push({ type: 'separator' }, makeLoginItem(), { role: 'quit', label: 'Salir' })
   }
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
