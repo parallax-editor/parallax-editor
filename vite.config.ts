@@ -90,7 +90,10 @@ export default defineConfig({
 
         server.middlewares.use((req, res, next) => {
           const url = req.url || ''
-          if (url.startsWith('/api/') || url.match(/^\/content\/(eventos|site)\//)) {
+          // /content/<workspaceId>/... para CUALQUIER workspace (no solo los
+          // seeds eventos/site) — si no, las imágenes de un workspace con id
+          // nuevo (p.ej. solo-disco) caen al SPA y se ven rotas.
+          if (url.startsWith('/api/') || url.match(/^\/content\/[^/]+\//)) {
             if (apiHandler) {
               apiHandler(req, res, next)
             } else {

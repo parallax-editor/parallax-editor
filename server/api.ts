@@ -186,6 +186,9 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
       const assetMatch = url.split('?')[0].match(/^\/content\/([^/]+)\/([^/]+)\/(.+)$/)
       if (assetMatch && method === 'GET') {
         const [, type, slug, assetPath] = assetMatch
+        // Defensa de traversal (ahora entra cualquier workspace id): el assetPath
+        // nunca debe salir de la carpeta del proyecto.
+        if (assetPath.includes('..')) { return json(res, { error: 'Not found' }, 404) }
         const filePath = getAssetPath(type, slug, assetPath)
         if (existsSync(filePath)) {
           const ext = extname(filePath).toLowerCase()

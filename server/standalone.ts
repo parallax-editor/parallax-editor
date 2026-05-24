@@ -56,7 +56,9 @@ const STATIC_MIME: Record<string, string> = {
 }
 
 function isApiOrContent(url: string): boolean {
-  return url.startsWith('/api/') || /^\/content\/(eventos|site)\//.test(url)
+  // /content/<workspaceId>/... para CUALQUIER workspace (no solo eventos/site);
+  // si no, las imágenes de un workspace con id nuevo caen al SPA y se ven rotas.
+  return url.startsWith('/api/') || /^\/content\/[^/]+\//.test(url)
 }
 
 /** Sirve un archivo estático del SPA o hace fallback a index.html (SPA route). */
