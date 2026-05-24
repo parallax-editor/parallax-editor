@@ -23,8 +23,10 @@ const SEED_VERSION_KEY = 'parallax-editor:seed-version'
 // reconciled ONCE per version (see reconcileSeedDefaults). v2: split the two
 // seeds onto their correct buckets (eventos → daniela-reyes-eventos, portafolio
 // → daniela-reyes-site + publishManifest) after some installs ended up with
-// both seeds pointing at the same bucket.
-const SEED_VERSION = 2
+// both seeds pointing at the same bucket. v3: el sitio se simplificó a
+// estructura PLANA → el workspace 'site' pasa de contentRoot 'content/portafolio'
+// a 'content' y publishManifest false (ya no hay catálogo).
+const SEED_VERSION = 3
 
 interface WorkspacesState {
   list: Workspace[]

@@ -167,9 +167,13 @@ export const gitApi = {
     api(`/git/${type}/commit`, { method: 'POST', body: JSON.stringify({ message, slug }) }),
   push: (type: string) =>
     api(`/git/${type}/push`, { method: 'POST' }),
-  // Traer cambios del remoto (menú Git → "Traer cambios").
-  pull: (type: string) =>
-    api<{ ok: boolean; result?: string; error?: string }>(`/git/${type}/pull`, { method: 'POST' }),
+  // Traer cambios del remoto (menú Git → "Traer cambios"). `force` (tras confirm
+  // explícito) descarta los cambios locales (reset --hard) antes del pull.
+  pull: (type: string, force = false) =>
+    api<{ ok: boolean; result?: string; error?: string; needsForce?: boolean }>(
+      `/git/${type}/pull`,
+      { method: 'POST', body: JSON.stringify({ force }) },
+    ),
 }
 
 // ─── Workspaces (Fase 2) + S3 (Fase 3) ──────────────────────────────────────

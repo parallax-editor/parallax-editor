@@ -203,14 +203,17 @@ const previewSite = computed(() => {
     section.layers = (section.layers || []).filter((l: any) => l.visible !== false)
   }
   // TASK 1 (#88): map `vh`/`vw` section heights to device-artboard px so a
-  // `100vh` section is exactly the artboard tall (not the editor window).
-  // Overview OFF only — overview keeps painting raw `vh` and uses its own
-  // (untouched) fit math. Canonical state.site is never mutated (this is the
-  // deep-cloned throwaway copy).
-  if (!state.overviewMode) {
-    for (const section of copy.sections) {
-      section.height = remapViewportUnits(section.height)
-    }
+  // `100vh` section es exactamente el artboard de alto (no la ventana del
+  // editor). Se aplica en AMBOS modos (incluido "Vista completa"): antes
+  // overview pintaba `vh` crudo (resuelto contra la ventana real del editor),
+  // pero el modelo/fit del artboard asume `vh` = vp.height → ese desajuste
+  // (ventana ≠ artboard) dejaba un "white gap" debajo de la sección en overview.
+  // Remapeando aquí también, render = modelo = artboard de forma determinista
+  // (sin depender del tamaño de ventana ni de la medición de scrollHeight), así
+  // overview se comporta igual que el modo normal y el hueco desaparece.
+  // Canonical state.site nunca se muta (esto es la copia deep-cloned).
+  for (const section of copy.sections) {
+    section.height = remapViewportUnits(section.height)
   }
   // Element-level viewport units (fontSize: clamp(2.6rem, 9vw, 6.5rem),
   // size.width: 50vw, …) must also resolve against the device artboard or text
@@ -266,7 +269,13 @@ const fontFaceKey = computed(() => {
 // in-flight animations keep running. So selecting a back element, hovering
 // front layers, or nudging a value can never restart/freeze an animation that
 // is mid-flight in the canvas preview. Only the three triggers above re-key.
-const engineKey = computed(() => `${state.slug || ''}#${state.previewNonce}#${fontFaceKey.value}`)
+//   • previewMode   — alternar Edición↔Preview remonta el engine: en Edición va
+//                     staticMotion (todo estático) y al pasar a Preview las
+//                     animaciones enter/split deben REPRODUCIRSE desde su inicio
+//                     (un patch de prop dejaría el estado final ya "entrado").
+const engineKey = computed(
+  () => `${state.slug || ''}#${state.previewNonce}#${state.previewMode}#${fontFaceKey.value}`,
+)
 
 // In "Vista completa" the artboard grows to the FULL stacked content height
 // (artboardHeight = the live-measured scrollHeight) so the entire composition
@@ -512,6 +521,7 @@ defineExpose({ scrollToElement })
               :components="components"
               data-engine-root
               mode="dev"
+              :static-motion="state.previewMode === 'edit'"
             />
           </div>
         </div>

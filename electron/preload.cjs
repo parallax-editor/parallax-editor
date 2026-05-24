@@ -35,4 +35,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('menu:action', handler)
     return () => ipcRenderer.removeListener('menu:action', handler)
   },
+  // El renderer reporta las capacidades del workspace ACTIVO ({ useGit, hasS3 })
+  // para que el menú nativo habilite/deshabilite Git y Publicar.
+  setWorkspaceCapabilities: (caps) => ipcRenderer.send('workspace:capabilities', caps),
 })

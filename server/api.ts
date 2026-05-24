@@ -441,7 +441,10 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
         if (resolveWorkspace(gpull[1])?.useGit === false) {
           return json(res, { ok: false, error: 'Este workspace no usa git.' })
         }
-        return json(res, gitPull(getRepoPath(gpull[1])))
+        // force === true SOLO lo manda la UI tras un confirm explícito del
+        // usuario (descartar cambios locales y traer la última versión).
+        const { force } = await parseBody(req)
+        return json(res, gitPull(getRepoPath(gpull[1]), force === true))
       }
 
       // ─── Publicar (Fase 3): push + S3 sync + deploy sidecar ───────────

@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount } from 'vue'
+import { onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import DialogHost from './components/ui/DialogHost.vue'
 import DoctorHost from './components/doctor/DoctorHost.vue'
 import { useElectron } from './composables/useElectron'
 import { emitMenu, onMenu } from './composables/useMenu'
 import { useDialog } from './composables/useDialog'
+import { activeWorkspace } from './stores/workspaces'
 import { APP_VERSION } from './version'
 
 const router = useRouter()
@@ -52,6 +53,33 @@ onMounted(() => {
     }
   })
 })
+
+// Reporta al menú nativo las capacidades del workspace ACTIVO (useGit / hasS3)
+// para habilitar/deshabilitar Git y Publicar. Inmediato + en cada cambio de
+// workspace (o de su config S3/git). En web es no-op.
+//
+// IMPORTANTE: solo reportamos cuando HAY un workspace cargado. Si `ws` es null
+// (arranque antes de cargar workspaces, o la pestaña de "Vista en vivo" que es un
+// contexto separado y nunca carga la lista) NO reportamos → el menú conserva su
+// último estado real (o el default habilitado) en vez de quedar deshabilitado a
+// la fuerza. Antes esto apagaba Git/Publicar aunque el workspace sí los tuviera.
+// `inEditor` = estamos en la ruta /edit (un sitio abierto). En el home/selector
+// los menús de Edición/Elemento/Git/Publicar/Ver/Ventana + Guardar/Importar se
+// deshabilitan (no tienen sentido sin un sitio). Reportamos al cambiar de
+// workspace O de ruta. (La pestaña de Vista en vivo tiene ws=null → no reporta,
+// así no pisa el estado de la ventana principal.)
+watch(
+  [activeWorkspace, () => router.currentRoute.value.path],
+  ([ws, path]) => {
+    if (!ws) return
+    electron.setWorkspaceCapabilities({
+      useGit: (ws as any).useGit !== false,
+      hasS3: !!(ws as any).s3?.enabled,
+      inEditor: typeof path === 'string' && path.startsWith('/edit'),
+    })
+  },
+  { immediate: true, deep: true },
+)
 
 onBeforeUnmount(() => {
   disposeIpc?.()

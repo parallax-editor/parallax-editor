@@ -13,6 +13,7 @@ interface ElectronBridge {
   setAutoStart: (enabled: boolean) => Promise<{ ok: boolean; enabled: boolean; error?: string }>
   onOpenDoctor: (cb: () => void) => () => void
   onMenuAction: (cb: (action: string) => void) => () => void
+  setWorkspaceCapabilities: (caps: { useGit: boolean; hasS3: boolean; inEditor: boolean }) => void
 }
 
 function bridge(): ElectronBridge | null {
@@ -54,6 +55,15 @@ export function useElectron() {
     onMenuAction(cb: (action: string) => void): () => void {
       if (!el) return () => {}
       return el.onMenuAction(cb)
+    },
+    /** Reporta al menú nativo las capacidades del workspace activo (web: no-op). */
+    setWorkspaceCapabilities(caps: { useGit: boolean; hasS3: boolean; inEditor: boolean }): void {
+      if (!el) return
+      try {
+        el.setWorkspaceCapabilities(caps)
+      } catch {
+        /* no-op */
+      }
     },
   }
 }

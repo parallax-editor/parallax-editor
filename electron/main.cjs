@@ -149,10 +149,25 @@ function sendMenu(action) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('menu:action', action)
 }
 
+// Capacidades reportadas por el renderer (IPC 'workspace:capabilities').
+// Gobiernan qué ítems de menú van habilitados:
+//   • inEditor → ¿estoy DENTRO de un sitio (ruta /edit)? Si no (home/selector de
+//     workspaces), se deshabilitan Guardar/Importar, Edición, Elemento, Git,
+//     Publicar, Ver y Ventana — no tienen sentido sin un sitio abierto.
+//   • useGit   → menú Git (pull/historial/estado).
+//   • hasS3    → Publicar a S3 / Abrir sitio publicado.
+// inEditor arranca en false (la app abre en el selector); useGit/hasS3 en true
+// hasta que el renderer reporte (evita parpadeo). El menú se reconstruye en cada
+// reporte.
+let wsCaps = { useGit: true, hasS3: true, inEditor: false }
+
 function buildMenu() {
   const isMac = process.platform === 'darwin'
   // Ítem que dispara una acción de app por IPC.
   const mi = (label, action, accelerator) => ({ label, accelerator, click: () => sendMenu(action) })
+  // Ítem que SOLO tiene sentido con un sitio abierto (ruta /edit): se deshabilita
+  // en el home/selector de workspaces.
+  const ed = (label, action, accelerator) => ({ ...mi(label, action, accelerator), enabled: wsCaps.inEditor })
   // Checkbox "Iniciar al encender" (fresco cada vez para no compartir objeto).
   const makeLoginItem = () => ({
     label: 'Iniciar al encender la Mac',
@@ -186,63 +201,68 @@ function buildMenu() {
       mi('Nuevo proyecto…', 'file.new', 'CmdOrCtrl+N'),
       mi('Abrir / Cambiar de proyecto', 'file.open', 'CmdOrCtrl+O'),
       { type: 'separator' },
-      mi('Guardar', 'file.save', 'CmdOrCtrl+S'),
-      mi('Importar imágenes…', 'file.import'),
+      ed('Guardar', 'file.save', 'CmdOrCtrl+S'),
+      ed('Importar imágenes…', 'file.import'),
       { type: 'separator' },
-      mi('Cerrar proyecto', 'file.close', 'CmdOrCtrl+W'),
+      ed('Cerrar proyecto', 'file.close', 'CmdOrCtrl+W'),
     ],
   }
 
+  // Edición: TODO (incluidos los roles nativos undo/cut/copy/paste/selectAll) se
+  // deshabilita en el home — solo tiene sentido con un sitio abierto.
   const editMenu = {
     label: 'Edición',
     submenu: [
-      { role: 'undo', label: 'Deshacer' },
-      { role: 'redo', label: 'Rehacer' },
+      { role: 'undo', label: 'Deshacer', enabled: wsCaps.inEditor },
+      { role: 'redo', label: 'Rehacer', enabled: wsCaps.inEditor },
       { type: 'separator' },
-      { role: 'cut', label: 'Cortar' },
-      { role: 'copy', label: 'Copiar' },
-      { role: 'paste', label: 'Pegar' },
-      mi('Duplicar', 'edit.duplicate', 'CmdOrCtrl+D'),
-      mi('Eliminar', 'edit.delete'),
+      { role: 'cut', label: 'Cortar', enabled: wsCaps.inEditor },
+      { role: 'copy', label: 'Copiar', enabled: wsCaps.inEditor },
+      { role: 'paste', label: 'Pegar', enabled: wsCaps.inEditor },
+      ed('Duplicar', 'edit.duplicate', 'CmdOrCtrl+D'),
+      ed('Eliminar', 'edit.delete'),
       { type: 'separator' },
-      { role: 'selectAll', label: 'Seleccionar todo' },
+      { role: 'selectAll', label: 'Seleccionar todo', enabled: wsCaps.inEditor },
     ],
   }
 
   const elementMenu = {
     label: 'Elemento',
     submenu: [
-      mi('Agregar elemento', 'element.add'),
-      mi('Agregar sección', 'element.addSection'),
+      ed('Agregar elemento', 'element.add'),
+      ed('Agregar sección', 'element.addSection'),
       { type: 'separator' },
-      mi('Bloquear / Desbloquear', 'element.toggleLock'),
-      mi('Mostrar / Ocultar', 'element.toggleVisible'),
+      ed('Bloquear / Desbloquear', 'element.toggleLock'),
+      ed('Mostrar / Ocultar', 'element.toggleVisible'),
     ],
   }
 
+  // Git: requiere estar en un sitio Y que el workspace use git.
   const gitMenu = {
     label: 'Git',
     submenu: [
-      mi('Traer cambios (pull)', 'git.pull'),
-      mi('Ver historial / commits', 'git.history'),
-      mi('Estado del repositorio', 'git.status'),
+      { ...mi('Traer cambios (pull)', 'git.pull'), enabled: wsCaps.inEditor && wsCaps.useGit },
+      { ...mi('Ver historial / commits', 'git.history'), enabled: wsCaps.inEditor && wsCaps.useGit },
+      { ...mi('Estado del repositorio', 'git.status'), enabled: wsCaps.inEditor && wsCaps.useGit },
     ],
   }
 
+  // Publicar: requiere estar en un sitio. "a S3"/"Abrir publicado" además
+  // requieren S3 configurado; "Vista en vivo" solo requiere el sitio abierto.
   const deployMenu = {
     label: 'Publicar',
     submenu: [
-      mi('Publicar a S3', 'deploy.publish'),
-      mi('Vista en vivo', 'deploy.preview'),
-      mi('Abrir sitio publicado', 'deploy.openSite'),
+      { ...mi('Publicar a S3', 'deploy.publish'), enabled: wsCaps.inEditor && wsCaps.hasS3 },
+      ed('Vista en vivo', 'deploy.preview'),
+      { ...mi('Abrir sitio publicado', 'deploy.openSite'), enabled: wsCaps.inEditor && wsCaps.hasS3 },
     ],
   }
 
   const viewMenu = {
     label: 'Ver',
     submenu: [
-      mi('Edición / Vista previa', 'view.togglePreview'),
-      mi('Cuadrícula y guías', 'view.toggleGrid'),
+      ed('Edición / Vista previa', 'view.togglePreview'),
+      ed('Cuadrícula y guías', 'view.toggleGrid'),
       { type: 'separator' },
       { role: 'resetZoom', label: 'Zoom real' },
       { role: 'zoomIn', label: 'Acercar' },
@@ -259,10 +279,10 @@ function buildMenu() {
   const windowMenu = {
     label: 'Ventana',
     submenu: [
-      mi('Asistente Claude', 'window.claude'),
-      mi('Recursos', 'window.resources'),
-      mi('Sitio', 'window.site'),
-      mi('Tema', 'window.theme'),
+      ed('Asistente Claude', 'window.claude'),
+      ed('Recursos', 'window.resources'),
+      ed('Sitio', 'window.site'),
+      ed('Tema', 'window.theme'),
     ],
   }
 
@@ -323,6 +343,18 @@ function registerIpc() {
     } catch (err) {
       return { ok: false, error: String((err && err.message) || err) }
     }
+  })
+
+  // El renderer reporta las capacidades del workspace ACTIVO (useGit / hasS3) al
+  // cargar y cada vez que cambia de workspace. Reconstruimos el menú para
+  // habilitar/deshabilitar Git y Publicar según corresponda.
+  ipcMain.on('workspace:capabilities', (_e, caps) => {
+    wsCaps = {
+      useGit: !caps || caps.useGit !== false,
+      hasS3: !!(caps && caps.hasS3),
+      inEditor: !!(caps && caps.inEditor),
+    }
+    buildMenu()
   })
 }
 

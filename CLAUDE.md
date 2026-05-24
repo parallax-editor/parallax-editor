@@ -102,9 +102,9 @@ POST /api/claude                          — ejecutar claude -p
 
 ## Relacion con repos vecinos
 
-Lee/escribe en:
+Lee/escribe en (estructura PLANA en ambos):
 - `../daniela-reyes-eventos/content/*/site.json`
-- `../daniela-reyes-site/content/portafolio/*/site.json`
+- `../daniela-reyes-site/content/*/site.json`  (incluye `home`; el sitio se simplificó a `content/<slug>` plano — ver su CLAUDE.md)
 
 Ejecuta git en esos repos. Ejecuta claude -p con el cwd del repo correspondiente.
 

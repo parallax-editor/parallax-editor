@@ -75,13 +75,15 @@ const LEGACY_WORKSPACES: Record<string, Workspace> = {
   },
   site: {
     id: 'site',
-    name: 'Portafolio',
+    name: 'Sitio Daniela',
     repoPath: resolve(BASE, '..', 'daniela-reyes-site'),
-    contentRoot: 'content/portafolio',
+    // Estructura PLANA: cada site (home + mundos) vive en content/<slug>/. El
+    // editor lista todos (incluido "home", editable por Daniela).
+    contentRoot: 'content',
     useGit: true,
-    // publishManifest: el portafolio es público y tiene catálogo → al publicar
-    // un mundo regeneramos /content/portafolio/manifest.json en S3.
-    s3: { enabled: true, bucket: 'daniela-reyes-site', prefix: '', region: 'us-east-1', publishManifest: true },
+    // Sin catálogo/manifest (el sitio se simplificó: el engine + el home hacen
+    // la navegación vía link.site), así que NO regeneramos manifest al publicar.
+    s3: { enabled: true, bucket: 'daniela-reyes-site', prefix: '', region: 'us-east-1', publishManifest: false },
   },
 }
 

@@ -273,6 +273,27 @@ async function handleMenu(action: string) {
         state.gitLogNonce++
         applyExternalChange()
         await dialog.alert({ title: 'Cambios traídos', message: r.result || 'Repositorio actualizado.' })
+      } else if (r?.needsForce) {
+        // El pull falló por cambios locales sin guardar/commitear. Ofrecemos
+        // descartarlos y traer la última versión — con aviso CLARO de pérdida.
+        const discard = await dialog.confirm({
+          title: 'Tienes cambios sin guardar',
+          message:
+            'No se puede traer la última versión porque hay cambios locales sin guardar.\n\n¿Descartar esos cambios y traer la versión del servidor? Perderás de forma permanente lo que no hayas guardado/publicado.',
+          confirmText: 'Descartar y traer',
+          cancelText: 'Cancelar',
+          danger: true,
+        })
+        if (discard) {
+          const f = await gitApi.pull(state.projectType, true)
+          if (f?.ok) {
+            state.gitLogNonce++
+            applyExternalChange()
+            await dialog.alert({ title: 'Cambios traídos', message: f.result || 'Repositorio actualizado (se descartaron los cambios locales).' })
+          } else {
+            await dialog.alert({ title: 'No se pudo traer cambios', message: f?.error || 'Error de git.' })
+          }
+        }
       } else {
         await dialog.alert({ title: 'No se pudo traer cambios', message: r?.error || 'Error de git.' })
       }

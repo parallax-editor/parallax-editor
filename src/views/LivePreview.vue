@@ -24,9 +24,9 @@
 // naturally like production at full screen. Only the asset-prefixing +
 // active-view resolution from the shared core are applied.
 
-import { ref, shallowRef, computed, onMounted, onBeforeUnmount, h, type Component } from 'vue'
-import { ParallaxSite, FormBlock, WorldTransition } from 'parallax-engine'
-import type { Site } from 'parallax-engine/schema'
+import { ref, shallowRef, computed, nextTick, onMounted, onBeforeUnmount, h, type Component } from 'vue'
+import { ParallaxSite, FormBlock } from 'parallax-engine'
+import { validateSite, type Site } from 'parallax-engine/schema'
 // Reuse the SAME custom-component host the editor canvas uses, so the registry
 // is identical (FormBlock + every parallax.config custom component, e.g.
 // SocialLinks, resolved via its statically-globbed sibling SFC map). Importing
@@ -77,7 +77,11 @@ function applyPayload(p: unknown) {
   if (currentSlug.value !== originalSlug) return
   const payload = p as LivePayload
   if (!payload.site || typeof payload.site !== 'object') return
-  rawSite.value = payload.site
+  // Validar para aplicar defaults de Zod (rotation:0, etc.) como el sitio
+  // público. Si el doc está a medio editar (inválido), usamos el crudo igual
+  // (best-effort) — el engine ya es defensivo con rotation undefined.
+  const parsed = validateSite(payload.site)
+  rawSite.value = parsed.ok ? (parsed.data as Site) : payload.site
   if (payload.deviceMode === 'desktop' || payload.deviceMode === 'mobile') {
     deviceMode.value = payload.deviceMode
   }
@@ -88,34 +92,76 @@ function applyPayload(p: unknown) {
 // ── Navegación in-engine entre sitios (link.site) en la Vista en vivo ──────────
 // Al click en un elemento con link.site, el engine emite `navigate(slug)`. Aquí
 // traemos el site.json GUARDADO de ese slug (del propio /content del editor) y
-// transicionamos en vivo con WorldTransition. (En el canvas del editor esto NO
-// pasa: ahí va mode="dev" y ElementLink no navega.)
-const prevPreview = shallowRef<any | null>(null)
-const transitioning = ref(false)
-const txCfg = ref<{ type: any; duration: number }>({ type: 'fade', duration: 600 })
+// hacemos la transición. (En el canvas del editor esto NO pasa: ahí va
+// mode="dev" y ElementLink no navega.)
+//
+// ROBUSTEZ DE SIZING: el mundo ENTRANTE se renderiza SIEMPRE como un
+// <ParallaxSite> normal en flujo (viewport completo) — nunca dentro de un
+// wrapper con hijos `absolute`/medición, que era lo que lo dejaba "a media
+// pantalla" / corrido a la derecha. La transición es un cross-fade: el mundo
+// SALIENTE se congela en un overlay `position:fixed inset:0` por encima y se
+// desvanece (opacity 1→0) hasta desmontarse. El destino, por debajo, ya está
+// montado a tamaño correcto desde el primer frame.
+const fadeSite = shallowRef<any | null>(null) // mundo saliente (overlay que se va)
+const fadeOut = ref(false) // dispara la transición CSS de opacidad del overlay
+const txCfg = ref<{ duration: number }>({ duration: 600 })
+// Pila para "Volver" (el botón atrás de la Vista en vivo): cada navegación
+// apila el slug de origen; goBack() lo desapila.
+const backStack = ref<string[]>([])
 
-async function go(targetSlug: string) {
+async function go(targetSlug: string, opts: { skipStack?: boolean } = {}) {
   if (!validType || !targetSlug || targetSlug === currentSlug.value) return
   try {
     const res = await fetch(`/content/${projectType}/${encodeURIComponent(targetSlug)}/site.json`)
     if (!res.ok) return
     const raw = await res.json()
     if (!raw || typeof raw !== 'object') return
-    const t = raw?.meta?.transition
-    txCfg.value = { type: t?.in || t?.out || 'fade', duration: t?.duration || 600 }
-    prevPreview.value = previewSite.value // snapshot del sitio actual (ya construido)
-    rawSite.value = raw
+    // VALIDAR (igual que loadWorldSite en la web): Zod aplica los defaults
+    // (p.ej. rotation:0). Sin esto el engine recibe rotation=undefined y arma
+    // `rotate(undefineddeg)` → transform inválido → el navegador lo descarta →
+    // el sitio queda corrido. El sitio público no tenía el bug porque valida.
+    const parsed = validateSite(raw)
+    const site = parsed.ok ? (parsed.data as any) : raw
+    if (!opts.skipStack && currentSlug.value) backStack.value.push(currentSlug.value)
+    // El cross-fade es, visualmente, el sitio que DEJAS desvaneciéndose → lo
+    // gobierna la SALIDA (out) del sitio de ORIGEN. Si el origen no tiene salida
+    // configurada ("(ninguno)") → swap instantáneo (no fade).
+    const sourceT = (rawSite.value as any)?.meta?.transition
+    const txType = sourceT?.out
+    txCfg.value = { duration: sourceT?.duration || 600 }
+    const outgoing = previewSite.value // snapshot del sitio actual (ya construido)
+    rawSite.value = site
     currentSlug.value = targetSlug
-    nonce.value++
-    transitioning.value = !!prevPreview.value
+    // NO bumpeamos `nonce` al navegar: dejamos que `previewSite` (reactivo)
+    // PARCHEE la MISMA instancia de <ParallaxSite> (igual que la web, que centra
+    // bien). Remontar por key al navegar era justo lo que descuadraba el mundo
+    // destino a la derecha (la web nunca remonta, solo parchea). El remount por
+    // `nonce` se reserva para ediciones en vivo del MISMO sitio (applyPayload).
     document.title = `Vista en vivo · ${targetSlug}`
+    // Arranca el cross-fade del mundo saliente SOLO si hay transición configurada.
+    if (outgoing && txType) {
+      fadeSite.value = outgoing
+      fadeOut.value = false
+      // Doble rAF: garantiza un frame pintado a opacity:1 antes de pasar a 0,
+      // si no el navegador no anima la transición.
+      await nextTick()
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          fadeOut.value = true
+        }),
+      )
+    }
   } catch {
     /* no-op: una navegación fallida no rompe la vista */
   }
 }
-function onTransitionComplete() {
-  transitioning.value = false
-  prevPreview.value = null
+function goBack() {
+  const prev = backStack.value.pop()
+  if (prev) go(prev, { skipStack: true })
+}
+function onFadeEnd() {
+  fadeSite.value = null
+  fadeOut.value = false
 }
 
 // The engine-ready render copy: shared asset-prefix + active-view resolution,
@@ -235,24 +281,15 @@ onBeforeUnmount(() => {
 <template>
   <!-- Full real viewport, NO editor chrome. -->
   <div class="live-root" data-test="live-root">
-    <!-- Transición in-engine al navegar entre sitios (link.site). -->
-    <WorldTransition
-      v-if="transitioning && previewSite"
-      :from="prevPreview"
-      :to="previewSite"
-      :transition="txCfg"
-      @complete="onTransitionComplete"
-    >
-      <template #from>
-        <ParallaxSite v-if="prevPreview" :site="prevPreview" :components="components" mode="prod" />
-      </template>
-      <template #to>
-        <ParallaxSite :key="nonce" :site="previewSite" :components="components" mode="prod" @navigate="go" />
-      </template>
-    </WorldTransition>
+    <!-- Botón Volver: aparece tras navegar a otro sitio (link.site). -->
+    <button v-if="backStack.length" class="live-back" type="button" @click="goBack" data-test="live-back">
+      ← Volver
+    </button>
 
+    <!-- Mundo ENTRANTE: siempre <ParallaxSite> normal en flujo, viewport completo
+         (sizing correcto garantizado). Al navegar (link.site) emite `navigate`. -->
     <ParallaxSite
-      v-else-if="previewSite"
+      v-if="previewSite"
       :key="nonce"
       :site="previewSite"
       :components="components"
@@ -260,7 +297,18 @@ onBeforeUnmount(() => {
       @navigate="go"
     />
 
-    <div v-else class="live-waiting" data-test="live-waiting">
+    <!-- Mundo SALIENTE: overlay fijo que se desvanece encima y se desmonta. -->
+    <div
+      v-if="fadeSite"
+      class="live-fade"
+      :class="{ 'is-out': fadeOut }"
+      :style="{ transitionDuration: txCfg.duration + 'ms' }"
+      @transitionend="onFadeEnd"
+    >
+      <ParallaxSite :site="fadeSite" :components="components" mode="prod" />
+    </div>
+
+    <div v-if="!previewSite" class="live-waiting" data-test="live-waiting">
       <span v-if="!errorMsg" class="live-spinner" aria-label="Cargando" role="status" />
       <p v-if="errorMsg" class="live-waiting-msg">{{ errorMsg }}</p>
     </div>
@@ -274,16 +322,33 @@ onBeforeUnmount(() => {
 html,
 body,
 #app {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
+  /* El index.html del editor pone `#app { width:100vw; height:100vh }` +
+     `body { overflow:hidden }` (para la app de paneles). En la vista en vivo hay
+     que NEUTRALIZARLO a la fuerza (!important) o el mundo hereda ese encuadre y
+     se ve corrido/encajonado. Reglas:
+       • width:100% (NO 100vw → 100vw incluye el scrollbar y corre el contenido).
+       • overflow-x:hidden + overflow-y:visible (AMBOS longhands: el shorthand
+         `overflow:hidden` de index.html dejaría overflow-y hidden y el mundo no
+         scrollearía).
+       • display:block (por si algún día #app fuera flex/grid). */
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 100% !important;
+  height: auto !important;
+  overflow-x: hidden !important;
+  overflow-y: visible !important;
+  display: block !important;
   background: #fff;
-  overflow: visible;
 }
 .live-root {
+  position: relative;
   width: 100%;
+  max-width: 100%;
   min-height: 100vh;
+  overflow-x: hidden;
+  margin: 0;
 }
 .live-waiting {
   position: fixed;
@@ -310,4 +375,32 @@ body,
 }
 @keyframes live-spin { to { transform: rotate(360deg); } }
 .live-waiting-msg { margin: 0; max-width: 28rem; }
+.live-back {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 2147483000;
+  background: rgba(20, 20, 20, 0.78);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font: 600 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+.live-back:hover { background: rgba(20, 20, 20, 0.92); }
+.live-fade {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  opacity: 1;
+  transition-property: opacity;
+  transition-timing-function: ease;
+  pointer-events: none; /* los clics pasan al mundo entrante de abajo */
+  overflow: hidden;
+}
+.live-fade.is-out { opacity: 0; }
 </style>

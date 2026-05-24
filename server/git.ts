@@ -142,11 +142,26 @@ export function gitPush(cwd: string): string {
 
 // Traer cambios del remoto (menú Git → "Traer cambios"). --ff-only para no crear
 // merges sorpresa: si diverge, falla con un mensaje claro en vez de mezclar.
-export function gitPull(cwd: string): { ok: boolean; result?: string; error?: string } {
+export function gitPull(
+  cwd: string,
+  force = false,
+): { ok: boolean; result?: string; error?: string; needsForce?: boolean } {
   try {
+    // force === true SOLO llega tras una confirmación EXPLÍCITA del usuario en la
+    // UI ("descartar mis cambios y traer la última versión, perderé lo no
+    // guardado"). Descartamos el árbol de trabajo (staged + unstaged) con
+    // `reset --hard HEAD` para que el `pull --ff-only` no falle por cambios
+    // locales. NO se ejecuta jamás de forma automática.
+    if (force) git('reset --hard HEAD', cwd)
     return { ok: true, result: git('pull --ff-only', cwd) }
   } catch (e: any) {
-    return { ok: false, error: (e && e.message) || 'No se pudo traer cambios (pull).' }
+    const msg = (e && e.message) || 'No se pudo traer cambios (pull).'
+    // ¿El fallo es por cambios locales sin commitear? Señalamos needsForce para
+    // que la UI ofrezca el descarte-y-forzar (en vez de un error muerto).
+    const needsForce =
+      !force &&
+      /unstaged changes|uncommitted changes|commit or stash|local changes|would be overwritten/i.test(msg)
+    return { ok: false, error: msg, needsForce }
   }
 }
 
