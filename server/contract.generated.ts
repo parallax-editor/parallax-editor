@@ -141,6 +141,8 @@ Campos **comunes a todos los elementos**:
   anchor?: "center"|"top-left"|"top-right"|"bottom-left"|"bottom-right"|"top"|"bottom"|"left"|"right" = "center",
   opacity?: number 0..1 = 1,
   rotation?: number = 0,                       // grados
+  flipX?: boolean,                             // espejo horizontal (scaleX(-1))
+  flipY?: boolean,                             // espejo vertical (scaleY(-1))
   visible?: boolean = true,
   interactive?: boolean = false,               // necesario para triggers hover/click
   link?: { href?: string, target?: "_blank"|"_self"|"_parent"|"_top" = "_blank", rel?: string, ariaLabel?: string, site?: string },
@@ -162,7 +164,7 @@ un **string** se usa como CSS literal (\`"50%"\`, \`"min(90%, 500px)"\`, \`"120p
 
 ### Campos por tipo
 
-**png** — \`src: string\` (OBLIGATORIO, ej. \`"images/flor.png"\`; **el archivo DEBE existir** en \`content/<slug>/images/\`, usa su nombre exacto — ver §2), \`alt?: string\` (genera uno descriptivo).
+**png** — \`src: string\` (OBLIGATORIO, ej. \`"images/flor.png"\`; **el archivo DEBE existir** en \`content/<slug>/images/\`, usa su nombre exacto — ver §2), \`alt?: string\` (genera uno descriptivo), \`objectFit?: "cover"|"contain"|"fill"|"none"|"scale-down"\` (cómo rellena la caja cuando tiene \`size\`; default \`cover\` = llena recortando; \`fill\` = estira/deforma).
 
 **text** — \`content: string\` (OBLIGATORIO), \`font?\`, \`fontSize?: string\` (\`"clamp(2rem,5vw,4rem)"\`),
 \`fontWeight?: number\`, \`color?: string\`, \`letterSpacing?: string\`, \`lineHeight?: string\`,
@@ -202,8 +204,17 @@ Animation {
 \`\`\`
 
 **Triggers:**
-- \`enter\` — al entrar al viewport (IntersectionObserver).
-- \`scroll\` — interpolado con el progress de la sección (usa \`range: [0, 1]\`).
+- \`enter\` — va por TIEMPO: al entrar el elemento al viewport reproduce \`from → to\`
+  UNA vez durante \`duration\` ms. **Siempre arranca en \`from\`** → úsalo cuando quieras
+  que algo "nazca" desde un valor (p. ej. \`scale 0.8→1\`, \`translateY 30→0\`).
+- \`scroll\` — va por POSICIÓN DE SCROLL (no por tiempo): el valor se interpola
+  \`from → to\` según el progress de la sección (\`range\`, default \`[0,1]\`; 0 cuando la
+  sección entra, 1 cuando sale). **OJO — el "nace desde 0" no siempre se ve:** el
+  progress es 0 solo cuando el borde superior de la sección está en el FONDO del
+  viewport; si la sección ya está en pantalla al cargar (típico de la PRIMERA, sobre
+  todo si es alta tipo \`200vh\`), el progress arranca a la MITAD → nunca se ve el
+  valor \`from\`. Por eso un \`scale from:0 to:2\` por scroll en la primera sección se ve
+  GRANDE de entrada y no parte de 0. Si necesitas que arranque en \`from\`, usa \`enter\`.
 - \`loop\` — animación continua con RAF (usa \`duration\`, \`yoyo\`).
 - \`mouse\` — interpolado con la posición del mouse (desktop).
 - \`gyroscope\` — interpolado con la inclinación del dispositivo (móvil).
@@ -212,9 +223,27 @@ Animation {
 - \`depends\` — se dispara cuando OTRO elemento recibe un evento; usa
   \`dependsOn: "<id>"\` + \`dependsEvent: "hover"|"click"|"enter"\`.
 
-**Unidades de \`from\`/\`to\` por tipo:** fadeIn/fadeOut → opacidad 0..1; translateX/Y →
-px o %; rotate/rotateX/rotateY/skew → grados; scale → factor (1 = tamaño normal);
-blur → px; clipPath → 0..100 (porcentaje de revelado).
+**Unidades y SIGNIFICADO de \`from\`/\`to\` por tipo:**
+- **fadeIn/fadeOut** → opacidad \`0\` (invisible) … \`1\` (visible).
+- **scale** → MULTIPLICADOR del tamaño del elemento (su caja): \`1\` = tamaño normal,
+  \`0.5\` = mitad, \`2\` = el doble, \`0\` = desaparece. Escala tomando como punto fijo el
+  \`anchor\`. (Valores como \`0\` o \`2\` son saltos enormes; para crecer al aparecer usa
+  algo sutil como \`0.8 → 1\`.)
+- **translateX / translateY** → desplazamiento en \`px\` (o \`%\`) DESDE la posición
+  actual del elemento. \`0\` = en su sitio; X positivo = derecha, Y positivo = abajo;
+  negativos = izquierda/arriba. NO depende del \`anchor\` (mueve toda la caja).
+- **rotate/rotateX/rotateY / skew** → grados; gira/inclina alrededor del \`anchor\`.
+- **blur** → px de desenfoque. **clipPath** → \`0..100\` (% de revelado).
+
+**\`anchor\` (punto de anclaje):** es el punto del elemento que se coloca en su
+\`position\` Y el punto fijo alrededor del cual GIRA y ESCALA. Con \`anchor:"center"\`,
+al escalar crece desde el centro; con \`"top-left"\`, crece hacia abajo-derecha.
+
+**Edición vs. Preview/publicado:** en el modo EDICIÓN del editor el lienzo congela
+los movimientos (scale/translate/rotate) y muestra el elemento en su estado BASE
+(tamaño/posición reales) — solo fadeIn/opacidad se ve resuelto. Los movimientos se
+ven en Preview o publicado. Por eso algo con \`scale to:2\` se ve normal en Edición y
+al doble en Preview (no es un error).
 
 **Easing presets:** \`linear\`, \`easeIn\`, \`easeOut\`, \`easeInOut\`, \`easeInCubic\`,
 \`easeOutCubic\`, \`easeInOutCubic\`, \`easeInQuart\`, \`easeOutQuart\`, \`easeInOutQuart\`,

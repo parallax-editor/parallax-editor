@@ -25,6 +25,7 @@ import ComponentPropsEditor from './ComponentPropsEditor.vue'
 import ResourcesPanel from './ResourcesPanel.vue'
 import ResourceCombobox from './ResourceCombobox.vue'
 import type { ComboOption } from './ResourceCombobox.vue'
+import { fileToFontFamily } from '../../composables/fontName'
 import NumberSlider from './NumberSlider.vue'
 import RangeSlider from './RangeSlider.vue'
 import BlendSelect from './BlendSelect.vue'
@@ -63,9 +64,12 @@ const HELP = {
   posY: 'Posición vertical, en porcentaje del alto. 0 = arriba, 50 = centro, 100 = abajo.',
   width: 'Elige cómo se mide el **ancho** del elemento:\n\n- **Fijo (px)**: un tamaño exacto en píxeles; no cambia con la pantalla.\n- **Porcentual (%)**: relativo al ancho disponible; crece y encoge con la pantalla.\n- **Adaptable**: crece con la pantalla pero **nunca pasa de** un máximo en px (el menor entre el % y ese tope).\n- **Auto**: usa el tamaño natural del elemento.\n\n» Para fotos que deben verse bien en móvil y escritorio, usa **Adaptable** (ej. 46% pero máximo 520 px).',
   height: 'Elige cómo se mide el **alto** del elemento:\n\n- **Fijo (px)**: un alto exacto en píxeles.\n- **Porcentual (%)**: relativo al alto disponible; se adapta a la pantalla.\n- **Adaptable**: crece con la pantalla pero **nunca pasa de** un máximo en px.\n- **Auto**: usa el alto natural del elemento.\n\n» En la mayoría de imágenes conviene dejar el alto en **Auto** y controlar solo el ancho, para que no se deformen.',
-  anchor: 'Punto del elemento que se coloca en la posición elegida (centro, esquina, etc.).',
+  anchor: 'Punto de anclaje del elemento: el punto que se coloca en la **posición** elegida (centro, esquina, etc.) — p. ej. con *centro*, la posición marca el centro del elemento; con *arriba-izquierda*, marca su esquina superior izquierda.\n\n» También es el **punto fijo** alrededor del cual el elemento **gira y escala**: con anchor *centro* una imagen crece desde el centro (hacia todos lados); con *arriba-izquierda* crece hacia abajo-derecha.',
   opacity: 'Transparencia del elemento. 1 = totalmente visible; 0 = invisible.',
   rotation: 'Giro del elemento en grados. 0 = derecho; 90 = de costado.',
+  flipX: 'Voltea la imagen en espejo horizontal (izquierda↔derecha).',
+  flipY: 'Voltea la imagen en espejo vertical (arriba↔abajo).',
+  objectFit: 'Cómo rellena la imagen su caja (cuando le pones un tamaño). "Llenar" la encaja recortando lo que sobra (sin deformar). "Encajar completa" la muestra entera (puede dejar espacio). "Estirar" la deforma para llenar exacto. "Natural" usa su tamaño real. Si no estás seguro, deja "Llenar".',
   visible: 'Si está desactivado, el elemento no se muestra en el sitio.',
   interactive: 'Permite que el elemento responda al mouse (clicks, hover).',
   src: 'Ruta del archivo de imagen. Normalmente se llena solo al cargar una imagen.',
@@ -94,10 +98,10 @@ const HELP = {
   linkTarget: 'Dónde se abre el enlace: en una pestaña nueva o en la misma.',
   linkMode: 'Qué hace el elemento al hacer click: "Ninguno" no es un enlace, "URL" abre una dirección externa, y "Sitio" navega a otro proyecto del mismo espacio de trabajo sin recargar la página.',
   linkSite: 'Otro proyecto de este espacio de trabajo al que se navega al hacer click. La transición ocurre dentro de la misma página.',
-  animType: 'Qué efecto se aplica (aparecer, deslizar, escalar…).',
+  animType: 'Qué efecto se aplica: **aparecer** (fadeIn/opacity), **deslizar** (translateX/Y), **escalar** (scale), **girar** (rotate), **desenfocar** (blur), inclinar (skew), revelar (clipPath).\n\n» **Importante — por qué se ve distinto en Edición y en Preview:** en **Edición** la mesa muestra cada elemento en su **estado base** (tamaño y posición reales, sin movimiento) para que puedas ubicarlo bien; solo *aparecer/opacidad* se muestra ya resuelto. Los movimientos (escalar, deslizar, girar…) **se ven recién en Preview** o publicado. Por eso una imagen con `scale Hasta 2` se ve normal en Edición y al **doble** en Preview — no es un error.',
   animTrigger: 'Cuándo se dispara la animación (al entrar en pantalla, al hacer scroll, al pasar el mouse…).',
-  animFrom: 'Valor inicial. Lo que significa depende del TIPO: fadeIn/fadeOut y opacity → 0 a 1; scale → 1 = tamaño normal (ej. 1 a 1.2); translateX/translateY → píxeles (ej. 0 a 40); rotate/rotateX/rotateY → grados; blur → píxeles; skew → grados; clipPath → 0 a 100.',
-  animTo: 'Valor final. Lo que significa depende del TIPO: fadeIn/fadeOut y opacity → 0 a 1; scale → 1 = tamaño normal (ej. 1 a 1.2); translateX/translateY → píxeles (ej. 0 a 40); rotate/rotateX/rotateY → grados; blur → píxeles; skew → grados; clipPath → 0 a 100.',
+  animFrom: 'Valor **inicial** del efecto. Qué significa depende del **Tipo**:\n\n- **fadeIn/fadeOut, opacity** → 0 (invisible) a 1 (visible).\n- **scale** → multiplica el tamaño del elemento (su caja). **1 = tamaño normal**, 0.5 = mitad, **2 = el doble**, **0 = desaparece**. Escala tomando como punto fijo el **anchor**.\n- **translateX/translateY** → desplazamiento en **píxeles** desde su posición actual. **0 = en su sitio**; X positivo = derecha, Y positivo = abajo; negativos = izquierda/arriba.\n- **rotate/rotateX/rotateY, skew** → grados (gira/inclina alrededor del **anchor**).\n- **blur** → píxeles de desenfoque. **clipPath** → 0 a 100 (% revelado).\n\n» Ej.: para que una imagen *aparezca creciendo* usa **scale** Desde **0.8** Hasta **1**. Un `scale` Desde 0 ó Hasta 2 son cambios MUY grandes (desaparece / doble).',
+  animTo: 'Valor **final** del efecto — al terminar la animación (o al final del tramo de scroll). Mismo significado que **Desde** según el Tipo (mira la ayuda de *Desde*).\n\n» Ej.: **scale** Desde 1 Hasta 1.2 = crece 20%; **translateY** Desde 0 Hasta −40 = sube 40 px; **rotate** Desde −5 Hasta 0 = endereza desde −5°.',
   animRange: '0% = inicio de la sección, 100% = fin. La animación interpola entre los valores Desde y Hasta del tipo durante ese tramo del scroll.',
   animDuration: 'Cuánto dura la animación, en milisegundos. 1000 = 1 segundo.',
   animDelay: 'Cuánto espera antes de empezar, en milisegundos.',
@@ -168,6 +172,14 @@ const SECTION_TRANSITION_OPTS = [
   ...TRANSITION_TYPES.map((v) => ({ value: v, label: v })),
 ]
 const FONT_SOURCE_OPTS = ['google', 'custom']
+// Modo de relleno de la imagen (CSS object-fit) con etiquetas amigables.
+const OBJECT_FIT_OPTS = [
+  { value: 'cover', label: 'Llenar (recorta lo que sobra)' },
+  { value: 'contain', label: 'Encajar completa (puede dejar espacio)' },
+  { value: 'fill', label: 'Estirar (deforma para llenar)' },
+  { value: 'none', label: 'Tamaño natural' },
+  { value: 'scale-down', label: 'Reducir si es muy grande' },
+]
 
 const meta = computed<any>(() => (state.site as any)?.meta || {})
 const theme = computed<any>(() => (state.site as any)?.theme || null)
@@ -235,6 +247,29 @@ function updateFont(index: number, key: string, value: any) {
   // saved JSON stays clean.
   if (key === 'source' && value === 'google') delete next.url
   fonts[index] = next
+  writeFonts(fonts)
+}
+
+// Asegura que la fuente elegida quede REGISTRADA en meta.fonts para que el engine
+// la CARGUE de verdad (Google → inyecta <link>; personalizada → @font-face). Sin
+// esto, poner el nombre en un elemento/tema NO cambia el texto: cae al fallback
+// porque la fuente nunca se cargó. Si el nombre coincide con un archivo subido a
+// Recursos → la registra como `custom` con ese archivo; si no → como `google`.
+// Idempotente: si ya está registrada (por familia), no hace nada.
+function ensureFontRegistered(value: string) {
+  const raw = (value || '').trim()
+  if (!raw) return
+  // Quita el fallback ("X, serif" → "X") + comillas; ignora variables CSS del tema.
+  const primary = raw.split(',')[0].trim().replace(/^['"]|['"]$/g, '')
+  if (!primary || primary.startsWith('var(')) return
+  const fonts = metaFonts().map((f) => ({ ...f }))
+  if (fonts.some((f) => (f.family || '').toLowerCase() === primary.toLowerCase())) return
+  const slug = primary.toLowerCase().replace(/\s+/g, '-')
+  const file = projectAssets.value.font.find((a) => {
+    const noExt = a.name.replace(/\.(ttf|otf|woff2?|woff)$/i, '')
+    return fileToFontFamily(a.name).toLowerCase() === primary.toLowerCase() || noExt.toLowerCase() === slug
+  })
+  fonts.push(file ? { family: primary, source: 'custom', url: file.src } : { family: primary, source: 'google' })
   writeFonts(fonts)
 }
 
@@ -814,6 +849,37 @@ async function refreshProjectAssets() {
   } catch {
     /* keep last list — autocomplete just won't suggest until next refresh */
   }
+  loadPreviewFonts()
+}
+
+// Carga en el documento del EDITOR las fuentes SUGERIDAS (Google comunes + los
+// archivos subidos) SOLO para previsualizarlas en el dropdown del autocomplete
+// (que el nombre se vea en su propia tipografía). Las fuentes ya registradas las
+// inyecta el engine en el mismo documento. Idempotente (no duplica por id).
+function loadPreviewFonts() {
+  if (typeof document === 'undefined') return
+  // Google comunes → un solo <link> con todas las familias.
+  const gid = 'pe-font-preview-google'
+  if (!document.getElementById(gid)) {
+    const fams = COMMON_FONTS.map((f) => `family=${encodeURIComponent(f)}:wght@400;600`).join('&')
+    const link = document.createElement('link')
+    link.id = gid
+    link.rel = 'stylesheet'
+    link.href = `https://fonts.googleapis.com/css2?${fams}&display=swap`
+    document.head.appendChild(link)
+  }
+  // Archivos subidos → @font-face por cada uno (familia = basename, igual que en
+  // fontFamilyOptions/ensureFontRegistered), src = url servida por el editor.
+  for (const a of projectAssets.value.font) {
+    const base = fileToFontFamily(a.name)
+    if (!base) continue
+    const fid = 'pe-font-preview-file-' + base.replace(/\s+/g, '-').toLowerCase()
+    if (document.getElementById(fid)) continue
+    const style = document.createElement('style')
+    style.id = fid
+    style.textContent = `@font-face{font-family:'${base.replace(/'/g, '')}';src:url('${previewSrc(a.src)}');font-display:swap;}`
+    document.head.appendChild(style)
+  }
 }
 onMounted(refreshProjectAssets)
 // assetsNonce: refresca también cuando otro panel sube/borra un asset o el
@@ -884,12 +950,27 @@ const COMMON_FONTS = [
 // constrains the value), so a Google name like "Playfair Display" works
 // whether or not it's in this list.
 const fontFamilyOptions = computed<ComboOption[]>(() => {
-  const local = projectAssets.value.font.map((a) => {
-    const base = a.name.replace(/\.(ttf|otf|woff2?|woff)$/i, '').replace(/[-_]+/g, ' ').trim()
-    return { value: base, label: base, hint: `archivo: ${a.name}` } as ComboOption
-  })
-  const common = COMMON_FONTS.map((f) => ({ value: f, label: f, hint: 'Google Fonts' }))
-  return [...local, ...common]
+  const seen = new Set<string>()
+  const out: ComboOption[] = []
+  const add = (value: string, hint: string) => {
+    const v = (value || '').trim()
+    if (!v || seen.has(v.toLowerCase())) return
+    seen.add(v.toLowerCase())
+    // previewFont = la familia → el dropdown pinta el nombre EN esa tipografía.
+    out.push({ value: v, label: v, hint, previewFont: v })
+  }
+  // 1) Fuentes YA REGISTRADAS en el sitio (meta.fonts) — las que de verdad están
+  //    disponibles. Van primero, con su origen (Google / personalizada) en el hint.
+  for (const f of metaFonts()) {
+    if (f?.family) add(f.family, f.source === 'custom' ? 'registrada · personalizada' : 'registrada · Google')
+  }
+  // 2) Archivos de fuente subidos a Recursos (por si aún no se registró en "Fuentes").
+  for (const a of projectAssets.value.font) {
+    add(fileToFontFamily(a.name), `archivo: ${a.name}`)
+  }
+  // 3) Google Fonts comunes (texto libre igual se acepta para cualquier otra).
+  for (const f of COMMON_FONTS) add(f, 'Google Fonts')
+  return out
 })
 
 // All element IDs in the active site view (sections > layers > elements),
@@ -1413,8 +1494,24 @@ function openAnimHelp(section: string | null = null) {
         </div>
 
         <div class="prop-group-title">Tipografía</div>
-        <PropField label="Títulos" :help="HELP.themeDisplay" placeholder="Playfair Display, serif" data-test="theme-display-field" :modelValue="theme?.typography?.display || ''" @update:modelValue="updateThemeType('display', $event)" />
-        <PropField label="Texto" :help="HELP.themeBody" placeholder="Lato, sans-serif" data-test="theme-body-field" :modelValue="theme?.typography?.body || ''" @update:modelValue="updateThemeType('body', $event)" />
+        <ResourceCombobox
+          label="Títulos"
+          :help="HELP.themeDisplay"
+          placeholder="Playfair Display, serif"
+          test-id="theme-display-field"
+          :suggestions="fontFamilyOptions"
+          :modelValue="theme?.typography?.display || ''"
+          @update:modelValue="updateThemeType('display', $event)"
+        />
+        <ResourceCombobox
+          label="Texto"
+          :help="HELP.themeBody"
+          placeholder="Lato, sans-serif"
+          test-id="theme-body-field"
+          :suggestions="fontFamilyOptions"
+          :modelValue="theme?.typography?.body || ''"
+          @update:modelValue="updateThemeType('body', $event)"
+        />
       </div>
 
       <!-- ── Recursos: per-project asset browser, shared across views ── -->
@@ -1732,6 +1829,10 @@ function openAnimHelp(section: string | null = null) {
         <template v-if="selected.data.type === 'png'">
           <div class="prop-group-title">PNG</div>
 
+          <PropField label="Voltear horizontal" :help="HELP.flipX" type="checkbox" :modelValue="selected.data.flipX || false" @update:modelValue="updateProp('flipX', $event || undefined)" />
+          <PropField label="Voltear vertical" :help="HELP.flipY" type="checkbox" :modelValue="selected.data.flipY || false" @update:modelValue="updateProp('flipY', $event || undefined)" />
+          <PropField label="Relleno" :help="HELP.objectFit" type="select" :options="OBJECT_FIT_OPTS" :modelValue="selected.data.objectFit || 'cover'" @update:modelValue="updateProp('objectFit', $event === 'cover' ? undefined : $event)" />
+
           <div
             class="img-dropzone"
             :class="{ 'drag-over': dragOver, 'is-uploading': uploading }"
@@ -1788,7 +1889,15 @@ function openAnimHelp(section: string | null = null) {
         <template v-if="selected.data.type === 'text'">
           <div class="prop-group-title">Texto</div>
           <PropField label="Contenido" :help="HELP.content" :modelValue="selected.data.content" type="textarea" @update:modelValue="updateProp('content', $event)" />
-          <PropField label="Fuente" :help="HELP.font" :modelValue="selected.data.font || ''" @update:modelValue="updateProp('font', $event)" />
+          <ResourceCombobox
+            label="Fuente"
+            :help="HELP.font"
+            placeholder="Tipografía (registrada o Google)"
+            test-id="text-font-field"
+            :suggestions="fontFamilyOptions"
+            :modelValue="selected.data.font || ''"
+            @update:modelValue="updateProp('font', $event)"
+          />
           <FontSizeField :help="HELP.fontSize" :modelValue="selected.data.fontSize" @update:modelValue="updateProp('fontSize', $event)" />
           <PropField label="Peso" :help="HELP.fontWeight" :modelValue="selected.data.fontWeight || 400" type="number" @update:modelValue="updateProp('fontWeight', $event)" />
 

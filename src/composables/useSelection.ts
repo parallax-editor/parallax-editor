@@ -84,6 +84,38 @@ export function elementAtPoint(clientX: number, clientY: number): HTMLElement | 
 }
 
 /**
+ * RECUADRO de selección (#152): rutas de TODOS los elementos cuya caja en
+ * pantalla TOCA el rectángulo dado (coords de viewport: left/top/right/bottom).
+ * Mismo hit-test geométrico que `elementAtPoint` (live getBoundingClientRect,
+ * correcto a cualquier zoom/pan/scroll, ignora pointer-events), pero por
+ * intersección en vez de contención de un punto — como el lazo de Illustrator/
+ * Finder, que selecciona lo que el recuadro roza. Saltea elementos bloqueados y
+ * los de caja 0. Dedup por ruta.
+ */
+export function elementPathsInScreenRect(rect: {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}): string[] {
+  if (!state.site) return []
+  const out: string[] = []
+  document.querySelectorAll<HTMLElement>('[data-parallax-id]').forEach((el) => {
+    const id = el.getAttribute('data-parallax-id')
+    if (!id || isNodeLockedById(id)) return
+    const r = el.getBoundingClientRect()
+    if (r.width === 0 && r.height === 0) return
+    // Cualquier solape (no contención total) = tocado.
+    const intersects =
+      r.left < rect.right && r.right > rect.left && r.top < rect.bottom && r.bottom > rect.top
+    if (!intersects) return
+    const path = findElementPath(state.site as Site, id)
+    if (path && !out.includes(path)) out.push(path)
+  })
+  return out
+}
+
+/**
  * Is a screen point INSIDE the artboard (the `.preview-frame` rect)?
  *
  * TASK #112 (Illustrator pasteboard semantics): a canvas click only selects

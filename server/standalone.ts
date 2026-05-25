@@ -128,6 +128,14 @@ export function start(port: number = DEFAULT_PORT): Promise<{
     httpServer.once('error', rejectStart)
     httpServer.listen(port, () => {
       httpServer.removeListener('error', rejectStart)
+      // Handler PERSISTENTE de errores en runtime (socket roto, suspensión del
+      // equipo, EMFILE…). Sin esto, tras el arranque el httpServer queda SIN
+      // listener de 'error' → un error post-arranque es "unhandled" y Node tumba
+      // el proceso → el server desaparece y el renderer ve ERR_CONNECTION_REFUSED.
+      // Lo registramos y NO relanzamos, así el server sobrevive.
+      httpServer.on('error', (e) => {
+        console.error('[standalone] error del servidor en runtime (ignorado para no caer):', e)
+      })
       const addr = httpServer.address()
       const actualPort = typeof addr === 'object' && addr ? addr.port : port
       console.log(`\n  Parallax Editor (standalone) → http://localhost:${actualPort}\n`)

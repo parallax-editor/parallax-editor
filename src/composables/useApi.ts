@@ -50,10 +50,12 @@ export const projectsApi = {
   // dataUrl = FileReader.readAsDataURL result.
   // Returns { ok, src, filename, bytes, kind, warning? } — src is
   // "<subdir>/<file>" (e.g. "images/foo.png", "video/clip.mp4", "fonts/x.woff2").
-  uploadAsset: (type: string, slug: string, filename: string, dataUrl: string) =>
+  // `overwrite` (recorte in situ): reemplaza el archivo con ese nombre en vez de
+  // deduplicar (`-1`, `-2`). Lo usa el recorte de imagen desde Recursos.
+  uploadAsset: (type: string, slug: string, filename: string, dataUrl: string, overwrite = false) =>
     api<{ ok?: boolean; src?: string; filename?: string; bytes?: number; kind?: string; warning?: string; error?: string; commit?: 'ok' | 'skipped'; commitMessage?: string }>(
       `/projects/${type}/${slug}/assets`,
-      { method: 'POST', body: JSON.stringify({ filename, dataUrl }) },
+      { method: 'POST', body: JSON.stringify({ filename, dataUrl, overwrite }) },
     ),
   // List every asset that physically exists for the project, grouped by kind
   // (image | video | audio | font). Single source of truth for the "Recursos"
@@ -299,7 +301,7 @@ export const claudeApi = {
   // site's custom-component catalog into Claude's system prompt (the schema
   // contract is always injected from the engine).
   run: (prompt: string, cwd: string, runId?: string, slug?: string, images?: string[], type?: string) =>
-    api<{ output: string; error?: string; canceled?: boolean; timedOut?: boolean }>('/claude', {
+    api<{ output: string; error?: string; canceled?: boolean; timedOut?: boolean; changed?: boolean }>('/claude', {
       method: 'POST',
       body: JSON.stringify({ prompt, cwd, runId, slug, images, type }),
     }),

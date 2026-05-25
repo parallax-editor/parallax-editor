@@ -7,6 +7,7 @@ import {
   state,
   VIEWPORTS,
   getAtPath,
+  addElementFromResource,
   artboardHeight,
   refitOverview,
   centerArtboardOnLoad,
@@ -102,7 +103,23 @@ const {
   handleMouseMove,
   handleMouseUp,
   handleZoomToolClick,
+  marquee,
 } = useCanvas()
+
+// Recuadro de selección (#152): el marquee viene en coords de viewport (clientX/Y);
+// lo pintamos como caja absoluta dentro de .editor-canvas restando su rect. Sin
+// recuadro activo → null (no se renderiza).
+const marqueeStyle = computed(() => {
+  const m = marquee.value
+  const c = canvasRef.value?.getBoundingClientRect()
+  if (!m || !c) return null
+  return {
+    left: `${Math.min(m.x0, m.x1) - c.left}px`,
+    top: `${Math.min(m.y0, m.y1) - c.top}px`,
+    width: `${Math.abs(m.x1 - m.x0)}px`,
+    height: `${Math.abs(m.y1 - m.y0)}px`,
+  }
+})
 
 // Make engine-rendered video/audio selectable in Edición mode (stamps
 // data-parallax-id on media hosts + strips native controls so the
@@ -230,22 +247,18 @@ const previewSite = computed(() => {
   return copy
 })
 
-// The engine injects custom @font-face / the favicon <link> ONCE, inside
+// The engine injects custom @font-face Y el <link> de Google ONCE, inside
 // ParallaxSite's onMounted (Q()). It does NOT react to a later meta change.
-// So uploading a custom font (or favicon) wouldn't show in the editor preview
-// until the engine re-mounts. We fold a SIGNATURE of just the custom-font
-// definitions + favicon into the preview :key so changing one re-mounts
-// ParallaxSite (re-runs Q() → @font-face/<link> picked up). It deliberately
-// ignores Google fonts and every other site edit, so unrelated changes do NOT
-// thrash the preview (keeps the animation/selection behavior unchanged).
+// So registrar/cambiar una fuente (Google O custom) no se vería en el preview
+// hasta remontar. Plegamos una FIRMA de TODAS las fuentes (source+family+url) +
+// favicon en la :key del preview, así agregar/cambiar CUALQUIER fuente remonta
+// ParallaxSite (re-corre Q() → inyecta el @font-face o el <link> de Google).
+// (Antes solo rastreaba las custom → agregar una Google nunca cargaba.)
 const fontFaceKey = computed(() => {
   const m: any = (state.site as any)?.meta
   if (!m) return ''
   const fonts = Array.isArray(m.fonts)
-    ? m.fonts
-        .filter((f: any) => f && f.source === 'custom')
-        .map((f: any) => `${f.family || ''}|${f.url || ''}`)
-        .join(',')
+    ? m.fonts.map((f: any) => `${f?.source || ''}:${f?.family || ''}|${f?.url || ''}`).join(',')
     : ''
   return `${fonts}#${m.favicon || ''}`
 })
@@ -269,10 +282,12 @@ const fontFaceKey = computed(() => {
 // in-flight animations keep running. So selecting a back element, hovering
 // front layers, or nudging a value can never restart/freeze an animation that
 // is mid-flight in the canvas preview. Only the three triggers above re-key.
-//   • previewMode   — alternar Edición↔Preview remonta el engine: en Edición va
-//                     staticMotion (todo estático) y al pasar a Preview las
-//                     animaciones enter/split deben REPRODUCIRSE desde su inicio
-//                     (un patch de prop dejaría el estado final ya "entrado").
+//   • previewMode   — alternar Edición↔Preview remonta el engine para REPRODUCIR
+//                     las animaciones enter/split desde su inicio (un patch de
+//                     prop dejaría el estado final ya "entrado"). Edición ya NO es
+//                     estática: anima igual que Preview (ver static-motion abajo);
+//                     la única diferencia es la capa de captura (clicks seleccionan
+//                     en Edición, navegan/hover en Preview).
 const engineKey = computed(
   () => `${state.slug || ''}#${state.previewNonce}#${state.previewMode}#${fontFaceKey.value}`,
 )
@@ -322,42 +337,48 @@ watch(
 )
 
 // While "Vista completa" is ON, keep the giant sheet fitted when the device
-// frame, active view, or the composition's content height changes (e.g. she
-// switches desktop/mobile or edits sections). We re-measure the live painted
-// height and re-fit. No-op when OFF — the normal mode is never touched.
+// frame, active view, or the composition's content HEIGHT changes (switch
+// desktop/mobile, add/remove a section, change a section's height). We re-measure
+// the live painted height and re-fit. No-op when OFF — normal mode is untouched.
+//
+// Última altura con la que se ajustó. Clave para NO re-ajustar (y resetear el
+// zoom/pan) cuando un cambio en state.site NO altera la altura (editar color,
+// fuente, posición o cualquier atributo de un elemento): solo re-ajustamos si la
+// altura REALMENTE cambió. (Antes, el watcher profundo re-ajustaba ante cualquier
+// edición → el zoom "saltaba" al tocar un atributo en Vista completa.)
+let lastFitHeight = -1
+
+function refitOverviewIfNeeded(force: boolean) {
+  if (!state.overviewMode) return
+  // No re-ajustar durante un drag activo (mover/escalar/recuadro): resetearía el
+  // zoom/pan contra el que se arrastra.
+  if (isCanvasDragActive()) return
+  nextTick(() => {
+    const canvas = canvasRef.value
+    if (!canvas) return
+    const h = frameRef.value?.scrollHeight || 0
+    // Sin cambio de altura y sin forzar → preserva el zoom/pan actual.
+    if (!force && h === lastFitHeight) return
+    lastFitHeight = h
+    refitOverview(canvas.clientWidth || 0, canvas.clientHeight || 0, h)
+  })
+}
+
+// Device / toggle de Vista completa / tamaño del artboard → SIEMPRE re-ajusta
+// (cambia el marco o el fit aunque la altura coincida).
 watch(
-  // Include the (now reactive) artboard dimensions: changing the device size
-  // resizes vh-based sections, so the overview sheet must re-measure + re-fit
-  // or it leaves stale height (a white gap at the end) and a mis-scaled fit.
   () => [
     state.deviceMode,
-    state.site,
     state.overviewMode,
     VIEWPORTS[state.deviceMode].width,
     VIEWPORTS[state.deviceMode].height,
   ],
-  () => {
-    if (!state.overviewMode) return
-    // Item #2: do NOT refit while an element drag is in progress. A drag mutates
-    // the element's position in state.site, firing this deep watcher; refitting
-    // here would call setZoom/center and RESET the zoom/pan the user is dragging
-    // against (the "Vista completa" zoom jump). The refit is only meant for real
-    // content/layout changes (section add/edit, device/view switch) — none of
-    // which happen during a live drag. On drag end the position is final and a
-    // genuine height change (rare for a move) is already reflected.
-    if (isCanvasDragActive()) return
-    nextTick(() => {
-      const canvas = canvasRef.value
-      const scroller = frameRef.value
-      refitOverview(
-        canvas?.clientWidth || 0,
-        canvas?.clientHeight || 0,
-        scroller?.scrollHeight || 0,
-      )
-    })
-  },
-  { deep: true },
+  () => refitOverviewIfNeeded(true),
 )
+// Ediciones del contenido → re-ajusta SOLO si cambió la altura de la composición
+// (agregar/quitar sección, cambiar su alto). Editar atributos que no cambian la
+// altura NO re-ajusta → el zoom/pan se conserva.
+watch(() => state.site, () => refitOverviewIfNeeded(false), { deep: true })
 
 // Initial framing: when a project opens it must NOT be jammed in the top-left
 // corner. Center it horizontally with a small top margin (normal mode only).
@@ -396,6 +417,7 @@ watch(
   () => state.slug,
   () => {
     framedSlug = null
+    lastFitHeight = -1 // proyecto nuevo → la próxima medición re-ajusta sí o sí
     nextTick(frameInitial)
   },
 )
@@ -482,6 +504,57 @@ function scrollToElement(id: string) {
   nextTick(() => requestAnimationFrame(attempt))
 }
 defineExpose({ scrollToElement })
+
+// ── Arrastrar un RECURSO desde el panel Recursos a la mesa (#154) ────────────
+// ResourcesPanel marca cada item de imagen/video/audio como draggable y pone
+// {kind, src} en dataTransfer. Aquí, al soltar sobre la mesa (Edición), creamos
+// el elemento: si el cursor cayó sobre una sección, la posición se calcula como
+// % de ESA sección (y va a su última capa salvo que haya selección explícita);
+// si cayó en el pasteboard, va al centro de la capa destino por defecto.
+const RESOURCE_DND_MIME = 'application/x-parallax-resource'
+
+function onCanvasDragOver(e: DragEvent) {
+  if (state.previewMode !== 'edit') return
+  if (!e.dataTransfer || !Array.from(e.dataTransfer.types).includes(RESOURCE_DND_MIME)) return
+  e.preventDefault() // habilita el drop
+  e.dataTransfer.dropEffect = 'copy'
+}
+
+function onCanvasDrop(e: DragEvent) {
+  if (state.previewMode !== 'edit' || !e.dataTransfer) return
+  const raw = e.dataTransfer.getData(RESOURCE_DND_MIME)
+  if (!raw) return
+  e.preventDefault()
+  let payload: { kind?: string; src?: string }
+  try {
+    payload = JSON.parse(raw)
+  } catch {
+    return
+  }
+  const kind = payload.kind
+  const src = payload.src
+  if (!src || (kind !== 'image' && kind !== 'video' && kind !== 'audio')) return
+
+  // Sección bajo el cursor (si la hay) → su id + posición en % de su caja.
+  let sectionId: string | undefined
+  let pos: { x: number; y: number } | undefined
+  const sectionEl = document
+    .elementsFromPoint(e.clientX, e.clientY)
+    .find((el) => el instanceof HTMLElement && el.classList.contains('parallax-section')) as
+    | HTMLElement
+    | undefined
+  if (sectionEl) {
+    sectionId = sectionEl.id || undefined
+    const r = sectionEl.getBoundingClientRect()
+    if (r.width > 0 && r.height > 0) {
+      pos = {
+        x: ((e.clientX - r.left) / r.width) * 100,
+        y: ((e.clientY - r.top) / r.height) * 100,
+      }
+    }
+  }
+  addElementFromResource(kind, src, { sectionId, pos })
+}
 </script>
 
 <template>
@@ -503,6 +576,8 @@ defineExpose({ scrollToElement })
     @mousemove="handleMouseMove"
     @mouseup="handleMouseUp"
     @click="onClick"
+    @dragover="onCanvasDragOver"
+    @drop="onCanvasDrop"
   >
     <!-- Checkerboard background -->
     <div class="canvas-bg" />
@@ -521,7 +596,7 @@ defineExpose({ scrollToElement })
               :components="components"
               data-engine-root
               mode="dev"
-              :static-motion="state.previewMode === 'edit'"
+              :static-motion="state.previewMode === 'edit' && state.freezeAnims"
             />
           </div>
         </div>
@@ -563,6 +638,18 @@ defineExpose({ scrollToElement })
         />
       </div>
     </div>
+
+    <!-- Recuadro de selección (#152): caja del marquee mientras se arrastra
+         sobre zona vacía de la mesa. Fuera del pan-wrapper (coords locales del
+         canvas, ya calculadas en marqueeStyle). pointer-events:none para no
+         interferir con el propio drag. Por encima de la capa de captura
+         (z-index:6) y por debajo de los handles del SelectionOverlay (10000). -->
+    <div
+      v-if="marqueeStyle"
+      class="marquee-rect"
+      data-test="marquee-rect"
+      :style="marqueeStyle"
+    />
 
     <!-- Smart alignment guides: OUTSIDE the transformed pan-wrapper (same as
          SelectionOverlay) so its canvas-local line coords aren't double-
@@ -705,6 +792,18 @@ defineExpose({ scrollToElement })
   pointer-events: none;
   z-index: 5;
   background-position: 0 0;
+}
+/* Recuadro de selección (#152): caja semitransparente con borde de acento que
+   se dibuja al arrastrar sobre zona vacía de la mesa. pointer-events:none para
+   no interceptar el propio drag; por encima de la capa de captura y por debajo
+   de los handles del SelectionOverlay. */
+.marquee-rect {
+  position: absolute;
+  z-index: 9000;
+  pointer-events: none;
+  border: 1px solid var(--accent-strong, #0066cc);
+  background: rgba(0, 102, 204, 0.12);
+  border-radius: 1px;
 }
 /* TASK 1 capture layer. Covers the entire artboard ON TOP of the engine
    content (above grid z-index:5). Transparent. In Edición mode it carries

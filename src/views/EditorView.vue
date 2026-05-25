@@ -112,7 +112,7 @@ async function loadProject() {
 // Daniela sees the change in the canvas, reads Claude's reply in the chat, and
 // saves only if she wants. Claude never auto-commits (#120). The watcher already
 // suppresses the editor's OWN writes, so this only fires for external changes.
-async function applyExternalChange() {
+async function applyExternalChange(fromClaude = false) {
   // Usa state.projectType/state.slug (el sitio REALMENTE cargado), NO props.* de
   // la ruta: el guard del WebSocket también filtra por state.slug, así que ambos
   // deben coincidir. (Antes usaba props.slug y, si la ruta y el estado se
@@ -137,6 +137,12 @@ async function applyExternalChange() {
     (before.find((n) => n.path === state.selectedPath) || before[0])?.id || keepIds[0] || null
 
   state.site = site
+  // Prefijo "Claude:" (#149): si esta recarga viene de una corrida de Claude que
+  // SÍ cambió el archivo, guardamos el contenido como baseline. Al Guardar, si el
+  // contenido sigue idéntico a este baseline (Daniela no editó a mano encima), el
+  // commit se prefija con "Claude:". Una edición manual lo hace diferir → sin
+  // prefijo. El watcher recarga con fromClaude=false y no toca el baseline.
+  if (fromClaude) state.claudeBaseline = JSON.stringify(site)
   nextTick(() => {
     if (keepIds.length) {
       const newPaths = keepIds
@@ -202,7 +208,11 @@ async function save() {
     // against the current site (GAP7 / PLAN §9) — no more static
     // `edit: <slug>`. Built BEFORE we overwrite originalSite. Same path for
     // manual Cmd+S, the Guardar button and autosave (all funnel here).
-    const commitMsg = buildCommitMessage(state.slug, state.originalSite, state.site)
+    // ¿Este cambio lo hizo Claude? Sí cuando el contenido actual sigue siendo
+    // IDÉNTICO al baseline que dejó la última corrida de Claude (Daniela no editó
+    // a mano encima). En ese caso el commit se prefija con "Claude:" (#149).
+    const fromClaude = !!state.claudeBaseline && state.claudeBaseline === JSON.stringify(state.site)
+    const commitMsg = buildCommitMessage(state.slug, state.originalSite, state.site, fromClaude)
     await projectsApi.save(state.projectType, state.slug, state.site)
     // git opcional: si el workspace no usa git, Guardar solo escribe a disco (el
     // PUT de arriba) — sin commit. (El server también lo no-opea por seguridad.)
@@ -213,6 +223,8 @@ async function save() {
       await gitApi.commit(state.projectType, commitMsg, state.slug)
     }
     state.originalSite = JSON.stringify(state.site)
+    // Consumido el baseline de Claude: el próximo cambio decide su propia autoría.
+    state.claudeBaseline = null
     // Let an open GitPanel refresh its log so history isn't stale (GAP7).
     state.gitLogNonce++
     if (wasAutosave) {

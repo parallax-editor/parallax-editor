@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'http'
 import type { Server as HttpServer } from 'http'
 import { createReadStream, existsSync } from 'fs'
 import { resolve, extname } from 'path'
-import { listProjects, readProject, writeProject, createProject, duplicateProject, getRepoPath, getContentRelPath, getAssetPath, saveProjectAsset, assetKindFromMime, listProjectAssets, deleteProjectAsset } from './projects'
+import { listProjects, readProject, writeProject, createProject, duplicateProject, getRepoPath, getContentRelPath, getAssetPath, saveProjectAsset, assetKindFromMime, listProjectAssets, deleteProjectAsset, contentSignature } from './projects'
 import { gitLog, gitShow, gitCommit, gitPush, gitPull, gitPendingCommits, gitOriginRecent, gitAheadCount, gitConfigStatus, gitClone } from './git'
 import { runClaude, cancelClaude, isClaudeAvailable } from './claude'
 import { setupWatcher, addWatchPath } from './watcher'
@@ -325,6 +325,8 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
         const body = await parseJsonBodyLarge(req)
         const filename = String(body?.filename || '').trim()
         const dataUrl = String(body?.dataUrl || '')
+        // overwrite=true (recorte in situ): reemplaza el archivo con ese nombre.
+        const overwrite = body?.overwrite === true
         if (!filename) return json(res, { error: 'Falta el nombre del archivo' }, 400)
         const m = dataUrl.match(/^data:([^;,]+)?(;base64)?,(.*)$/s)
         if (!m) return json(res, { error: 'dataUrl inválido' }, 400)
@@ -344,7 +346,7 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
         try {
           // Fall back to 'image' only when the dataUrl had no mime at all
           // (keeps the pre-existing image flow working unchanged).
-          const result = saveProjectAsset(type, slug, filename, buffer, kind || 'image')
+          const result = saveProjectAsset(type, slug, filename, buffer, kind || 'image', overwrite)
           const label = result.kind === 'video' ? 'El video' : result.kind === 'audio' ? 'El audio' : result.kind === 'font' ? 'La fuente' : 'La imagen'
           // Two independent `warning` channels collapse into one user-visible
           // line: the SIZE warning ("pesa 8MB, optimízalo") and the COMMIT
@@ -534,14 +536,27 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
         // nuevo ya no hereda el repo del portafolio). Fallback al cwd del cliente
         // y luego al del proceso.
         const repoCwd = (type && getRepoPath(String(type))) || cwd || process.cwd()
-        return json(res, await runClaude(
+        // BLINDAJE (#claude-no-change): firma del contenido ANTES y DESPUÉS del
+        // run. Si no cambió, Claude respondió pero no tocó ningún archivo → el
+        // editor lo avisa. Solo medible con type+slug (sabemos qué carpeta mirar);
+        // sin ellos `changed` queda undefined y el cliente no avisa.
+        let sigBefore: string | null = null
+        if (type && slug) {
+          try { sigBefore = contentSignature(String(type), String(slug)) } catch { /* noop */ }
+        }
+        const result = await runClaude(
           prompt,
           repoCwd,
           runId ? String(runId) : undefined,
           slug ? String(slug) : undefined,
           images,
           componentCatalog,
-        ))
+        )
+        let changed: boolean | undefined
+        if (sigBefore !== null) {
+          try { changed = contentSignature(String(type), String(slug)) !== sigBefore } catch { /* noop */ }
+        }
+        return json(res, { ...result, changed })
       }
 
       json(res, { error: 'Not found' }, 404)

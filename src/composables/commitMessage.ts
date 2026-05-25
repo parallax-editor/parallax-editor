@@ -81,12 +81,20 @@ function diffMaps(
  * @param slug         project slug (suffix for context)
  * @param previousJson `state.originalSite` (JSON string of last saved site) or null
  * @param current      `state.site` (current object) or null
+ * @param fromClaude   true si el cambio lo hizo una corrida de `claude -p` (el
+ *                     contenido sigue idéntico a lo que Claude dejó, sin edición
+ *                     manual encima). Prefija el mensaje con "Claude:" para que
+ *                     en el git log se distingan los commits de Claude de los de
+ *                     Daniela/manuales (#149, blindaje de autoría).
  */
 export function buildCommitMessage(
   slug: string,
   previousJson: string | null,
   current: AnyObj | null,
+  fromClaude = false,
 ): string {
+  // Prefijo de autoría: "Claude: " cuando el cambio vino de Claude.
+  const pfx = fromClaude ? 'Claude: ' : ''
   let prevSite: AnyObj | null = null
   try {
     prevSite = previousJson ? JSON.parse(previousJson) : null
@@ -96,7 +104,7 @@ export function buildCommitMessage(
 
   // First save / no prior baseline → not an "edit", it's the initial content.
   if (!prevSite) {
-    return `contenido inicial: ${slug}`
+    return `${pfx}contenido inicial: ${slug}`
   }
 
   const a = indexTree(prevSite)
@@ -142,8 +150,8 @@ export function buildCommitMessage(
   if (!parts.length) {
     // Something changed enough to be dirty but our structural diff saw nothing
     // notable (e.g. an editor-only key). Still avoid the old static string.
-    return `ajustes menores: ${slug}`
+    return `${pfx}ajustes menores: ${slug}`
   }
 
-  return `${parts.join(', ')} — ${slug}`
+  return `${pfx}${parts.join(', ')} — ${slug}`
 }

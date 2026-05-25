@@ -354,6 +354,25 @@ interface GroupDragItem {
 const groupDragItems = ref<GroupDragItem[]>([])
 const isGroupDragging = ref(false)
 
+// Group RESIZE (escalar varios juntos): snapshot por elemento + escala alrededor
+// de la esquina/borde OPUESTO al handle arrastrado. Geometría en px de canvas
+// (los ratios son independientes del zoom) → % por sección, emitido con emitCell
+// (preserva la unidad %/px de cada elemento). Posición y tamaño escalan; un
+// elemento SIN size explícito solo se reposiciona (no se le inventa tamaño).
+interface GroupResizeItem {
+  path: string
+  cellX: Cell; cellY: Cell; cellW: Cell; cellH: Cell
+  hasW: boolean; hasH: boolean
+  fx: number; fy: number
+  xPct: number; yPct: number; wPct: number; hPct: number
+  boxW: number; boxH: number
+  anchorCanvasX: number; anchorCanvasY: number
+}
+const groupResizeItems = ref<GroupResizeItem[]>([])
+const groupResizeOrig = ref<{ width: number; height: number; anchorX: number; anchorY: number } | null>(null)
+const isGroupResizing = ref(false)
+const groupResizeHandle = ref('')
+
 // ─── Drag handlers ──────────────────────────────────────────
 
 // A locked node can't be moved/resized/rotated on the canvas. We block the
@@ -522,6 +541,94 @@ function applyGroupMove(e: MouseEvent) {
   }
 }
 
+// ─── Group resize (escalar el grupo) ─────────────────────────────────────────
+function startGroupResize(e: MouseEvent, handle: string) {
+  if (state.tool !== 'select' || !hasMultiSelection.value) return
+  if (state.spacePanning || groupHasLock.value || !groupBounds.value || !props.canvasRef) return
+  e.stopPropagation()
+  isDragging.value = true
+  isGroupResizing.value = true
+  setCanvasDragActive(true)
+  dragType.value = 'resize'
+  groupResizeHandle.value = handle
+  dragStart.value = { x: e.clientX, y: e.clientY }
+  const gb = groupBounds.value
+  groupResizeOrig.value = {
+    width: gb.width || 1,
+    height: gb.height || 1,
+    // Esquina/borde FIJO = el opuesto al handle arrastrado (en px de canvas).
+    anchorX: handle.includes('w') ? gb.left + gb.width : gb.left,
+    anchorY: handle.includes('n') ? gb.top + gb.height : gb.top,
+  }
+  const canvasRect = props.canvasRef.getBoundingClientRect()
+  const vp = VIEWPORTS[state.deviceMode]
+  const items: GroupResizeItem[] = []
+  for (const path of multiSelectedElementPaths.value) {
+    const el = getAtPath(path)
+    if (!el) continue
+    const dom = domElForPath(path)
+    const box = sectionBoxForEl(dom)
+    const meas = measuredRectForEl(dom)
+    const px = parseCell(el?.position?.x); const py = parseCell(el?.position?.y)
+    const cw = parseCell(el?.size?.width); const ch = parseCell(el?.size?.height)
+    const { fx, fy } = anchorFractions(el?.anchor)
+    const rect = dom?.getBoundingClientRect()
+    items.push({
+      path, cellX: px, cellY: py, cellW: cw, cellH: ch,
+      hasW: el?.size?.width != null,
+      hasH: el?.size?.height != null,
+      fx, fy,
+      xPct: px.kind === 'percent' || px.kind === 'number' ? px.n
+        : box && meas ? ((meas.x + fx * meas.w) / box.width) * 100 : 50,
+      yPct: py.kind === 'percent' || py.kind === 'number' ? py.n
+        : box && meas ? ((meas.y + fy * meas.h) / box.height) * 100 : 50,
+      wPct: extentPct(cw, box?.width ?? 0, meas?.w),
+      hPct: extentPct(ch, box?.height ?? 0, meas?.h),
+      boxW: box ? box.width : vp.width,
+      boxH: box ? box.height : vp.height,
+      anchorCanvasX: rect ? rect.left - canvasRect.left + fx * rect.width : 0,
+      anchorCanvasY: rect ? rect.top - canvasRect.top + fy * rect.height : 0,
+    })
+  }
+  groupResizeItems.value = items
+}
+
+function applyGroupResize(e: MouseEvent) {
+  const o = groupResizeOrig.value
+  if (!o || !props.canvasRef) return
+  const canvasRect = props.canvasRef.getBoundingClientRect()
+  const handle = groupResizeHandle.value
+  const pX = e.clientX - canvasRect.left
+  const pY = e.clientY - canvasRect.top
+  let sx = handle.includes('e') ? (pX - o.anchorX) / o.width
+    : handle.includes('w') ? (o.anchorX - pX) / o.width : 1
+  let sy = handle.includes('s') ? (pY - o.anchorY) / o.height
+    : handle.includes('n') ? (o.anchorY - pY) / o.height : 1
+  // Shift en una esquina → escala proporcional (mismo factor en ambos ejes).
+  if (e.shiftKey && handle.length === 2) { const s = Math.max(sx, sy); sx = s; sy = s }
+  sx = Math.max(0.05, sx); sy = Math.max(0.05, sy)
+  for (const it of groupResizeItems.value) {
+    // El punto de anclaje del elemento se aleja/acerca de la esquina fija según
+    // la escala; ese desplazamiento (px canvas) → % de la sección del elemento.
+    const dX = (it.anchorCanvasX - o.anchorX) * (sx - 1)
+    const dY = (it.anchorCanvasY - o.anchorY) * (sy - 1)
+    const newX = it.xPct + (dX / (it.boxW * props.zoom)) * 100
+    const newY = it.yPct + (dY / (it.boxH * props.zoom)) * 100
+    const ox = emitCell(it.cellX, newX, it.boxW, true)
+    const oy = emitCell(it.cellY, newY, it.boxH, true)
+    const curPos = getAtPath(`${it.path}.position`) || {}
+    setAtPath(`${it.path}.position`, { ...curPos, x: ox.value, y: oy.value })
+    // Tamaño: solo elementos CON size explícito (los demás solo se reposicionan).
+    if (it.hasW || it.hasH) {
+      const cur = getAtPath(`${it.path}.size`) || {}
+      const patch: any = { ...cur }
+      if (it.hasW) patch.width = emitCell(it.cellW, Math.max(1, it.wPct * sx), it.boxW, true).value
+      if (it.hasH) patch.height = emitCell(it.cellH, Math.max(1, it.hPct * sy), it.boxH, true).value
+      setAtPath(`${it.path}.size`, patch)
+    }
+  }
+}
+
 function startResize(e: MouseEvent, handle: string) {
   if (isLocked.value || state.spacePanning) return
   e.stopPropagation()
@@ -618,6 +725,14 @@ function onMouseMove(e: MouseEvent) {
   // resize/rotate path entirely (group resize/rotate is out of scope).
   if (isGroupDragging.value) {
     applyGroupMove(e)
+    scheduleUpdate()
+    updateGroupBounds()
+    return
+  }
+
+  // Group resize: escala todos los seleccionados alrededor de la esquina fija.
+  if (isGroupResizing.value) {
+    applyGroupResize(e)
     scheduleUpdate()
     updateGroupBounds()
     return
@@ -803,6 +918,9 @@ function onMouseUp(e?: MouseEvent) {
   if (isDragging.value) markDragEnded()
   isDragging.value = false
   isGroupDragging.value = false
+  isGroupResizing.value = false
+  groupResizeItems.value = []
+  groupResizeOrig.value = null
   pendingMove.value = false
   pendingKind.value = null
   groupDragItems.value = []
@@ -892,9 +1010,8 @@ const boxStyle = computed(() => {
   </div>
 
   <!-- ── Group selection (GAP5): 2+ elements ──────────────────────────────
-       A single combined bounding box with a MOVE area only (no resize/rotate
-       handles — group resize/rotate is intentionally out of scope). Dragging
-       it translates every selected element by the same delta. -->
+       Caja combinada con MOVER (arrastrar el área) y ESCALAR (handles en los
+       bordes/esquinas → escala todos los seleccionados juntos). -->
   <div
     v-if="hasMultiSelection && groupBounds"
     class="group-box"
@@ -919,6 +1036,16 @@ const boxStyle = computed(() => {
       data-test="group-move-area"
       @mousedown="startGroupMove"
     />
+    <!-- Handles de escala del GRUPO (escalan todos los seleccionados juntos). -->
+    <template v-if="!groupHasLock">
+      <div
+        v-for="h in handles"
+        :key="'g-' + h"
+        :class="['handle', `handle-${h}`]"
+        :data-test="`group-resize-handle-${h}`"
+        @mousedown="(e) => startGroupResize(e, h)"
+      />
+    </template>
   </div>
 </template>
 

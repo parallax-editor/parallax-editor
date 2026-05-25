@@ -18,7 +18,7 @@
 // el diálogo NATIVO de carpeta vía IPC (mejor que osascript y concede permiso
 // TCC sobre la carpeta elegida).
 
-const { app, BrowserWindow, Menu, dialog, shell, ipcMain, nativeImage } = require('electron')
+const { app, BrowserWindow, Menu, dialog, shell, ipcMain, nativeImage, powerMonitor } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const { fixPath } = require('./path-fix.cjs')
@@ -30,6 +30,22 @@ fixPath()
 const IS_DEV = process.env.ELECTRON_DEV === '1'
 const DEV_URL = 'http://localhost:3000'
 const PRELOAD = path.join(__dirname, 'preload.cjs')
+
+// Un solo proceso a la vez: dos copias chocarían por el puerto fijo 4317 (y se
+// pisarían el localStorage). Si ya hay una corriendo, esta se cierra y enfoca la
+// existente (manejado en whenReady para no re-indentar todo el módulo).
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+
+// Blindaje del proceso principal: un error async NO manejado (de claude/git/
+// watcher/etc.) NO debe tumbar el proceso — porque el server standalone corre
+// IN-PROCESS y se caería con él, dejando al renderer con ERR_CONNECTION_REFUSED
+// ("Failed to fetch", deja de guardar). Los registramos y seguimos vivos.
+process.on('uncaughtException', (err) => {
+  console.error('[main] uncaughtException (ignorado para no caer):', err)
+})
+process.on('unhandledRejection', (reason) => {
+  console.error('[main] unhandledRejection (ignorado para no caer):', reason)
+})
 
 /** Referencias vivas para cierre limpio. */
 let mainWindow = null
@@ -62,10 +78,34 @@ async function startStandaloneServer() {
   }
   // eslint-disable-next-line global-require, import/no-dynamic-require
   const { start } = require(modPath)
-  // Puerto 0 = el SO asigna uno libre; evitamos chocar con otro editor abierto.
-  // start() resuelve con el puerto REAL.
-  standaloneServer = await start(0)
-  return standaloneServer.port
+  // PUERTO FIJO (4317): el renderer carga http://localhost:4317, y `localStorage`
+  // está atado al ORIGEN (esquema://host:PUERTO). Con un puerto fijo el origen es
+  // ESTABLE entre arranques → los workspaces y prefs PERSISTEN. (Antes era
+  // `start(0)` = puerto ALEATORIO cada vez → el origen cambiaba → al cerrar y
+  // reabrir se "perdía" todo el localStorage.) El single-instance lock evita que
+  // dos copias choquen por el puerto; los reintentos cubren el caso de una
+  // instancia previa que aún libera el puerto al cerrar.
+  const FIXED_PORT = Number(process.env.EDITOR_PORT) || 4317
+  for (let attempt = 0; ; attempt++) {
+    try {
+      standaloneServer = await start(FIXED_PORT)
+      return standaloneServer.port
+    } catch (err) {
+      const inUse = err && err.code === 'EADDRINUSE'
+      if (inUse && attempt < 6) {
+        await new Promise((r) => setTimeout(r, 400))
+        continue
+      }
+      if (inUse) {
+        // Último recurso (raro): algo retiene 4317. Abrimos en un puerto efímero
+        // para no dejar a Daniela sin app; esa sesión no comparte el localStorage
+        // del puerto fijo, pero al menos arranca.
+        standaloneServer = await start(0)
+        return standaloneServer.port
+      }
+      throw err
+    }
+  }
 }
 
 async function closeStandaloneServer() {
@@ -408,6 +448,19 @@ function setDockIcon() {
 
 // ─── Ciclo de vida ─────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
+  // Single-instance: si otra copia ya tiene el lock, salimos sin abrir ventana.
+  if (!hasSingleInstanceLock) {
+    app.quit()
+    return
+  }
+  // Si se intenta abrir una segunda copia, enfocamos la ventana existente.
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+
   setDockIcon()
   registerIpc()
   buildMenu()
@@ -427,6 +480,26 @@ app.whenReady().then(async () => {
     )
     app.quit()
     return
+  }
+
+  // Auto-recuperación tras suspensión (cerrar la laptop "un buen rato" puede
+  // dejar el socket del server muerto → ERR_CONNECTION_REFUSED al volver). Al
+  // despertar, si el server ya no escucha, lo reiniciamos en el MISMO puerto fijo
+  // → la siguiente petición del renderer vuelve a funcionar (sin recargar, para
+  // no perder lo que tenga en pantalla). Solo en modo empaquetado (hay server).
+  if (!IS_DEV) {
+    powerMonitor.on('resume', async () => {
+      try {
+        const dead = standaloneServer && standaloneServer.server && !standaloneServer.server.listening
+        if (dead) {
+          await closeStandaloneServer()
+          await startStandaloneServer()
+          console.log('[main] server reiniciado tras resume')
+        }
+      } catch (e) {
+        console.error('[main] no se pudo reiniciar el server tras resume:', e)
+      }
+    })
   }
 
   app.on('activate', () => {

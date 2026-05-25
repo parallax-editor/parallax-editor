@@ -31,8 +31,13 @@ export function useShortcuts(onSave: () => void) {
   function handleKey(e: KeyboardEvent) {
     const meta = e.metaKey || e.ctrlKey
     const target = e.target as HTMLElement
-    // Don't capture when typing in inputs
-    if (isTypingTarget(target)) return
+    // No capturar cuando se escribe en un campo (input/textarea/contenteditable).
+    // Chequeamos el target del evento Y el document.activeElement: a veces el
+    // keydown llega con target = body aunque el foco esté en un input (p.ej. el
+    // panel de Claude), y entonces Cmd+C/V/X disparaban el copiar/pegar del
+    // ELEMENTO del árbol en vez del texto del campo. Con ambos chequeos, si hay
+    // un campo enfocado, el editor deja pasar el copy/paste/cut nativo del texto.
+    if (isTypingTarget(target) || isTypingTarget(document.activeElement)) return
 
     // ── Space = temporary pan modifier (GAP9) ────────────────────────────
     // Hold Space → canvas pans like the Mano tool (cursor grab, drag pans);

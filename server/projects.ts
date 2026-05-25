@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, cpSync, rmSync, statSync } from 'fs'
 import { resolve, relative } from 'path'
+import { createHash } from 'crypto'
 import { execFileSync } from 'child_process'
 import { markSelfWrite } from './selfWrites'
 // SINGLE canonical slug transform (TASK 2) — the SAME function the create
@@ -183,6 +184,51 @@ export function getContentRelPath(type: string, slug: string): string {
 
 export function getAssetPath(type: string, slug: string, assetPath: string): string {
   return resolve(contentDir(type), slug, assetPath)
+}
+
+/**
+ * BLINDAJE (#claude-no-change): firma del contenido de un site para detectar si
+ * una corrida de `claude -p` REALMENTE cambió algo. Hashea el `site.json`
+ * (lo que Claude edita) byte a byte + un inventario `relpath:tamaño` del resto
+ * de archivos (detecta agregar/quitar/reemplazar assets sin leer sus bytes).
+ * Tomada ANTES y DESPUÉS del run: si la firma no cambió, Claude dijo que hizo
+ * algo pero el archivo quedó intacto → el editor avisa. Determinista; ante
+ * cualquier error de lectura devuelve lo que pudo (nunca lanza).
+ */
+export function contentSignature(type: string, slug: string): string {
+  const dir = resolve(contentDir(type), slug)
+  const h = createHash('sha1')
+  try {
+    h.update(readFileSync(resolve(dir, 'site.json')))
+  } catch {
+    h.update('<no-site.json>')
+  }
+  const inv: string[] = []
+  const walk = (d: string, rel: string) => {
+    let entries: { name: string; isDirectory(): boolean; isFile(): boolean }[]
+    try {
+      entries = readdirSync(d, { withFileTypes: true }) as any[]
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      const r = rel ? `${rel}/${e.name}` : e.name
+      if (r === 'site.json') continue // ya hasheado byte a byte arriba
+      const p = resolve(d, e.name)
+      if (e.isDirectory()) walk(p, r)
+      else {
+        try {
+          inv.push(`${r}:${statSync(p).size}`)
+        } catch {
+          /* archivo desaparecido entre readdir y stat — ignorar */
+        }
+      }
+    }
+  }
+  walk(dir, '')
+  inv.sort()
+  h.update(inv.join('|'))
+  return h.digest('hex')
 }
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.avif', '.gif', '.svg'])
@@ -414,6 +460,10 @@ export function saveProjectAsset(
   originalName: string,
   buffer: Buffer,
   kind: AssetKind = 'image',
+  // overwrite=true → escribe SOBRE el archivo con ese nombre (no deduplica). Lo
+  // usa el RECORTE desde Recursos: reemplaza el .png in situ para que su recorte
+  // aplique dondequiera que se use (mismo `src`), sin crear `-1`/`-2`.
+  overwrite = false,
 ): SaveAssetResult & AssetCommitInfo {
   const dot = originalName.lastIndexOf('.')
   const ext = dot > 0 ? originalName.slice(dot).toLowerCase() : KIND_FALLBACK_EXT[kind]
@@ -432,11 +482,15 @@ export function saveProjectAsset(
   const sExt = sanitized.slice(sdot)
 
   let filename = sanitized
-  let n = 1
-  while (existsSync(resolve(destDir, filename))) {
-    filename = `${sBase}-${n}${sExt}`
-    n++
+  if (!overwrite) {
+    let n = 1
+    while (existsSync(resolve(destDir, filename))) {
+      filename = `${sBase}-${n}${sExt}`
+      n++
+    }
   }
+  // overwrite=true → `filename` queda en el nombre sanitizado y writeFileSync
+  // reemplaza el archivo existente (recorte in situ).
 
   writeFileSync(resolve(destDir, filename), buffer)
 
@@ -445,7 +499,9 @@ export function saveProjectAsset(
   // ambiguity. Display the asset as "<subdir>/<file>" (the same string we
   // store in site.json), keeping commit messages readable in `git log`.
   const relPath = assetRelPathInRepo(type, slug, subdir, filename)
-  const commitInfo = commitOneAsset(type, 'add', relPath, `${subdir}/${filename}`)
+  // Incluye el slug del proyecto en el mensaje → `asset+: <slug>/<subdir>/<file>`
+  // (antes era `asset+: <subdir>/<file>` y no se sabía a qué sitio pertenecía).
+  const commitInfo = commitOneAsset(type, 'add', relPath, `${slug}/${subdir}/${filename}`)
   return { src: `${subdir}/${filename}`, filename, bytes: buffer.length, kind, ...commitInfo }
 }
 
@@ -544,5 +600,5 @@ export function deleteProjectAsset(
   // predictable record of the remove. If git fails, we still return success
   // (the file IS gone from disk) with a `warning`/`commit:'skipped'` flag.
   const relPath = assetRelPathInRepo(type, slug, subdir, safeName)
-  return commitOneAsset(type, 'delete', relPath, `${subdir}/${safeName}`)
+  return commitOneAsset(type, 'delete', relPath, `${slug}/${subdir}/${safeName}`)
 }

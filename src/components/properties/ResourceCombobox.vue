@@ -31,6 +31,10 @@ export interface ComboOption {
   thumb?: string
   /** Optional secondary hint (e.g. file size, "Google Fonts"). */
   hint?: string
+  /** Optional: render this option's label IN this font-family (preview de
+   *  tipografía en el dropdown, como Google Fonts). Requiere que la fuente esté
+   *  cargada en el documento del editor. */
+  previewFont?: string
 }
 
 const props = defineProps<{
@@ -215,7 +219,10 @@ async function scrollActiveIntoView() {
         >
           <img v-if="opt.thumb" :src="opt.thumb" class="rc-thumb" alt="" />
           <span class="rc-opt-main">
-            <span class="rc-opt-label">{{ toDisplay(opt.label || opt.value) }}</span>
+            <span
+              class="rc-opt-label"
+              :style="opt.previewFont ? { fontFamily: opt.previewFont, fontSize: '15px' } : undefined"
+            >{{ toDisplay(opt.label || opt.value) }}</span>
             <span v-if="opt.hint" class="rc-opt-hint">{{ opt.hint }}</span>
           </span>
         </li>

@@ -1,4 +1,14 @@
-import { state, VIEWPORTS, setZoom, zoomAroundPoint } from '../stores/editor'
+import { ref, onUnmounted } from 'vue'
+import {
+  state,
+  VIEWPORTS,
+  setZoom,
+  zoomAroundPoint,
+  setCanvasMultiSelection,
+  setCanvasDragActive,
+  markDragEnded,
+} from '../stores/editor'
+import { elementAtPoint, pointInArtboard, elementPathsInScreenRect } from './useSelection'
 
 /**
  * Canvas interaction. The preview frame (the white artboard) is a natively
@@ -171,6 +181,61 @@ export function useCanvas() {
   let isPanning = false
   let panStart = { x: 0, y: 0 }
 
+  // ── Recuadro de selección (marquee / rubber-band, #152) ────────────────────
+  // Con la herramienta Seleccionar, click-apretado-y-arrastrar sobre zona VACÍA
+  // de la mesa dibuja un recuadro; al soltar, selecciona todo lo que tocó (tipo
+  // Finder/Illustrator). Coords en viewport (clientX/Y). `marquee` lo pinta
+  // EditorCanvas (convirtiendo a coords locales del canvas).
+  //
+  // CRÍTICO (fix selección rota): el move/up del recuadro van en listeners de
+  // WINDOW (no del canvas). Si fueran del canvas y el usuario soltara FUERA de la
+  // mesa (sobre un panel o el borde), el mouseup nunca llegaría → el recuadro
+  // quedaba "pegado" y el seleccionar dejaba de funcionar. En window, soltar en
+  // cualquier lado lo finaliza y limpia siempre.
+  const marquee = ref<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
+  const MARQUEE_THRESHOLD = 4
+  let marqueePending = false
+  let marqueeActive = false
+  let marqueeStart = { x: 0, y: 0 }
+
+  function onMarqueeMove(e: MouseEvent) {
+    if (!marqueePending && !marqueeActive) return
+    const dx = e.clientX - marqueeStart.x
+    const dy = e.clientY - marqueeStart.y
+    if (!marqueeActive && Math.hypot(dx, dy) < MARQUEE_THRESHOLD) return
+    if (!marqueeActive) {
+      marqueeActive = true
+      marqueePending = false
+      // Marca drag activo → el watcher de "Vista completa" no re-ajusta zoom/pan.
+      setCanvasDragActive(true)
+    }
+    marquee.value = { x0: marqueeStart.x, y0: marqueeStart.y, x1: e.clientX, y1: e.clientY }
+  }
+
+  function onMarqueeUp() {
+    const wasActive = marqueeActive
+    const box = marquee.value
+    // Limpia SIEMPRE primero (pase lo que pase, el recuadro nunca queda pegado).
+    marquee.value = null
+    marqueePending = false
+    marqueeActive = false
+    window.removeEventListener('mousemove', onMarqueeMove)
+    window.removeEventListener('mouseup', onMarqueeUp)
+    if (!wasActive || !box) return // fue un click simple → lo maneja onClick
+    setCanvasMultiSelection(
+      elementPathsInScreenRect({
+        left: Math.min(box.x0, box.x1),
+        top: Math.min(box.y0, box.y1),
+        right: Math.max(box.x0, box.x1),
+        bottom: Math.max(box.y0, box.y1),
+      }),
+    )
+    // Traga el `click` que sigue al mouseup para que onClick→handleCanvasClick
+    // no limpie la selección recién hecha por el recuadro.
+    markDragEnded()
+    setCanvasDragActive(false)
+  }
+
   function handleMouseDown(e: MouseEvent) {
     // Pan when: the Mano tool is active, the middle button, alt+drag, OR the
     // Space pan modifier is held (GAP9 — Space behaves like the hand tool but
@@ -181,6 +246,23 @@ export function useCanvas() {
     if (spaceOrHand || e.buttons === 4 || altDrag) {
       isPanning = true
       panStart = { x: e.clientX - state.canvasPan.x, y: e.clientY - state.canvasPan.y }
+      return
+    }
+    // Marquee: Select tool + botón izquierdo, en Edición, sobre la mesa pero NO
+    // sobre un elemento (sobre un elemento, el click lo selecciona / el overlay
+    // lo arrastra). Pendiente hasta superar un umbral de movimiento (onMarqueeMove)
+    // → un click simple sigue seleccionando por `onClick` sin disparar el recuadro.
+    if (
+      state.tool === 'select' &&
+      e.buttons === 1 &&
+      state.previewMode === 'edit' &&
+      pointInArtboard(e.clientX, e.clientY) &&
+      !elementAtPoint(e.clientX, e.clientY)
+    ) {
+      marqueePending = true
+      marqueeStart = { x: e.clientX, y: e.clientY }
+      window.addEventListener('mousemove', onMarqueeMove)
+      window.addEventListener('mouseup', onMarqueeUp)
     }
   }
 
@@ -205,6 +287,13 @@ export function useCanvas() {
     zoomAroundPoint(e.clientX - r.left, e.clientY - r.top, !e.altKey)
   }
 
+  // Seguridad: si el componente se desmonta con un recuadro en curso, quita los
+  // listeners de window para no dejarlos colgados.
+  onUnmounted(() => {
+    window.removeEventListener('mousemove', onMarqueeMove)
+    window.removeEventListener('mouseup', onMarqueeUp)
+  })
+
   return {
     viewport,
     setPreviewFrame,
@@ -213,5 +302,6 @@ export function useCanvas() {
     handleMouseMove,
     handleMouseUp,
     handleZoomToolClick,
+    marquee,
   }
 }

@@ -32,8 +32,8 @@ const TYPE_GROUPS: { group: string; items: Entry[] }[] = [
   {
     group: 'Movimiento',
     items: [
-      { name: 'translateX', desc: 'Desliza el elemento de lado (eje horizontal). "Desde/Hasta" en píxeles.', when: 'Para que algo entre deslizándose desde la izquierda o la derecha.' },
-      { name: 'translateY', desc: 'Desliza el elemento hacia arriba o abajo (eje vertical). "Desde/Hasta" en píxeles.', when: 'Para que un título suba al aparecer, o un elemento caiga en su sitio.' },
+      { name: 'translateX', desc: 'Desliza el elemento de lado, en PÍXELES medidos DESDE su posición actual. 0 = en su sitio; positivo = a la derecha, negativo = a la izquierda.', when: 'Para que algo entre deslizándose: ej. Desde −40 Hasta 0 = entra desde la izquierda hasta quedar en su sitio.' },
+      { name: 'translateY', desc: 'Desliza el elemento arriba/abajo, en PÍXELES medidos DESDE su posición actual. 0 = en su sitio; positivo = hacia abajo, negativo = hacia arriba.', when: 'Para que un título suba al aparecer: ej. Desde 30 Hasta 0. (No es relativo al anchor: mueve toda la caja.)' },
     ],
   },
   {
@@ -47,7 +47,7 @@ const TYPE_GROUPS: { group: string; items: Entry[] }[] = [
   {
     group: 'Tamaño y deformación',
     items: [
-      { name: 'scale', desc: 'Agranda o achica el elemento. 1 = tamaño normal (ej. de 0,8 a 1).', when: 'Para que una imagen crezca suavemente al entrar, dando énfasis.' },
+      { name: 'scale', desc: 'Agranda o achica el elemento. Es un MULTIPLICADOR de su tamaño (su caja): 1 = tamaño normal, 0,5 = la mitad, 2 = el doble, 0 = desaparece. Crece/encoge tomando como punto fijo el anchor.', when: 'Para que una imagen crezca suavemente al entrar: ej. Desde 0,8 Hasta 1. Evita Desde 0 o Hasta 2: son saltos enormes (de invisible al doble).' },
       { name: 'skew', desc: 'Inclina/sesga el elemento (en grados), como un paralelogramo.', when: 'Para un toque dinámico o de movimiento en textos y formas.' },
     ],
   },
@@ -62,8 +62,8 @@ const TYPE_GROUPS: { group: string; items: Entry[] }[] = [
 
 // TRIGGERS — what makes the animation play.
 const TRIGGERS: Entry[] = [
-  { name: 'enter', desc: 'Se reproduce una vez cuando el elemento entra en pantalla.', when: 'Lo más común: que algo se anime al verse por primera vez al hacer scroll.' },
-  { name: 'scroll', desc: 'La animación avanza ligada al scroll: se interpola entre "Desde" y "Hasta" durante un tramo (0%–100%) de la sección.', when: 'Para efectos que se controlan con el scroll (un elemento que se mueve a medida que bajas).' },
+  { name: 'enter', desc: 'Va por TIEMPO: cuando el elemento entra en pantalla reproduce la animación completa de "Desde" a "Hasta" UNA vez (durante "Duración"). SIEMPRE arranca en el valor "Desde".', when: 'Lo más común y predecible. Si quieres que algo "nazca" desde un valor (ej. scale 0,8→1, o translateY 30→0), usa enter.' },
+  { name: 'scroll', desc: 'Va por POSICIÓN DE SCROLL, no por tiempo: el valor va de "Desde" a "Hasta" según cuánto avanzaste por la sección (0% cuando entra, 100% cuando sale). ⚠️ Si la sección ya está en pantalla al cargar (p. ej. la PRIMERA, muy alta), el scroll arranca a MITAD → puede que NUNCA veas el valor "Desde" (por eso un scale 0→2 se ve grande de entrada y no "nace" desde 0).', when: 'Para efectos atados al scroll (algo que se mueve mientras bajas). Si necesitas que siempre arranque en "Desde", usa enter.' },
   { name: 'loop', desc: 'Se repite en bucle sin parar. Puedes activar "Yoyo" para que vaya y vuelva.', when: 'Para una pulsación, un flotar suave o un brillo que late de forma continua.' },
   { name: 'mouse', desc: 'Reacciona al movimiento del mouse.', when: 'Para un detalle interactivo en pantallas grandes (un elemento que sigue o reacciona al cursor).' },
   { name: 'gyroscope', desc: 'En el celular, reacciona al inclinar el teléfono (sensores de movimiento).', when: 'Para que la experiencia en móvil se sienta viva al mover el dispositivo.' },
@@ -132,6 +132,27 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey, true))
             Una animación tiene dos partes: <strong>el tipo</strong> (qué efecto se
             ve) y <strong>el disparador</strong> (cuándo se reproduce). Elige uno
             de cada uno.
+          </p>
+
+          <p class="ahm-note" data-test="ahm-edit-vs-preview">
+            <strong>Edición vs. Preview:</strong> en <strong>Edición</strong> la
+            mesa muestra cada elemento en su <strong>tamaño y posición reales</strong>
+            (sin movimiento) para que puedas ubicarlo bien — solo
+            <em>aparecer/opacidad</em> se ve ya resuelto. Los movimientos (escalar,
+            deslizar, girar…) <strong>se ven recién en Preview</strong> o publicado.
+            Por eso una imagen con <code class="ahm-name">scale</code> «Hasta 2» se
+            ve normal en Edición y al <strong>doble</strong> en Preview: no es un error.
+          </p>
+
+          <p class="ahm-note" data-test="ahm-anchor">
+            <strong>El anchor (punto de anclaje):</strong> es el punto del elemento
+            que se coloca en su <strong>posición</strong> y, además, el
+            <strong>punto fijo</strong> alrededor del cual <strong>gira y escala</strong>.
+            Con anchor <em>centro</em>, al escalar crece desde el centro (hacia todos
+            lados); con <em>arriba-izquierda</em>, crece hacia abajo-derecha. El
+            <code class="ahm-name">translate</code> NO depende del anchor (mueve toda
+            la caja). El anchor se elige en las <strong>propiedades del elemento</strong>,
+            no aquí.
           </p>
 
           <h3 class="ahm-section">Tipos de animación</h3>
@@ -230,6 +251,14 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey, true))
 }
 .ahm-intro { margin: 0 0 14px; color: #cfcfcf; }
 .ahm-intro strong { color: #fff; }
+/* Callout Edición-vs-Preview: por qué un movimiento no se ve en la mesa. */
+.ahm-note {
+  margin: 0 0 14px; padding: 9px 11px;
+  background: #1b2a3a; border: 1px solid #2d5a8c; border-left: 3px solid #4a90d9;
+  border-radius: 6px; color: #cfe0f2; font-size: 12.5px; line-height: 1.5;
+}
+.ahm-note strong { color: #fff; }
+.ahm-note code { color: #ffd9a0; }
 
 .ahm-section {
   margin: 18px 0 2px; font-size: 14px; font-weight: 700; color: var(--accent-strong);

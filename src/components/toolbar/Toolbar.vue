@@ -12,6 +12,7 @@ import {
   setOverview,
   consumePreOverviewScroll,
   setAutosave,
+  setFreezeAnims,
   restartPreview,
 } from '../../stores/editor'
 import { openLivePreview } from '../../composables/useLivePreview'
@@ -78,6 +79,9 @@ const emit = defineEmits<{
   'toggle-git': []
 }>()
 
+function onToggleFreezeAnims(e: Event) {
+  setFreezeAnims((e.target as HTMLInputElement).checked)
+}
 function onToggleAutosave(e: Event) {
   setAutosave((e.target as HTMLInputElement).checked)
 }
@@ -350,6 +354,20 @@ async function onEnableIndependent() {
             data-test="overview-toggle"
           />
           Vista completa
+        </label>
+
+        <label
+          v-if="state.previewMode === 'edit'"
+          class="snap-toggle"
+          title="Congela las animaciones en Edición (las muestra en su estado base) para posicionar con precisión. En Preview siempre se ven animadas."
+        >
+          <input
+            type="checkbox"
+            :checked="state.freezeAnims"
+            @change="onToggleFreezeAnims"
+            data-test="freeze-anims-toggle"
+          />
+          Congelar animaciones
         </label>
 
         <GridGuidesControl />

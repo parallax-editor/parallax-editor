@@ -6,7 +6,8 @@ const props = defineProps<{
   label: string
   modelValue: any
   type?: 'text' | 'number' | 'color' | 'select' | 'checkbox' | 'textarea'
-  options?: string[]
+  // Opciones de un select: strings simples o { value, label } para etiqueta amigable.
+  options?: (string | { value: string; label: string })[]
   min?: number
   max?: number
   step?: number
@@ -38,7 +39,11 @@ function update(val: any) {
     <label class="field-label">{{ label }}</label>
 
     <select v-if="fieldType === 'select'" :value="modelValue" @change="update(($event.target as any).value)" class="field-input field-control">
-      <option v-for="opt in options" :key="opt" :value="opt">{{ opt }}</option>
+      <option
+        v-for="opt in options"
+        :key="typeof opt === 'object' ? opt.value : opt"
+        :value="typeof opt === 'object' ? opt.value : opt"
+      >{{ typeof opt === 'object' ? opt.label : opt }}</option>
     </select>
 
     <label v-else-if="fieldType === 'checkbox'" class="checkbox-wrap field-control">
@@ -92,6 +97,8 @@ select.field-input {
 /* Reserve room so the value text doesn't run under the unit label. */
 .input-wrap .field-input { padding-right: 30px; }
 .field-color { width: 32px; height: 24px; flex: 0 0 32px; border: 1px solid #444; border-radius: 4px; padding: 0; cursor: pointer; }
-.checkbox-wrap { display: flex; flex: 0 0 auto; }
+/* El check va a la DERECHA del área de control (no pegado al label), así todos
+   los checkboxes quedan alineados en la misma x sin importar el largo del label. */
+.checkbox-wrap { display: flex; flex: 1 1 auto; min-width: 0; justify-content: flex-end; }
 .checkbox-wrap input { accent-color: var(--accent-strong); }
 </style>

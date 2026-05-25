@@ -50,6 +50,12 @@ export interface EditorState {
   slug: string | null
   site: Site | null
   originalSite: string | null
+  // Blindaje de autoría (#claude-prefix): cuando un cambio en disco vino de una
+  // corrida de `claude -p`, guardamos aquí el JSON resultante. Al guardar, si el
+  // contenido sigue siendo IDÉNTICO a este baseline (Daniela no editó a mano
+  // encima), el commit se prefija con "Claude:". Cualquier edición manual lo hace
+  // diferir → sin prefijo. Se auto-invalida solo, sin enganchar cada mutación.
+  claudeBaseline: string | null
   selectedPath: string | null
   // ── Multi-selection (GAP5) ───────────────────────────────────────────────
   // `selectedPath` stays the PRIMARY selection — every existing single-select
@@ -133,6 +139,12 @@ export interface EditorState {
   // Transient autosave status for the subtle toolbar indicator. 'idle' shows
   // nothing; 'saving' while the PUT is in flight; 'saved' briefly after.
   autosaveStatus: 'idle' | 'saving' | 'saved'
+  // ── Congelar animaciones (UI pref, persisted) ─────────────────────────────
+  // OFF (default) = Edición anima igual que Preview (refleja la realidad). ON =
+  // Edición congela los movimientos (scale/translate/rotate/loop) en su estado
+  // base para posicionar con precisión — equivale a staticMotion del engine.
+  // Solo afecta EDICIÓN; Preview siempre anima.
+  freezeAnims: boolean
   // Bumped to force EditorCanvas to re-mount the preview ParallaxSite so all
   // engine animations replay from the start ("Reiniciar mesa"), WITHOUT
   // reloading the app or losing selection/view/zoom/dirty state.
@@ -165,6 +177,7 @@ export const state = reactive<EditorState>({
   slug: null,
   site: null,
   originalSite: null,
+  claudeBaseline: null,
   selectedPath: null,
   selectedPaths: [],
   tool: 'select',
@@ -190,6 +203,7 @@ export const state = reactive<EditorState>({
   preOverview: null,
   autosave: false,
   autosaveStatus: 'idle',
+  freezeAnims: false,
   previewNonce: 0,
   componentRegistry: {},
   componentRegistryError: null,
@@ -252,6 +266,7 @@ export const prefsWantOverview = { value: false }
 interface PersistedPrefs {
   autosave?: boolean
   overviewMode?: boolean
+  freezeAnims?: boolean
   // NOTE: grid/guías settings (gridVisible, snapToGrid, gridPercent,
   // smartGuides) are NOT here — they are PER-PROJECT (see GridGuias* below).
   // Configurable artboard sizes (#90): both mobile and desktop are
@@ -292,6 +307,7 @@ function writePrefs(prefs: PersistedPrefs) {
 export function hydratePrefs() {
   const p = readPrefs()
   if (typeof p.autosave === 'boolean') state.autosave = p.autosave
+  if (typeof p.freezeAnims === 'boolean') state.freezeAnims = p.freezeAnims
   prefsWantOverview.value = p.overviewMode === true
   // Mobile artboard size (#90): hydrate the reactive viewport so the saved
   // device size survives reloads. Validated/clamped to a sane range.
@@ -316,6 +332,7 @@ export function persistPrefs() {
   writePrefs({
     autosave: state.autosave,
     overviewMode: state.overviewMode,
+    freezeAnims: state.freezeAnims,
     mobileWidth: mobileViewport.width,
     mobileHeight: mobileViewport.height,
     desktopWidth: desktopViewport.width,
@@ -329,6 +346,11 @@ watch(() => state.deviceMode, () => persistPrefs())
 
 export function setAutosave(on: boolean) {
   state.autosave = on
+  persistPrefs()
+}
+
+export function setFreezeAnims(on: boolean) {
+  state.freezeAnims = on
   persistPrefs()
 }
 
@@ -587,6 +609,7 @@ export const isDirty = computed(() => {
 export function loadSite(site: Site, projectType: string, slug: string) {
   state.site = site
   state.originalSite = JSON.stringify(site)
+  state.claudeBaseline = null
   state.projectType = projectType
   state.slug = slug
   state.selectedPath = null
@@ -977,6 +1000,17 @@ export function toggleCanvasSelection(path: string) {
 export function setCanvasSelection(path: string | null) {
   state.selectedPath = path
   state.selectedPaths = isElementPath(path) ? [path as string] : []
+}
+
+// Selección por RECUADRO (marquee / rubber-band, #152): fija de una vez todos
+// los elementos que el recuadro tocó. 0 → limpia; 1 → selección simple
+// (selectedPaths vacío, selectedPath = ese); 2+ → multi-selección (misma
+// convención que el resto: selectedPaths solo cuando hay >1). Filtra a rutas de
+// elemento válidas (el recuadro nunca selecciona secciones/capas).
+export function setCanvasMultiSelection(paths: string[]) {
+  const valid = paths.filter((p) => isElementPath(p))
+  state.selectedPaths = valid.length > 1 ? valid : []
+  state.selectedPath = valid.length ? valid[valid.length - 1] : null
 }
 
 // Ctrl/Cmd+click on a CAPAS tree node (TASK #94). Toggles ANY node kind
@@ -2415,4 +2449,85 @@ export function resolveAddElementLayerPath(): string | null {
   const section = activeSections()[0]
   if (!section.layers || section.layers.length === 0) addLayer('sections.0')
   return 'sections.0.layers.0'
+}
+
+/**
+ * Capa destino al ARRASTRAR un recurso a la mesa (#154). Prioridad:
+ *   1) selección explícita (capa, o la capa del elemento seleccionado),
+ *   2) la sección donde se SOLTÓ (`sectionId`) → su última capa,
+ *   3) la sección seleccionada → su última capa,
+ *   4) la ÚLTIMA capa de la ÚLTIMA sección.
+ * Crea capa/sección si hicieran falta. Rutas view-relativas (las rebasa
+ * getAtPath/setAtPath), igual que resolveAddElementLayerPath.
+ */
+function resolveDropLayerPath(sectionId?: string): string | null {
+  if (!state.site) return null
+  const sel = getSelected()
+  if (sel) {
+    if (sel.type === 'element') return state.selectedPath!.split('.').slice(0, -2).join('.')
+    if (sel.type === 'layer') return state.selectedPath!
+  }
+  const sections = activeSections()
+  if (sectionId) {
+    const si = sections.findIndex((s) => s.id === sectionId)
+    if (si >= 0) {
+      const section = sections[si]
+      if (!section.layers || section.layers.length === 0) {
+        addLayer(`sections.${si}`)
+        return `sections.${si}.layers.0`
+      }
+      return `sections.${si}.layers.${section.layers.length - 1}`
+    }
+  }
+  if (sel && sel.type === 'section') {
+    const section = sel.data
+    if (!Array.isArray(section.layers) || section.layers.length === 0) {
+      addLayer(state.selectedPath!)
+      return state.selectedPath
+    }
+    return `${state.selectedPath}.layers.${section.layers.length - 1}`
+  }
+  if (sections.length === 0) {
+    addSection()
+    return 'sections.0.layers.0'
+  }
+  const li = sections.length - 1
+  const last = sections[li]
+  if (!last.layers || last.layers.length === 0) {
+    addLayer(`sections.${li}`)
+    return `sections.${li}.layers.0`
+  }
+  return `sections.${li}.layers.${last.layers.length - 1}`
+}
+
+/**
+ * Crea un elemento a partir de un RECURSO arrastrado a la mesa (#154):
+ * imagen → png · video → video · audio → audio, con el `src` del recurso. La
+ * capa destino la decide resolveDropLayerPath; `pos` (% de la sección) ubica el
+ * elemento donde se soltó (clamp 0–100), o al centro si no se da. Auto-id, undo,
+ * queda seleccionado y marca dirty — mismo patrón que addElement.
+ */
+export function addElementFromResource(
+  resourceKind: 'image' | 'video' | 'audio',
+  src: string,
+  opts: { sectionId?: string; pos?: { x: number; y: number } } = {},
+): void {
+  if (!state.site || !src) return
+  const kind: ElementKind = resourceKind === 'image' ? 'png' : resourceKind
+  const layerPath = resolveDropLayerPath(opts.sectionId)
+  if (!layerPath) return
+  const layer = getAtPath(layerPath)
+  if (!layer || !Array.isArray(layer.elements)) return
+  const factory = ELEMENT_FACTORIES[kind]
+  if (!factory) return
+  pushUndo()
+  const el = factory() as AnyElement & { src?: string; position?: { x: number; y: number } }
+  el.src = src
+  if (opts.pos) {
+    const clamp = (n: number) => Math.round(Math.min(100, Math.max(0, n)) * 10) / 10
+    el.position = { x: clamp(opts.pos.x), y: clamp(opts.pos.y) }
+  }
+  layer.elements.push(el as AnyElement)
+  state.selectedPath = `${layerPath}.elements.${layer.elements.length - 1}`
+  state.selectedPaths = []
 }
