@@ -151,3 +151,38 @@ launches `claude -p` with the workspace folder as cwd.
 Pre-commit hook versioned in `hooks/pre-commit`, activated with `git config --local core.hooksPath hooks` (local repo config; the hook lives in the tree). On a human `git commit` it runs `yarn lint` **if** the `lint` script exists in `package.json` (today it does not → skipped with a note) and `yarn test` (smoke, offline). Any failure → commit blocked with a clear message. Emergency: `git commit --no-verify`.
 
 **The auto-commit-on-save bypasses this hook by design.** `server/git.ts` → `gitCommit()` (the path Cmd+S, the Save button, and the autosave timer take from `EditorView.save()`) emits `git commit --no-verify` **in the active workspace's repo**. Without that, every autosave (~every 1.5s while editing) would run the full offline test suite of that repo = unusable, and was polluting content repos with heavy test runs throughout the session. Content correctness is already covered: the engine's `validateSite` runs at load time and the **Publish** flow (`GitPanel.vue`) re-validates the schema before the push (task #44); push (`gitPush`) does not go through pre-commit. If you touch `gitCommit`/`gitPush`, keep `--no-verify`.
+
+## Push discipline (MANDATORY)
+
+Before `git push` of anything that touches the CI surface — workflows
+(`.github/workflows/*`), `package.json`, the landing's `<link
+rel="stylesheet">` engine version, or the matrix's path resolution —
+**reproduce the CI shape locally and confirm it passes**. The user has
+been blocked by GitHub abuse detection from push-fail-push loops; one
+green run on `main` beats five red ones.
+
+Concretely:
+
+- `yarn test`, `yarn test:e2e:matrix`, and `yarn test:e2e` (with `yarn
+  dev` running) all green locally. For matrix changes that affect path
+  resolution, simulate CI by hiding the sibling `parallax-engine/`
+  checkout (rename its `node_modules` + `dist`) and re-running — the
+  suite must still pass against the npm-installed engine.
+- For Dependabot major bumps, `yarn install` + the full suite locally
+  BEFORE merging. Don't trust "CI ✅ on the PR" alone for majors that
+  could affect bundling or Node engine compat (vue-i18n@11 needs Node
+  22; the workflow's `node-version` has to match).
+- For workflow `.yml` edits, read each `steps.<id>.outputs.*` reference
+  and make sure the upstream step has the matching `id:`. The
+  `setup-chrome` step needs `id: setup-chrome` for its `chrome-path`
+  output to be readable downstream.
+- After bumping the engine version in `package.json`, also update the
+  `<link rel="stylesheet" href="https://esm.sh/...engine@X.Y.Z/style.css">`
+  in `landing/*.html` AND the `ENGINE_VERSION` constant in the inline
+  module script. Mismatched versions cause silent style failures (the
+  scoped CSS hash from one version doesn't match the runtime from
+  another → `parallax-site--fit-container` is unstyled → hero collapses
+  to 0px).
+
+Batch related changes into one commit + one push. If you need a quick
+iteration loop, push to a feature branch first.
