@@ -21,10 +21,10 @@ import { dirname, resolve } from 'node:path'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const EDITOR_ROOT = resolve(__dirname, '..')
 
-// Orden de búsqueda: el symlink de node_modules (lo que tendría el editor
-// instalado/empaquetado) y, como fallback dev, el repo vecino.
+// Orden de búsqueda: el paquete instalado vía npm (scope @parallax-editor) y,
+// como fallback de desarrollo, el repo del engine clonado al lado del editor.
 const CANDIDATES = [
-  resolve(EDITOR_ROOT, 'node_modules', 'parallax-engine', 'ai', 'contract.md'),
+  resolve(EDITOR_ROOT, 'node_modules', '@parallax-editor', 'parallax-engine', 'ai', 'contract.md'),
   resolve(EDITOR_ROOT, '..', 'parallax-engine', 'ai', 'contract.md'),
 ]
 

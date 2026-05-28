@@ -1,4 +1,4 @@
-import { SCHEMA_VERSION } from 'parallax-engine/schema'
+import { SCHEMA_VERSION } from '@parallax-editor/parallax-engine/schema'
 import assert from 'node:assert'
 
 // Engine shipped schema v1.1 (independent desktop/mobile views, additive &

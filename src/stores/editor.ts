@@ -1,6 +1,6 @@
 import { reactive, computed, watch } from 'vue'
-import type { Site, Section, Layer, AnyElement } from 'parallax-engine/schema'
-import { toViews, resolveSections } from 'parallax-engine'
+import type { Site, Section, Layer, AnyElement } from '@parallax-editor/parallax-engine/schema'
+import { toViews, resolveSections } from '@parallax-editor/parallax-engine'
 import { componentsApi, type ComponentRegistration, type EditablePropSchema } from '../composables/useApi'
 
 export type { ComponentRegistration, EditablePropSchema }

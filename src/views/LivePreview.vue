@@ -25,8 +25,8 @@
 // active-view resolution from the shared core are applied.
 
 import { ref, shallowRef, computed, nextTick, onMounted, onBeforeUnmount, h, type Component } from 'vue'
-import { ParallaxSite, FormBlock } from 'parallax-engine'
-import { validateSite, type Site } from 'parallax-engine/schema'
+import { ParallaxSite, FormBlock } from '@parallax-editor/parallax-engine'
+import { validateSite, type Site } from '@parallax-editor/parallax-engine/schema'
 // Reuse the SAME custom-component host the editor canvas uses, so the registry
 // is identical (FormBlock + every parallax.config custom component, e.g.
 // SocialLinks, resolved via its statically-globbed sibling SFC map). Importing

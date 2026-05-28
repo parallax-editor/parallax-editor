@@ -12,7 +12,7 @@ import { slugify } from './slug'
 // from it keeps new files aligned as the engine evolves. Resolved through the
 // editor's normal module resolution (symlinked dist). Falls back to the
 // current engine value if the import ever fails so createProject never throws.
-import { SCHEMA_VERSION as ENGINE_SCHEMA_VERSION } from 'parallax-engine/schema'
+import { SCHEMA_VERSION as ENGINE_SCHEMA_VERSION } from '@parallax-editor/parallax-engine/schema'
 // Fase 2: the hardcoded REPO_MAP/contentDir are gone. `type` is now a WORKSPACE
 // ID resolved through the host-side workspace registry (server/workspaces.ts).
 // The seeded default workspaces use ids 'eventos'/'site' with the SAME

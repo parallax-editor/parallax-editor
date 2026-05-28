@@ -118,19 +118,16 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
-      // Order matters: most-specific first. The bare 'parallax-engine' alias
-      // is a prefix match, so without an explicit entry
-      // 'parallax-engine/style.css' would be misresolved against dist/index.js
-      // and Vite reports "Failed to resolve import".
-      'parallax-engine/style.css': resolve(__dirname, '..', 'parallax-engine', 'dist', 'style.css'),
-      'parallax-engine/schema': resolve(__dirname, '..', 'parallax-engine', 'dist', 'schema.js'),
-      'parallax-engine': resolve(__dirname, '..', 'parallax-engine', 'dist', 'index.js'),
     },
+    // `@parallax-editor/parallax-engine` resolves from node_modules via its
+    // exports map (main/schema/style.css). Local development against a
+    // sibling engine checkout is handled by `yarn link`, not by a hardcoded
+    // path alias.
     dedupe: ['vue'],
   },
   optimizeDeps: {
     include: ['vue', 'vue-router', 'pinia'],
-    exclude: ['parallax-engine'],
+    exclude: ['@parallax-editor/parallax-engine'],
   },
   server: {
     port: 3000,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, h, type Component } from 'vue'
-import { ParallaxSite, FormBlock } from 'parallax-engine'
+import { ParallaxSite, FormBlock } from '@parallax-editor/parallax-engine'
 import CustomComponentHost from './CustomComponentHost.vue'
 import { buildPreviewSite } from '../../composables/usePreviewSite'
 import {

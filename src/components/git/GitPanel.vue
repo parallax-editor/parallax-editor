@@ -3,7 +3,7 @@ import { ref, onMounted, watch, computed } from 'vue'
 import { gitApi, publishApi, type GitStatusCommit, type DeploySidecar } from '../../composables/useApi'
 import { state } from '../../stores/editor'
 import { activeWorkspace } from '../../stores/workspaces'
-import { validateSite } from 'parallax-engine/schema'
+import { validateSite } from '@parallax-editor/parallax-engine/schema'
 import { useDialog } from '../../composables/useDialog'
 import { usePanelScroll } from '../../composables/usePanelScroll'
 

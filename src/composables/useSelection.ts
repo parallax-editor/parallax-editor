@@ -6,7 +6,7 @@ import {
   toggleCanvasSelection,
   isNodeLockedById,
 } from '../stores/editor'
-import type { Site } from 'parallax-engine/schema'
+import type { Site } from '@parallax-editor/parallax-engine/schema'
 
 /**
  * Given a DOM element with data-parallax-id, find its VIEW-RELATIVE path

@@ -14,8 +14,8 @@
 // `views` → active `sections` resolution) so both paths share one implementation
 // and `state.site` stays canonical (only the deep-cloned copy is rewritten).
 
-import { resolveSections } from 'parallax-engine'
-import type { Site } from 'parallax-engine/schema'
+import { resolveSections } from '@parallax-editor/parallax-engine'
+import type { Site } from '@parallax-editor/parallax-engine/schema'
 
 export type DeviceMode = 'desktop' | 'mobile'
 

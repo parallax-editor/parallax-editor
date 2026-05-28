@@ -13,7 +13,7 @@ import {
   updateCursor,
   getComponentRegistration,
 } from '../../stores/editor'
-import { ANCHOR_TYPES, SCROLL_BEHAVIORS, SCROLL_DIRECTIONS, PARALLAX_MODES, SEMANTIC_TAGS, SPLIT_MODES, TEXT_ALIGN, TRIGGER_TYPES, ANIMATION_TYPES, EASING_PRESETS, TRANSITION_TYPES } from 'parallax-engine/schema'
+import { ANCHOR_TYPES, SCROLL_BEHAVIORS, SCROLL_DIRECTIONS, PARALLAX_MODES, SEMANTIC_TAGS, SPLIT_MODES, TEXT_ALIGN, TRIGGER_TYPES, ANIMATION_TYPES, EASING_PRESETS, TRANSITION_TYPES } from '@parallax-editor/parallax-engine/schema'
 import { projectsApi, workspaceApi } from '../../composables/useApi'
 import type { UploadKind, ProjectAsset, ProjectListItem } from '../../composables/useApi'
 import { usePanelScroll } from '../../composables/usePanelScroll'
