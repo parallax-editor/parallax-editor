@@ -651,6 +651,14 @@
     mkdirp "^1.0.4"
     rimraf "^3.0.2"
 
+"@parallax-editor/parallax-engine@^0.1.0":
+  version "0.1.0"
+  resolved "https://registry.yarnpkg.com/@parallax-editor/parallax-engine/-/parallax-engine-0.1.0.tgz#f28134128c540144a990160069cdc61f98968573"
+  integrity sha512-8Qbo9W0fMQTVSiGQqRzA2IEVYMRxUKc5ZeS4SEdCXe6LBdXjzMKes9+RwB/shBe/v3lPyDlnQyfWtI0gS2ALgA==
+  dependencies:
+    lenis "^1.1.13"
+    zod "^3.23.8"
+
 "@pkgjs/parseargs@^0.11.0":
   version "0.11.0"
   resolved "https://registry.yarnpkg.com/@pkgjs/parseargs/-/parseargs-0.11.0.tgz#a77ea742fab25775145434eb1d2328cf5013ac33"
@@ -2781,10 +2789,6 @@ package-json-from-dist@^1.0.0:
   version "1.0.1"
   resolved "https://registry.yarnpkg.com/package-json-from-dist/-/package-json-from-dist-1.0.1.tgz#4f1471a010827a86f94cfd9b0727e36d267de505"
   integrity sha512-UEZIS3/by4OC8vL3P2dTXRETpebLI2NiI5vIrjaD/5UtrkFX/tNbwjTSRAGC/+7CAo2pIcBaRgWmcBBHcsaCIw==
-
-"parallax-engine@link:../parallax-engine":
-  version "0.0.0"
-  uid ""
 
 path-expression-matcher@^1.5.0:
   version "1.5.0"
