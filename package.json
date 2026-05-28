@@ -38,7 +38,7 @@
     "vue": "^3.4.38",
     "vue-i18n": "^9",
     "vue-router": "^4.4.0",
-    "ws": "^8.18.0"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@parallax-editor/parallax-engine": "^0.1.1",
