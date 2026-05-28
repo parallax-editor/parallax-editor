@@ -27,8 +27,11 @@ jobs:
           node-version: 22
           cache: yarn
       - run: yarn install --frozen-lockfile
-      # Install Chrome (Playwright-core does not bundle browsers).
-      - uses: browser-actions/setup-chrome@v2
+      # Install Chrome (Playwright-core does not bundle browsers). The
+      # action adds chrome to PATH and exposes its absolute path on the
+      # `chrome-path` output, which we forward to the suite via CHROME_BIN.
+      - id: setup-chrome
+        uses: browser-actions/setup-chrome@v2
       - run: yarn test:e2e:matrix
         env:
           CHROME_BIN: ${{ steps.setup-chrome.outputs.chrome-path }}
