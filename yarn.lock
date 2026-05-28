@@ -672,10 +672,10 @@
     mkdirp "^1.0.4"
     rimraf "^3.0.2"
 
-"@parallax-editor/parallax-engine@^0.1.0":
-  version "0.1.0"
-  resolved "https://registry.yarnpkg.com/@parallax-editor/parallax-engine/-/parallax-engine-0.1.0.tgz#f28134128c540144a990160069cdc61f98968573"
-  integrity sha512-8Qbo9W0fMQTVSiGQqRzA2IEVYMRxUKc5ZeS4SEdCXe6LBdXjzMKes9+RwB/shBe/v3lPyDlnQyfWtI0gS2ALgA==
+"@parallax-editor/parallax-engine@^0.1.1":
+  version "0.1.1"
+  resolved "https://registry.yarnpkg.com/@parallax-editor/parallax-engine/-/parallax-engine-0.1.1.tgz#687dd506b9b8ea621ce23041d272795e634d8493"
+  integrity sha512-kQo9SQhD2mkWlUVLrAvbe23WHeEo+RYjRepUUZ87CbaI4g2YclReRBKpS+0Ck/Nw+gH3WJabecGPq5pmJ/wE3w==
   dependencies:
     lenis "^1.1.13"
     zod "^3.23.8"
