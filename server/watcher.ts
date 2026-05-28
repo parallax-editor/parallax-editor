@@ -5,6 +5,7 @@ import chokidar from 'chokidar'
 import { statSync } from 'fs'
 import { WebSocketServer, WebSocket } from 'ws'
 import { shouldIgnoreSelfWrite } from './selfWrites'
+import { invalidateComponent } from './sfcBundler'
 
 let wss: WebSocketServer | null = null
 // Module-level handle so newly-activated workspaces (Fase 2) can extend the
@@ -27,14 +28,28 @@ export function setupWatcher(httpServer: HttpServer, watchPaths: string[]) {
   })
   console.log(`[editor-watcher] WebSocket on ${WS_PATH} (shared Vite server)`)
 
-  const watcher = chokidar.watch(
-    watchPaths.map((p) => `${p}/**/site.json`),
-    { ignoreInitial: true, awaitWriteFinish: { stabilityThreshold: 500 } },
-  )
+  // Watch both site.json (auto-reload the canvas) AND .vue files under each
+  // workspace's `components/` folder (invalidate server-side SFC bundles +
+  // broadcast a `component-changed` so CustomComponentHost can re-import).
+  const globs = watchPaths.flatMap((p) => [
+    `${p}/**/site.json`,
+    `${p}/components/*.vue`,
+  ])
+  const watcher = chokidar.watch(globs, {
+    ignoreInitial: true,
+    awaitWriteFinish: { stabilityThreshold: 500 },
+  })
   activeWatcher = watcher
   for (const p of watchPaths) watchedRoots.add(p)
 
   watcher.on('change', (path) => {
+    // Workspace SFC changed → drop its compiled bundle from the cache and
+    // tell connected clients to re-import the component.
+    if (path.endsWith('.vue')) {
+      invalidateComponent(path)
+      broadcast({ type: 'component-changed', path })
+      return
+    }
     // Self-write suppression (PLAN §16): if this change is the editor's own
     // write of site.json (manual Guardar / Autosave), don't broadcast — the
     // client must not reload and discard the user's selection. We match by
@@ -71,6 +86,7 @@ export function addWatchPath(repoPath: string) {
   if (!repoPath || !activeWatcher || watchedRoots.has(repoPath)) return
   watchedRoots.add(repoPath)
   activeWatcher.add(`${repoPath}/**/site.json`)
+  activeWatcher.add(`${repoPath}/components/*.vue`)
 }
 
 export function broadcast(data: object) {

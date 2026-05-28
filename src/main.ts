@@ -1,10 +1,11 @@
 import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
+import { i18n } from './i18n'
 // Engine stylesheet: split-text reveal, FormBlock layout, error overlay,
 // gyro prompt, world transitions. Without this the canvas preview does NOT
 // match the deployed sites. Use the package `exports` subpath (no /dist/).
-import 'parallax-engine/style.css'
+import '@parallax-editor/parallax-engine/style.css'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -28,7 +29,7 @@ import { state, getAtPath, hydratePrefs } from './stores/editor'
 // enable/fit path once the project + canvas are measured.
 hydratePrefs()
 
-createApp(App).use(router).mount('#app')
+createApp(App).use(router).use(i18n).mount('#app')
 
 // Read-only debug surface for the local editor (localhost-only, never deployed)
 // and the E2E harness: lets a test assert the canonical written values

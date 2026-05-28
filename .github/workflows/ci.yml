@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  test:
+  smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,3 +16,19 @@ jobs:
           cache: yarn
       - run: yarn install --frozen-lockfile
       - run: yarn test
+
+  e2e-matrix:
+    # Offline engine render matrix — does not need the editor running.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      # Install Chrome (Playwright-core does not bundle browsers).
+      - uses: browser-actions/setup-chrome@v1
+      - run: yarn test:e2e:matrix
+        env:
+          CHROME_BIN: ${{ steps.setup-chrome.outputs.chrome-path }}

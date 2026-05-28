@@ -7,6 +7,7 @@ import { gitLog, gitShow, gitCommit, gitPush, gitPull, gitPendingCommits, gitOri
 import { runClaude, cancelClaude, isClaudeAvailable } from './claude'
 import { setupWatcher, addWatchPath } from './watcher'
 import { loadComponentRegistry, formatComponentCatalogForPrompt } from './components'
+import { bundleWorkspaceComponent } from './sfcBundler'
 import { getDiagnostics } from './diagnostics'
 import { activateWorkspace, resolveWorkspace, defaultWorkspaces } from './workspaces'
 import { pickFolder } from './fs'
@@ -210,6 +211,28 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
       if (compMatch && method === 'GET') {
         const registry = await loadComponentRegistry(compMatch[1])
         return json(res, registry)
+      }
+
+      // GET /api/workspaces/:id/components/:name.js — server-bundled
+      // workspace SFC (CustomComponentHost.vue imports it dynamically). The
+      // bundle treats `vue` as external so the runtime shares the editor's
+      // Vue instance. mtime is included in the ETag so the file watcher can
+      // invalidate via cache busting on the client side.
+      const sfcMatch = url.match(/^\/api\/workspaces\/([^/]+)\/components\/([A-Za-z][A-Za-z0-9_-]*)\.js(?:\?.*)?$/)
+      if (sfcMatch && method === 'GET') {
+        const [, wsId, name] = sfcMatch
+        const result = await bundleWorkspaceComponent(wsId, name)
+        if (!result.ok) {
+          return json(res, { error: result.error }, result.status || 500)
+        }
+        res.statusCode = 200
+        res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+        // Short cache + mtime-based ETag: a fresh ?v=<mtime> from the client
+        // is a cache miss; same v is a 200 from the in-memory cache.
+        res.setHeader('Cache-Control', 'public, max-age=60')
+        res.setHeader('ETag', `"${result.mtimeMs}"`)
+        res.end(result.body)
+        return
       }
 
       // ─── Projects ────────────────────────────────────

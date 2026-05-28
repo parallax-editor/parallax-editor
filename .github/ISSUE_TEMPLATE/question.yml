@@ -1,0 +1,19 @@
+name: Question / Discussion
+description: Ask a question or start a discussion
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For general questions, prefer [GitHub Discussions](https://github.com/parallax-editor/parallax-engine/discussions) when available. Use this template if you're not sure where it belongs.
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What are you trying to build? What have you tried?

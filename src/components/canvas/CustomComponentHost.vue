@@ -7,6 +7,8 @@ import {
   computed,
   type Component,
 } from 'vue'
+import { wsState } from '../../stores/workspaces'
+import { useWebSocket } from '../../composables/useWebSocket'
 
 // Best-effort resolver + error boundary for ONE custom component instance
 // rendered inside the canvas preview. Workspaces can register custom Vue
@@ -14,17 +16,12 @@ import {
 // it renders, otherwise we show a RED placeholder ("Componente <Name>
 // falló: <error>") instead of crashing the whole <ParallaxSite> preview.
 //
-// KNOWN LIMITATION: Vite's `import.meta.glob` is build-time and only works
-// against the editor's own source tree. Workspaces live wherever the user
-// picks them with the native folder picker — there is no static path that
-// can reach them. As a convenience we glob `../../../../*/components/*.vue`
-// so a workspace cloned **next to parallax-editor on the same machine** has
-// its components rendered in preview; arbitrary-path workspaces always fall
-// through to the placeholder. A proper server-side bundler that compiles the
-// active workspace's SFC and serves it over HTTP for runtime import is the
-// planned fix (tracked as a follow-up; see CONTRIBUTING). The placeholder
-// keeps the editor usable in the meantime: layout/size are accurate, the
-// real component renders correctly in the published site.
+// The editor server compiles the active workspace's <workspace>/components/
+// <Name>.vue file on demand (server/sfcBundler.ts) and serves it as ESM
+// from /api/workspaces/:id/components/:name.js. We import it dynamically;
+// the file watcher (server/watcher.ts) invalidates the server cache AND
+// broadcasts a `component-changed` so the canvas re-imports without a full
+// editor reload. Cache-bust via ?v=<bump> when a change message arrives.
 
 const props = defineProps<{
   name: string
@@ -32,43 +29,47 @@ const props = defineProps<{
   componentProps: Record<string, unknown>
 }>()
 
-const SFC_MODULES = import.meta.glob(
-  '../../../../*/components/*.vue',
-) as Record<string, () => Promise<{ default: Component }>>
-
-// Build a name → loader map keyed by the file's basename (component name).
-const LOADERS: Record<string, () => Promise<{ default: Component }>> = {}
-for (const [path, loader] of Object.entries(SFC_MODULES)) {
-  const base = path.split('/').pop()?.replace(/\.vue$/, '')
-  if (base) LOADERS[base] = loader
-}
-
 const resolved = shallowRef<Component | null>(null)
 const failure = ref<string | null>(null)
+const cacheBust = ref(0)
 
-// Resolve (or re-resolve) whenever the component name changes. A missing
-// loader or a rejected import → recorded as a failure (placeholder shown);
-// never throws out of here.
-watch(
-  () => props.name,
-  async (name) => {
-    resolved.value = null
-    failure.value = null
-    const loader = LOADERS[name]
-    if (!loader) {
-      failure.value = `no encontrado en ningún <workspace>/components/${name}.vue`
-      return
-    }
-    try {
-      const mod = await loader()
-      resolved.value = mod?.default ?? null
-      if (!resolved.value) failure.value = 'el archivo no exporta un componente'
-    } catch (e: any) {
-      failure.value = e?.message || String(e)
-    }
-  },
-  { immediate: true },
-)
+const endpointUrl = computed(() => {
+  const wsId = wsState.activeId
+  if (!wsId || !props.name) return ''
+  const bust = cacheBust.value ? `?v=${cacheBust.value}` : ''
+  return `/api/workspaces/${encodeURIComponent(wsId)}/components/${encodeURIComponent(props.name)}.js${bust}`
+})
+
+async function load(name: string) {
+  resolved.value = null
+  failure.value = null
+  const url = endpointUrl.value
+  if (!url) {
+    failure.value = 'no hay workspace activo'
+    return
+  }
+  try {
+    // /* @vite-ignore */ disables Vite's static analysis on the dynamic
+    // import so it doesn't try to bundle a workspace path it can't see.
+    const mod = await import(/* @vite-ignore */ url)
+    resolved.value = mod?.default ?? null
+    if (!resolved.value) failure.value = 'el archivo no exporta un componente'
+  } catch (e: any) {
+    failure.value = e?.message || String(e)
+  }
+}
+
+watch(() => props.name, (name) => { if (name) load(name) }, { immediate: true })
+
+// Listen for `component-changed` from the server file watcher and re-import
+// the SFC with a fresh cache-bust. Affects ALL CustomComponentHost
+// instances mounted at the time — cheap because the server caches the
+// compile result by mtime.
+useWebSocket((payload: { type?: string } | undefined) => {
+  if (payload?.type !== 'component-changed') return
+  cacheBust.value = Date.now()
+  if (props.name) load(props.name)
+})
 
 // Render-time errors (e.g. the SFC uses <NuxtLink> / a Nuxt-only API) are
 // caught here so they don't propagate up and blow away the whole preview.

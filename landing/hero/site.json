@@ -1,0 +1,202 @@
+{
+  "schemaVersion": "1.1",
+  "meta": {
+    "title": "Parallax Engine hero",
+    "description": "Live hero rendered by parallax-engine itself"
+  },
+  "sections": [
+    {
+      "id": "hero",
+      "background": {
+        "type": "color",
+        "value": "transparent"
+      },
+      "layers": [
+        {
+          "id": "layer-back",
+          "depth": -0.6,
+          "parallaxMode": [
+            "mouse"
+          ],
+          "elements": [
+            {
+              "id": "el-back",
+              "type": "png",
+              "src": "images/plane-back.svg",
+              "position": {
+                "x": 60,
+                "y": 30
+              },
+              "size": {
+                "width": "65%"
+              },
+              "opacity": 0.85,
+              "animations": [
+                {
+                  "type": "translateY",
+                  "trigger": "loop",
+                  "from": 0,
+                  "to": -8,
+                  "duration": 6000,
+                  "yoyo": true,
+                  "easing": "easeInOut"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "layer-mid",
+          "depth": -0.1,
+          "parallaxMode": [
+            "mouse"
+          ],
+          "elements": [
+            {
+              "id": "el-mid",
+              "type": "png",
+              "src": "images/plane-mid.svg",
+              "position": {
+                "x": 50,
+                "y": 50
+              },
+              "size": {
+                "width": "65%"
+              },
+              "animations": [
+                {
+                  "type": "translateY",
+                  "trigger": "loop",
+                  "from": 0,
+                  "to": 6,
+                  "duration": 5000,
+                  "yoyo": true,
+                  "easing": "easeInOut",
+                  "delay": 400
+                },
+                {
+                  "type": "fadeIn",
+                  "trigger": "enter",
+                  "from": 0,
+                  "to": 1,
+                  "duration": 800,
+                  "easing": "easeOut"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "layer-front",
+          "depth": 0.4,
+          "parallaxMode": [
+            "mouse",
+            "tilt"
+          ],
+          "elements": [
+            {
+              "id": "el-front",
+              "type": "png",
+              "src": "images/plane-front.svg",
+              "position": {
+                "x": 40,
+                "y": 70
+              },
+              "size": {
+                "width": "65%"
+              },
+              "animations": [
+                {
+                  "type": "rotate",
+                  "trigger": "loop",
+                  "from": -2.5,
+                  "to": 2.5,
+                  "duration": 7000,
+                  "yoyo": true,
+                  "easing": "easeInOut"
+                },
+                {
+                  "type": "scale",
+                  "trigger": "enter",
+                  "from": 0.85,
+                  "to": 1,
+                  "duration": 700,
+                  "easing": "easeOut"
+                }
+              ]
+            },
+            {
+              "id": "el-spark-1",
+              "type": "png",
+              "src": "images/spark.svg",
+              "position": {
+                "x": 18,
+                "y": 22
+              },
+              "size": {
+                "width": "32px"
+              },
+              "animations": [
+                {
+                  "type": "translateY",
+                  "trigger": "loop",
+                  "from": 0,
+                  "to": -14,
+                  "duration": 4000,
+                  "yoyo": true,
+                  "easing": "easeInOut"
+                }
+              ]
+            },
+            {
+              "id": "el-spark-2",
+              "type": "png",
+              "src": "images/spark.svg",
+              "position": {
+                "x": 82,
+                "y": 78
+              },
+              "size": {
+                "width": "28px"
+              },
+              "animations": [
+                {
+                  "type": "translateY",
+                  "trigger": "loop",
+                  "from": 0,
+                  "to": -10,
+                  "duration": 3500,
+                  "yoyo": true,
+                  "delay": 600
+                }
+              ]
+            },
+            {
+              "id": "el-spark-3",
+              "type": "png",
+              "src": "images/spark.svg",
+              "position": {
+                "x": 88,
+                "y": 14
+              },
+              "size": {
+                "width": "22px"
+              },
+              "animations": [
+                {
+                  "type": "translateY",
+                  "trigger": "loop",
+                  "from": 0,
+                  "to": -8,
+                  "duration": 3000,
+                  "yoyo": true,
+                  "delay": 1200
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -6,6 +6,7 @@ import { APP_VERSION } from '../version'
 import type { ProjectListItem, Workspace } from '../composables/useApi'
 import ProjectCard from '../components/selector/ProjectCard.vue'
 import HelpHint from '../components/properties/HelpHint.vue'
+import LanguageSwitcher from '../components/ui/LanguageSwitcher.vue'
 // The SAME canonical slug transform the server uses to create the folder, so
 // this live preview ALWAYS matches the folder/route that gets created.
 import { slugify } from '../../server/slug'
@@ -382,6 +383,9 @@ async function createWorkspace() {
         <h1 class="title">Parallax Editor <span class="app-version" data-test="app-version">v{{ APP_VERSION }}</span></h1>
         <p class="subtitle">Selecciona un proyecto para editar</p>
       </div>
+      <div class="hero-actions">
+        <LanguageSwitcher />
+      </div>
     </header>
 
     <!-- Git setup banner (persistent until git is configured) -->
@@ -677,7 +681,14 @@ async function createWorkspace() {
 .selector { height: 100vh; height: 100dvh; overflow-y: auto; padding: 56px 24px 80px; }
 .selector > * { max-width: 760px; margin-left: auto; margin-right: auto; }
 
-.hero { margin-bottom: 22px; }
+.hero {
+  margin-bottom: 22px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.hero-actions { flex-shrink: 0; }
 .title {
   font-size: 30px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 4px;
   background: linear-gradient(90deg, #ffffff, #b9c4d6);

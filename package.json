@@ -31,15 +31,17 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1051.0",
+    "@vue/compiler-sfc": "^3.4.38",
     "chokidar": "^3.6.0",
     "esbuild": "^0.21.5",
     "pinia": "^2.2.0",
     "vue": "^3.4.38",
+    "vue-i18n": "^9",
     "vue-router": "^4.4.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@parallax-editor/parallax-engine": "^0.1.0",
+    "@parallax-editor/parallax-engine": "^0.1.1",
     "@types/ws": "^8.5.12",
     "@vitejs/plugin-vue": "^5.1.0",
     "electron": "^37.0.0",

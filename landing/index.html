@@ -5,11 +5,49 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Parallax Engine — Immersive web with real depth</title>
   <meta name="description" content="Parallax Engine is the open-source Vue 3 engine for immersive websites: depth layers, scroll parallax, animations, and world transitions." />
-  <link rel="icon" type="image/png" href="icon.png" />
-  <link rel="apple-touch-icon" href="icon.png" />
+  <meta name="theme-color" content="#0b0b0c" />
+  <!-- Favicons / PWA manifest -->
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+  <link rel="manifest" href="site.webmanifest" />
+  <!-- Open Graph -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Parallax Engine — immersive websites with real depth" />
+  <meta property="og:description" content="Open-source Vue 3 engine for immersive websites: depth layers, scroll parallax, animations, and world transitions." />
+  <meta property="og:url" content="https://parallax-editor.github.io/parallax-editor/" />
+  <meta property="og:image" content="https://parallax-editor.github.io/parallax-editor/og-engine.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:site_name" content="Parallax Engine" />
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Parallax Engine — immersive websites with real depth" />
+  <meta name="twitter:description" content="Open-source Vue 3 engine for immersive websites." />
+  <meta name="twitter:image" content="https://parallax-editor.github.io/parallax-editor/og-engine.png" />
+  <!-- SEO -->
+  <link rel="canonical" href="https://parallax-editor.github.io/parallax-editor/" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="style.css" />
+  <!-- Engine CSS (loaded from npm via esm.sh for the live hero render). -->
+  <link rel="stylesheet" href="https://esm.sh/@parallax-editor/parallax-engine@0.1.0/style.css" />
+  <style>
+    /* Live hero container — gives the engine a defined box. The engine's
+       `fit="container"` prop (≥0.1.1) handles the rest (sizing, normalization). */
+    .parallax-hero { margin-top: 36px; }
+    .parallax-hero-mount {
+      background: rgba(255,255,255,0.02);
+      border-radius: 18px;
+      overflow: hidden;
+      position: relative;
+      width: 100%;
+      aspect-ratio: 5 / 3;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .parallax-hero-mount { display: none; }
+    }
+  </style>
 </head>
 <body>
 
@@ -54,11 +92,19 @@
           <a class="btn btn-ghost" href="#capabilities">See capabilities</a>
         </div>
 
-        <!-- literal depth illustration -->
-        <div class="stack reveal d5" aria-hidden="true">
-          <div class="plane p1"><span>Background</span></div>
-          <div class="plane p2"><span>Midground</span></div>
-          <div class="plane p3"><span>Foreground</span></div>
+        <!-- Live ParallaxSite render (eats its own dog food: the engine
+             renders the engine's landing hero). Mounted by the module script
+             at the bottom of the page. While loading, the CSS placeholder
+             stack still gives a depth hint with zero JS. -->
+        <div class="parallax-hero reveal d5" aria-hidden="true">
+          <div id="parallax-hero" class="parallax-hero-mount" style="position:relative;width:100%;aspect-ratio:5/3;"></div>
+          <noscript>
+            <div class="stack" aria-hidden="true">
+              <div class="plane p1"><span>Background</span></div>
+              <div class="plane p2"><span>Midground</span></div>
+              <div class="plane p3"><span>Foreground</span></div>
+            </div>
+          </noscript>
         </div>
       </div>
     </section>
@@ -197,7 +243,7 @@
   </footer>
 
   <script>
-    // scroll-reveal for sections
+    // Scroll-reveal for sections (small library-free observer).
     (function () {
       var io = new IntersectionObserver(function (entries) {
         entries.forEach(function (e) {
@@ -205,21 +251,55 @@
         });
       }, { threshold: 0.16 });
       document.querySelectorAll('.in-view').forEach(function (el) { io.observe(el); });
-
-      // subtle pointer parallax on the hero stack
-      var stack = document.querySelector('.stack');
-      if (stack && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        var planes = stack.querySelectorAll('.plane');
-        window.addEventListener('pointermove', function (ev) {
-          var x = (ev.clientX / window.innerWidth - 0.5);
-          var y = (ev.clientY / window.innerHeight - 0.5);
-          planes.forEach(function (p, i) {
-            var depth = (i + 1) * 10;
-            p.style.translate = (x * depth) + 'px ' + (y * depth) + 'px';
-          });
-        });
-      }
     })();
+  </script>
+
+  <!-- Live hero render: mount @parallax-editor/parallax-engine from the
+       npm CDN (esm.sh resolves Vue + lenis + zod transitively). This is the
+       same engine consumers install via `yarn add` — so the landing is a
+       working demo, not a mock. We pin Vue / engine versions and pass
+       ?deps=vue@... so esm.sh resolves all engine internals against the
+       same Vue instance the page just imported (otherwise reactivity
+       silently breaks). -->
+  <script type="module">
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      try {
+        const ENGINE_VERSION = '0.1.1';
+        const VUE_VERSION = '3.4.38';
+        const [{ createApp, h }, { ParallaxSite }, rawSite] = await Promise.all([
+          import(`https://esm.sh/vue@${VUE_VERSION}`),
+          import(`https://esm.sh/@parallax-editor/parallax-engine@${ENGINE_VERSION}?deps=vue@${VUE_VERSION}`),
+          fetch('./hero/site.json').then(r => r.json()),
+        ]);
+        // No need to validateSite manually — the engine auto-normalizes the
+        // site internally (applies Zod defaults for optional fields like
+        // parallaxMode, animations, fonts). Just hand it the raw JSON.
+        const mountEl = document.getElementById('parallax-hero');
+        if (mountEl) {
+          createApp({
+            setup() {
+              return () => h(ParallaxSite, {
+                site: rawSite,
+                mode: 'prod',
+                assetBase: './hero/',
+                fit: 'container',
+              });
+            },
+          }).mount(mountEl);
+        }
+      } catch (err) {
+        // CDN unreachable / network failure → fall back to the static CSS
+        // stack so the hero never goes empty. Logged silently in console.
+        console.warn('[parallax-hero] live render failed, falling back:', err);
+        var mountEl = document.getElementById('parallax-hero');
+        if (mountEl) {
+          mountEl.innerHTML =
+            '<div class="stack"><div class="plane p1"><span>Background</span></div>' +
+            '<div class="plane p2"><span>Midground</span></div>' +
+            '<div class="plane p3"><span>Foreground</span></div></div>';
+        }
+      }
+    }
   </script>
 </body>
 </html>
