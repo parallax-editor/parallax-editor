@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix(real): text concepto-titulo — hover rotate must fire (interactive:false, no link)", "lang": "es" },
+  "sections": [
+    {
+      "id": "rt-sec", "height": "260vh", "scrollBehavior": "continuous", "scrollDirection": "vertical",
+      "background": { "type": "gradient", "value": "linear-gradient(180deg, #2a311f 0%, #1c2418 50%, #11160d 100%)" },
+      "layers": [
+        {
+          "id": "rt-layer", "depth": 0.1, "parallaxMode": ["scroll-vertical"],
+          "elements": [
+            {
+              "type": "text",
+              "id": "concepto-titulo",
+              "position": { "x": 28, "y": 24 },
+              "anchor": "center",
+              "opacity": 1,
+              "rotation": 0,
+              "visible": true,
+              "interactive": false,
+              "animations": [
+                { "type": "clipPath", "trigger": "scroll", "from": 0, "to": 100, "range": [0.12, 0.32], "easing": "easeOutCubic" },
+                { "type": "rotate", "trigger": "hover", "from": 0, "to": 180, "duration": 800, "delay": 0, "easing": "easeOut" }
+              ],
+              "content": "El concepto",
+              "font": "Cormorant Garamond",
+              "fontSize": "clamp(1.8rem, 5vw, 3.2rem)",
+              "fontWeight": 600,
+              "color": "#e9e4d4",
+              "textAlign": "left",
+              "semanticTag": "h2",
+              "splitMode": "none",
+              "staggerDelay": 0
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -7,7 +7,7 @@ import type { ProjectListItem } from '../../composables/useApi'
  * from the project's OG image when it exists (graceful letter-block fallback
  * on 404), the title, a relative "edited" date and a monospace slug chip.
  * Duplicar/Eliminar live in a hover-revealed toolbar (no always-on clutter).
- * All copy is Spanish (Daniela is non-technical).
+ * All copy is Spanish (the user is non-technical).
  */
 const props = defineProps<{
   // Workspace id (Fase 2). The two seeded defaults still use 'eventos'/'site',

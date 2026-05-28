@@ -58,29 +58,27 @@ export function isClaudeAvailable(): boolean {
 // Fixed namespace UUID for this editor's Claude sessions (random, constant).
 const SESSION_NS = '6f1c2a7e-8b3d-4e9f-a1c2-d3e4f5a6b7c8'
 
-// ── Guardrail del prompt base (#98) ──────────────────────────────────────────
+// ── Guardrail del prompt base ────────────────────────────────────────────────
 // Cada `claude -p` que dispara este editor se ejecuta con `cwd` en el repo
-// vecino de contenido (`daniela-reyes-eventos` / `daniela-reyes-site`). Esos
-// repos contienen TODA la fuente del sitio (Nuxt config, server/, pages/,
-// components/, parallax.config.ts, package.json…) además de `content/`. Sin
-// guardrail Claude puede tocar cualquier archivo y romper el sitio. Esto pasa
-// a TODA invocación (texto y stream-json/imágenes) vía
-// `--append-system-prompt`, conservando session/cancel/timeout/contexto.
+// vecino del workspace activo. Esos repos suelen contener TODA la fuente del
+// sitio (config, server/, pages/, components/, parallax.config.ts, package.json…)
+// además de `content/`. Sin guardrail Claude puede tocar cualquier archivo y
+// romper el sitio. Esto pasa a TODA invocación (texto y stream-json/imágenes)
+// vía `--append-system-prompt`, conservando session/cancel/timeout/contexto.
 // Lo dejamos exportado para que la suite e2e/tests puedan asegurarse de que
 // el guardrail SIEMPRE viaja en el argv.
 export const CLAUDE_GUARDRAIL_SYSTEM_PROMPT = [
-  'Eres asistente de edición del sistema parallax de Daniela Reyes desde un',
-  'editor visual no técnico. SOLO puedes leer/modificar archivos DENTRO de',
+  'Eres asistente de edición de un sistema parallax invocado desde un editor',
+  'visual no técnico. SOLO puedes leer/modificar archivos DENTRO de',
   '`content/<slug>/` (el `site.json` del proyecto y sus assets en',
   '`content/<slug>/{images,fonts,audio,video}`). PROHIBIDO crear/modificar/',
-  'eliminar archivos fuera de `content/`: nada de `parallax-engine`, del',
-  'editor (`parallax-editor`), del sitio (`daniela-reyes-site`) ni de eventos',
-  '(`daniela-reyes-eventos`) — ni `pages/`, `nuxt.config*`, `parallax.config*`,',
+  'eliminar archivos fuera de `content/`: nada del engine, del editor, ni del',
+  'sitio consumidor — ni `pages/`, `nuxt.config*`, `parallax.config*`,',
   '`package.json`, `server/`, `src/`, `components/`, `composables/`, ni',
   'cualquier código fuente/config/build. PROHIBIDO ejecutar git,',
   'instalaciones, procesos o cambios de sistema. Si el usuario pide algo fuera',
-  'de este alcance, rehúsa amablemente en español y explica que desde aquí',
-  'solo puedes ajustar el contenido del sitio actual.',
+  'de este alcance, rehúsa amablemente en el idioma del usuario y explica que',
+  'desde aquí solo puedes ajustar el contenido del sitio actual.',
 ].join(' ')
 
 /**

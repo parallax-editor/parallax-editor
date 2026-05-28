@@ -4,7 +4,7 @@ import HelpHint from './HelpHint.vue'
 import { resolvedThemeColor } from '../../stores/editor'
 
 // Friendly color control for FormBlock styling values.
-// Daniela never types raw CSS: she clicks a theme swatch (stored as the
+// The user never types raw CSS: they clicks a theme swatch (stored as the
 // site CSS token, e.g. "var(--color-paper)") or uses the native color
 // picker (stored as a hex). The "avanzado" text box still allows any raw
 // CSS string so power-use isn't lost. The stored value is ALWAYS a plain

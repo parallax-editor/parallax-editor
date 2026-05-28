@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: scrollBehavior snap (scroll-snap-align)", "lang": "es" },
+  "sections": [
+    {
+      "id": "snap-1", "height": "100vh", "scrollBehavior": "snap",
+      "background": { "type": "color", "value": "#301020" },
+      "layers": [ { "id": "sl1", "depth": 0, "elements": [
+        { "id": "snap-a", "type": "text", "content": "Snap 1", "semanticTag": "h1",
+          "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "36px", "color": "#fff" } ] } ]
+    },
+    {
+      "id": "snap-2", "height": "100vh", "scrollBehavior": "snap",
+      "background": { "type": "color", "value": "#103020" },
+      "layers": [ { "id": "sl2", "depth": 0, "elements": [
+        { "id": "snap-b", "type": "text", "content": "Snap 2", "semanticTag": "h1",
+          "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "36px", "color": "#fff" } ] } ]
+    }
+  ]
+}

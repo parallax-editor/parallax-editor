@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Bootstrap del sistema de sitios parallax de Daniela Reyes.
-# Clona los 4 repos, instala dependencias y configura los links.
+# Bootstrap for the Parallax Editor system.
+# Clones parallax-engine + parallax-editor side-by-side, installs deps, and
+# verifies the local link between them.
 #
-# Uso:
-#   ./bootstrap.sh [directorio-destino]
-#   ./bootstrap.sh --check   (solo verifica prerequisitos)
+# Usage:
+#   ./bootstrap.sh [target-dir]
+#   ./bootstrap.sh --check      (only verifies prerequisites)
+#
+# Optional env vars:
+#   GITHUB_ORG   GitHub org/user to clone from (default: parallax-editor)
+#   ENGINE_REPO  Engine repo name              (default: parallax-engine)
+#   EDITOR_REPO  Editor repo name              (default: parallax-editor)
 
-GITHUB_ORG="danielareyesarte"
-REPOS=("parallax-engine" "daniela-reyes-site" "daniela-reyes-eventos" "parallax-editor")
+GITHUB_ORG="${GITHUB_ORG:-parallax-editor}"
+ENGINE_REPO="${ENGINE_REPO:-parallax-engine}"
+EDITOR_REPO="${EDITOR_REPO:-parallax-editor}"
+REPOS=("$ENGINE_REPO" "$EDITOR_REPO")
 TARGET_DIR="${1:-$(pwd)}"
 
 RED='\033[0;31m'
@@ -30,106 +38,107 @@ check_prereqs() {
     if [ "$node_major" -ge 20 ]; then
       ok "Node $(node --version)"
     else
-      fail "Node $(node --version) — se necesita >= 20. Instalar: brew install node@22"
+      fail "Node $(node --version) — requires >= 20. Install: brew install node@22"
       missing=1
     fi
   else
-    fail "Node no encontrado. Instalar: brew install node@22"
+    fail "Node not found. Install: brew install node@22"
     missing=1
   fi
 
   if command -v yarn &>/dev/null; then
     ok "Yarn $(yarn --version)"
   else
-    fail "Yarn no encontrado. Instalar: npm install -g yarn"
+    fail "Yarn not found. Install: npm install -g yarn"
     missing=1
   fi
 
   if command -v git &>/dev/null; then
     ok "Git $(git --version | awk '{print $3}')"
   else
-    fail "Git no encontrado. Instalar: xcode-select --install"
+    fail "Git not found. Install: xcode-select --install (macOS)"
     missing=1
   fi
 
   if command -v claude &>/dev/null; then
-    ok "Claude Code CLI encontrado"
+    ok "Claude Code CLI found"
   else
-    warn "Claude Code CLI no encontrado (opcional para uso básico). Instalar: npm install -g @anthropic-ai/claude-code"
+    warn "Claude Code CLI not found (optional; only needed for the AI chat panel). Install: npm install -g @anthropic-ai/claude-code"
   fi
 
   if command -v gh &>/dev/null; then
-    ok "GitHub CLI $(gh --version | head -1 | awk '{print $4}')"
+    ok "GitHub CLI $(gh --version | head -1 | awk '{print $3}')"
   else
-    warn "GitHub CLI no encontrado (necesario para clonar repos privados). Instalar: brew install gh"
-    missing=1
+    warn "GitHub CLI not found (used for the clone step). Install: brew install gh — or set up plain 'git clone' yourself."
   fi
 
   return $missing
 }
 
 echo "═══════════════════════════════════════════"
-echo " Bootstrap — Sistema Parallax Daniela Reyes"
+echo " Bootstrap — Parallax Editor"
 echo "═══════════════════════════════════════════"
 echo ""
 
-echo "Verificando prerequisitos..."
+echo "Checking prerequisites..."
 echo ""
 if ! check_prereqs; then
   echo ""
-  fail "Faltan prerequisitos. Instálalos y vuelve a correr este script."
+  fail "Missing prerequisites. Install them and re-run this script."
   exit 1
 fi
 echo ""
 
 if [ "${1:-}" = "--check" ]; then
   echo ""
-  ok "Todos los prerequisitos OK."
+  ok "All prerequisites OK."
   exit 0
 fi
 
-echo "Directorio destino: $TARGET_DIR"
+echo "Target dir: $TARGET_DIR"
 mkdir -p "$TARGET_DIR"
 cd "$TARGET_DIR"
 
 echo ""
-echo "Clonando repositorios..."
+echo "Cloning repositories from $GITHUB_ORG..."
 for repo in "${REPOS[@]}"; do
   if [ -d "$repo" ]; then
-    warn "$repo/ ya existe, saltando clone."
+    warn "$repo/ already exists, skipping clone."
   else
-    echo "  Clonando $repo..."
-    gh repo clone "$GITHUB_ORG/$repo" "$repo"
-    ok "$repo clonado."
+    echo "  Cloning $repo..."
+    if command -v gh &>/dev/null; then
+      gh repo clone "$GITHUB_ORG/$repo" "$repo"
+    else
+      git clone "https://github.com/$GITHUB_ORG/$repo.git" "$repo"
+    fi
+    ok "$repo cloned."
   fi
 done
 
 echo ""
-echo "Instalando dependencias (engine primero)..."
-cd parallax-engine
+echo "Installing dependencies (engine first)..."
+cd "$ENGINE_REPO"
 yarn install
-ok "parallax-engine: dependencias instaladas."
+ok "$ENGINE_REPO: dependencies installed."
 cd ..
 
-for repo in "daniela-reyes-site" "daniela-reyes-eventos" "parallax-editor"; do
-  cd "$repo"
-  yarn install
-  ok "$repo: dependencias instaladas (link a parallax-engine activo)."
-  cd ..
-done
+cd "$EDITOR_REPO"
+yarn install
+ok "$EDITOR_REPO: dependencies installed (link to $ENGINE_REPO active)."
+cd ..
 
 echo ""
-echo "Verificando links..."
-for repo in "daniela-reyes-site" "daniela-reyes-eventos" "parallax-editor"; do
-  if [ -L "$repo/node_modules/parallax-engine" ]; then
-    ok "$repo → parallax-engine (symlink OK)"
-  else
-    fail "$repo: symlink a parallax-engine NO encontrado."
-    exit 1
-  fi
-done
+echo "Verifying link..."
+if [ -L "$EDITOR_REPO/node_modules/parallax-engine" ]; then
+  ok "$EDITOR_REPO → parallax-engine (symlink OK)"
+else
+  fail "$EDITOR_REPO: symlink to parallax-engine not found."
+  exit 1
+fi
 
 echo ""
-ok "Bootstrap completado. Todos los repos listos."
+ok "Bootstrap complete."
 echo ""
-echo "Próximo paso: cd parallax-engine && yarn dev"
+echo "Next steps:"
+echo "  cd $ENGINE_REPO && yarn dev    # watch-build the engine"
+echo "  cd $EDITOR_REPO && yarn editor # start the editor on :3000"

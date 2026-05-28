@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>parallax-engine render matrix</title>
+  <!--
+    OFFLINE Vue + lenis resolution
+    ──────────────────────────────
+    The engine's BUILT dist/index.js imports `vue` (bare, peerDependency that
+    Vite externalized) and dynamically imports `lenis` (bare, externalized). It
+    also imports `./schema.js` RELATIVELY (resolved next to index.js by the
+    browser — no import-map entry needed).
+
+    We map the two bare specifiers at the engine's OWN node_modules ESM builds,
+    served by the suite's tiny static server under /vendor/. No CDN, no network:
+    a single Vue instance — the exact one the engine was built against — which
+    is the same dedupe guarantee the real consumer repos get through the
+    `link:` symlink + `vite.resolve.dedupe:['vue']`.
+  -->
+  <script type="importmap">
+  {
+    "imports": {
+      "vue": "/vendor/vue.esm-browser.js",
+      "lenis": "/vendor/lenis.mjs"
+    }
+  }
+  </script>
+  <link rel="stylesheet" href="/engine/style.css" />
+  <style>
+    /* Mount-page chrome only. The engine paints everything else. */
+    html, body { margin: 0; padding: 0; background: #0b0b0f; }
+    #app { width: 100%; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/mount.mjs"></script>
+</body>
+</html>

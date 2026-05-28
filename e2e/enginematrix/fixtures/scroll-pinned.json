@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: scrollBehavior pinned (sticky)", "lang": "es" },
+  "sections": [
+    {
+      "id": "pin-1", "height": "250vh", "scrollBehavior": "pinned",
+      "background": { "type": "color", "value": "#201020" },
+      "layers": [ { "id": "pl1", "depth": 0, "elements": [
+        { "id": "pin-content", "type": "text", "content": "Pinned", "semanticTag": "h1",
+          "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "40px", "color": "#fff" } ] } ]
+    },
+    {
+      "id": "pin-after", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#102010" },
+      "layers": [ { "id": "pl2", "depth": 0, "elements": [
+        { "id": "pin-after-content", "type": "text", "content": "After", "semanticTag": "h2",
+          "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "28px", "color": "#fff" } ] } ]
+    }
+  ]
+}

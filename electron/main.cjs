@@ -98,7 +98,7 @@ async function startStandaloneServer() {
       }
       if (inUse) {
         // Último recurso (raro): algo retiene 4317. Abrimos en un puerto efímero
-        // para no dejar a Daniela sin app; esa sesión no comparte el localStorage
+        // para no dejar al usuario sin la app (esa sesión no comparte el localStorage
         // del puerto fijo, pero al menos arranca.
         standaloneServer = await start(0)
         return standaloneServer.port

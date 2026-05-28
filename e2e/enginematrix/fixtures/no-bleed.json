@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: section clips oversized/out-of-bounds content (no bleed)", "lang": "es" },
+  "sections": [
+    {
+      "id": "nb-1", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#202040" },
+      "layers": [ { "id": "nbl1", "depth": 0, "elements": [
+        { "id": "nb-oversize", "type": "png", "src": "/assets/wide.png", "alt": "oversized",
+          "position": { "x": 50, "y": 50 }, "anchor": "center",
+          "size": { "width": "200%", "height": "200%" } },
+        { "id": "nb-outside", "type": "text", "content": "Below margin", "semanticTag": "p",
+          "position": { "x": 50, "y": 140 }, "anchor": "center", "fontSize": "32px", "color": "#ff00aa" } ] } ]
+    },
+    {
+      "id": "nb-2", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#104010" },
+      "layers": [ { "id": "nbl2", "depth": 0, "elements": [
+        { "id": "nb-neighbor", "type": "text", "content": "Neighbor", "semanticTag": "h2",
+          "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "28px", "color": "#ffffff" } ] } ]
+    }
+  ]
+}

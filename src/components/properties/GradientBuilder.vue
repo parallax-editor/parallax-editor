@@ -6,7 +6,7 @@ import NumberSlider from './NumberSlider.vue'
 /**
  * Friendly gradient builder for `section.background.value` (#100).
  *
- * Daniela is non-technical: instead of a raw CSS string she gets a Lineal/
+ * the user is non-technical: instead of a raw CSS string she gets a Lineal/
  * Radial select, an angle slider (Lineal only), and a list of color stops
  * (each = color picker + position % via NumberSlider). The builder generates a
  * valid `linear-gradient(<deg>, c1 p1%, c2 p2%, …)` / `radial-gradient(circle

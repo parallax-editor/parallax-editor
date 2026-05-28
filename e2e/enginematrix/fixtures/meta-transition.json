@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1.1",
+  "meta": {
+    "title": "Matrix: meta.transition present (site mounts visible)",
+    "lang": "es",
+    "transition": { "in": "crossfade-blur", "out": "fade", "duration": 600 }
+  },
+  "sections": [
+    {
+      "id": "mt-sec", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#181020" },
+      "layers": [ { "id": "mt-l", "depth": 0, "elements": [
+        { "id": "mt-title", "type": "text", "content": "Con meta.transition", "semanticTag": "h1",
+          "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "30px", "color": "#fff" } ] } ]
+    }
+  ]
+}

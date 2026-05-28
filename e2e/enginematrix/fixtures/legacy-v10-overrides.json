@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "1.0",
+  "meta": { "title": "Matrix: legacy v1.0 per-element mobile/desktop overrides", "lang": "es" },
+  "sections": [
+    {
+      "id": "lo-sec", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#1a1a22" },
+      "layers": [
+        {
+          "id": "lo-layer", "depth": 0,
+          "elements": [
+            { "id": "responsive-el", "type": "text", "content": "Responsive", "semanticTag": "h1",
+              "position": { "x": 25, "y": 30 }, "anchor": "center", "fontSize": "28px", "color": "#fff",
+              "desktop": { "position": { "x": 25, "y": 30 }, "color": "#7cf" },
+              "mobile": { "position": { "x": 75, "y": 80 }, "fontSize": "18px", "color": "#fc7" } }
+          ]
+        }
+      ]
+    }
+  ]
+}

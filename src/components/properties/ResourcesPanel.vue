@@ -194,7 +194,7 @@ async function uploadOne(kind: ProjectAssetKind, file: File) {
     // subirla la REGISTRAMOS en meta.fonts (source custom, url = src relativo
     // `fonts/<archivo>`) con el MISMO nombre de familia que ofrece el selector
     // (fileToFontFamily) → ya queda disponible y se carga de verdad. setAtPath
-    // graba undo + marca dirty; Daniela guarda para versionar el registro.
+    // graba undo + marca dirty; el usuario guarda para versionar el registro.
     // Idempotente: si esa familia ya está registrada, no duplica.
     if (kind === 'font' && r.src) {
       const family = fileToFontFamily(file.name)
@@ -219,7 +219,7 @@ async function uploadOne(kind: ProjectAssetKind, file: File) {
 
 async function onDelete(kind: ProjectAssetKind, file: ProjectAsset) {
   if (!state.projectType || !state.slug) return
-  // Spanish confirm — Daniela is non-technical.
+  // Spanish confirm — the user is non-technical.
   const ok = await dialog.confirm({
     title: 'Eliminar archivo',
     message: `¿Eliminar "${file.name}"? Esta acción no se puede deshacer y el archivo se borra del proyecto.`,

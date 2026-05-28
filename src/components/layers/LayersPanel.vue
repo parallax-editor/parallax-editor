@@ -133,7 +133,7 @@ function onMove(sourcePath: string, targetArrayPath: string, toIndex: number) {
       </template>
     </div>
 
-    <!-- Tree clipboard affordances (Daniela is non-technical: explicit buttons
+    <!-- Tree clipboard affordances (the user is non-technical: explicit buttons
          in addition to Cmd+C / Cmd+X / Cmd+V). Operate on the tree selection;
          paste targets the active view → enables cross-view copy/paste. -->
     <div v-if="state.site" class="clip-bar">

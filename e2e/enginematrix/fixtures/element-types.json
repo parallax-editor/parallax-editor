@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: element types png/text/component/audio/video", "lang": "es" },
+  "theme": {
+    "colors": { "ink": "#222", "paper": "#fff", "accent": "#c0392b" },
+    "typography": { "display": "Georgia, serif", "body": "Helvetica, sans-serif" }
+  },
+  "sections": [
+    {
+      "id": "et-sec", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#e8e8ee" },
+      "layers": [
+        {
+          "id": "et-layer", "depth": 0,
+          "elements": [
+            { "id": "et-png", "type": "png", "src": "/assets/dot.png", "alt": "logo",
+              "position": { "x": 20, "y": 20 }, "anchor": "center",
+              "size": { "width": "60px", "height": "60px" } },
+            { "id": "et-text", "type": "text", "content": "Texto de prueba", "semanticTag": "h2",
+              "position": { "x": 50, "y": 20 }, "anchor": "center",
+              "fontSize": "24px", "color": "#111" },
+            { "id": "et-form", "type": "component", "name": "FormBlock",
+              "position": { "x": 50, "y": 60 }, "anchor": "center",
+              "size": { "width": "320px" },
+              "props": {
+                "webhookUrl": "https://example.invalid/hook",
+                "submitLabel": "Confirmar",
+                "fields": [
+                  { "name": "nombre", "label": "Nombre", "type": "text", "required": true },
+                  { "name": "email", "label": "Email", "type": "email", "required": true },
+                  { "name": "asistencia", "label": "Asistencia", "type": "select", "options": ["Si", "No"] }
+                ]
+              } },
+            { "id": "et-audio", "type": "audio", "src": "/assets/silence.mp3",
+              "position": { "x": 80, "y": 20 }, "anchor": "center",
+              "size": { "width": "120px" }, "controls": true, "autoplay": false, "muted": true },
+            { "id": "et-video", "type": "video", "src": "/assets/blank.mp4",
+              "position": { "x": 50, "y": 88 }, "anchor": "center",
+              "size": { "width": "160px", "height": "90px" }, "controls": true, "autoplay": false, "muted": true }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: animation depends trigger (cross-element bus)", "lang": "es" },
+  "sections": [
+    {
+      "id": "dep-sec", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#10141a" },
+      "layers": [
+        {
+          "id": "dep-layer", "depth": 0,
+          "elements": [
+            { "id": "dep-source", "type": "text", "content": "SOURCE (hover)", "semanticTag": "h2",
+              "position": { "x": 50, "y": 30 }, "anchor": "center", "fontSize": "24px", "color": "#fc9",
+              "interactive": true },
+            { "id": "dep-target", "type": "text", "content": "TARGET", "semanticTag": "h1",
+              "position": { "x": 50, "y": 65 }, "anchor": "center", "fontSize": "32px", "color": "#fff",
+              "animations": [ { "type": "fadeIn", "trigger": "depends", "from": 0.15, "to": 1, "duration": 250, "easing": "easeOut", "dependsOn": "dep-source", "dependsEvent": "hover" } ] }
+          ]
+        }
+      ]
+    }
+  ]
+}

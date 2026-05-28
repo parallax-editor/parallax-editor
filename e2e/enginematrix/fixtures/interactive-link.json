@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: interactive PNG with link navigates on click (anchor, no swallow)", "lang": "es" },
+  "sections": [
+    {
+      "id": "il-sec", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#101814" },
+      "layers": [
+        {
+          "id": "il-layer", "depth": 0,
+          "elements": [
+            { "id": "il-png", "type": "png", "src": "/assets/dot.png", "alt": "imagen con enlace",
+              "position": { "x": 50, "y": 50 }, "anchor": "center",
+              "size": { "width": "140px", "height": "140px" },
+              "interactive": true,
+              "link": { "href": "https://example.com/x", "target": "_blank" } }
+          ]
+        }
+      ]
+    }
+  ]
+}

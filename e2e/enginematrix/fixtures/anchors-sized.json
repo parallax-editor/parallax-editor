@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: all 9 anchors WITH explicit size (%, px, clamp/min)", "lang": "es" },
+  "sections": [
+    {
+      "id": "sec-anchors-sized",
+      "height": "100vh",
+      "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#101015" },
+      "layers": [
+        {
+          "id": "layer-anchors-sized",
+          "depth": 0,
+          "elements": [
+            { "id": "s-center", "type": "png", "src": "/assets/dot.png", "alt": "c",
+              "position": { "x": 50, "y": 50 }, "anchor": "center",
+              "size": { "width": "60px", "height": "60px" } },
+            { "id": "s-top-left", "type": "png", "src": "/assets/dot.png", "alt": "tl",
+              "position": { "x": 8, "y": 8 }, "anchor": "top-left",
+              "size": { "width": "10%", "height": "40px" } },
+            { "id": "s-top-right", "type": "png", "src": "/assets/dot.png", "alt": "tr",
+              "position": { "x": 92, "y": 8 }, "anchor": "top-right",
+              "size": { "width": "80px", "height": "8%" } },
+            { "id": "s-bottom-left", "type": "png", "src": "/assets/dot.png", "alt": "bl",
+              "position": { "x": 8, "y": 92 }, "anchor": "bottom-left",
+              "size": { "width": "clamp(50px, 8vw, 120px)", "height": "50px" } },
+            { "id": "s-bottom-right", "type": "png", "src": "/assets/dot.png", "alt": "br",
+              "position": { "x": 92, "y": 92 }, "anchor": "bottom-right",
+              "size": { "width": "min(120px, 15%)", "height": "60px" } },
+            { "id": "s-top", "type": "png", "src": "/assets/dot.png", "alt": "t",
+              "position": { "x": 50, "y": 12 }, "anchor": "top",
+              "size": { "width": "70px", "height": "70px" } },
+            { "id": "s-bottom", "type": "png", "src": "/assets/dot.png", "alt": "b",
+              "position": { "x": 50, "y": 88 }, "anchor": "bottom",
+              "size": { "width": "70px", "height": "70px" } },
+            { "id": "s-left", "type": "png", "src": "/assets/dot.png", "alt": "l",
+              "position": { "x": 12, "y": 50 }, "anchor": "left",
+              "size": { "width": "70px", "height": "70px" } },
+            { "id": "s-right", "type": "png", "src": "/assets/dot.png", "alt": "r",
+              "position": { "x": 88, "y": 50 }, "anchor": "right",
+              "size": { "width": "70px", "height": "70px" } }
+          ]
+        }
+      ]
+    }
+  ]
+}

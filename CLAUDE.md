@@ -1,121 +1,153 @@
 # parallax-editor
 
-Editor local tipo Illustrator para crear y editar sitios parallax. Solo corre en la maquina de Daniela, nunca se expone a internet.
+Local Illustrator-style editor for parallax sites. Designed to run ONLY on the user's machine, never exposed to the internet.
 
-## Comandos
+## Commands
 
 ```bash
-yarn editor       # Web: arranca en http://localhost:3000 (abre browser)
-yarn dev          # Web: lo mismo sin abrir browser
-yarn test         # Smoke test
-yarn electron:dev # App de escritorio apuntando al dev server :3000 (necesita `yarn editor` aparte)
-yarn dist:dir     # Empaqueta la app SIN dmg (rápido, para validar) → dist-electron/mac-arm64/
-yarn dist:mac     # Genera el .dmg ad-hoc → dist-electron/Parallax Editor-<v>-arm64.dmg
+yarn editor          # web: starts at http://localhost:3000 (opens browser)
+yarn dev             # web: same, without opening the browser
+yarn test            # smoke test (offline)
+yarn test:e2e:matrix # engine render matrix E2E (OFFLINE, self-contained) — see "## E2E"
+yarn test:e2e        # editor E2E (requires `yarn dev` running on :3000)
+yarn electron:dev    # desktop app pointing at the :3000 dev server (needs `yarn editor` running separately)
+yarn dist:dir        # packages the app WITHOUT dmg (fast, for validation) → dist-electron/mac-arm64/
+yarn dist:mac        # builds the ad-hoc .dmg → dist-electron/Parallax Editor-<v>-arm64.dmg
 ```
 
-## Empaquetado de escritorio (Electron, Fase 3/4)
+## E2E (`e2e/`, self-contained)
 
-La app envuelve el editor en una ventana nativa. Tres modos: **web** (`yarn editor`),
-**dev-as-app** (`yarn electron:dev` → carga :3000) y **empaquetada** (`.dmg`). En
-modo empaquetado, `electron/main.cjs` arranca el server standalone IN-PROCESS
-(`server/standalone.ts` → `start()`), que sirve el SPA de `dist/` + la API + WS sin Vite.
+The E2E harness lives INSIDE this repo (`e2e/`) so the editor is
+**self-contained** and does NOT depend on any external workspace content. It
+uses `playwright-core` (devDependency → never packaged in the `.dmg`) driving
+the system's Chrome; it does not download browsers.
 
-- **`electron/path-fix.cjs`** — corrige `process.env.PATH` al arrancar (apps abiertas
-  desde Finder NO ven `/opt/homebrew/bin` etc.), si no `claude`/`git` "no se encuentran".
-- **`electron/preload.cjs`** — único puente IPC (contextIsolation ON): diálogo nativo de
-  carpeta, auto-inicio al encender, y abrir-doctor desde el menú. El cliente lo consume
-  vía `src/composables/useElectron.ts`; en web degrada solo (osascript / no-op).
-- **Pantalla doctor** (`src/components/doctor/DoctorHost.vue` + `GET /api/diagnostics`,
-  `server/diagnostics.ts`) — primer arranque / menú "Ayuda → Diagnóstico": valida
-  git/claude/aws + toggle de auto-inicio.
-- **`electron-builder.yml`** — `.dmg` ad-hoc (sin firma; abrir con clic derecho → Abrir).
-  `asar:false` (binarios nativos sueltos = más robusto). Solo copia `dependencies` de
-  producción → `esbuild`/`chokidar`/`ws` viven en dependencies (el server bundleado los
-  requiere en runtime); `parallax-engine` va en devDependencies (se empotra en los bundles).
-- **Contexto de Claude empaquetado**: el contrato del engine se hornea en
-  `server/contract.generated.ts` (`scripts/embed-contract.mjs`, pre-hooks de build/dev) y
-  viaja dentro del `.dmg` — la máquina NO necesita el repo del engine. Ver CLAUDE.md raíz.
+- **`yarn test:e2e:matrix`** (`e2e/suites/engine-matrix.cjs` + `e2e/enginematrix/`)
+  — engine render matrix, **OFFLINE and self-contained**: spins up its own
+  ephemeral static server and mounts the BUILT `<ParallaxSite>` against its own
+  fixtures (`e2e/enginematrix/fixtures/*.json`). Only needs a fresh `dist/`
+  from the engine. When developing alongside a sibling checkout of
+  `parallax-engine`, `yarn dev` over there keeps the dist fresh; otherwise the
+  npm-installed version is used. No dev server required. ~219 checks (anchors,
+  positions, animations, transitions, v1.1 views, no-bleed, etc.).
+- **`yarn test:e2e`** (`e2e/harness.cjs --suite=editor`) — drives the editor on
+  :3000 **as a real user would**, but against an ephemeral **"sandbox"**
+  workspace: it copies the versioned fixtures
+  (`e2e/fixtures/content/{demo-mundo,demo-evento}/`) into a `mkdtemp` temp dir,
+  injects that workspace into the editor's `localStorage` (`useGit:false` →
+  writes to disk but NEVER does a git commit), activates it on the host, runs
+  the checks, and deletes the temp dir. **The repo tree is never touched** and
+  no "sandbox" project ever shows up in the real user's UI.
+- **`yarn test:e2e:save`** (`e2e/suites/save-reflect.cjs`) — Save → persists to
+  disk → reflects in the real engine preview, also against the sandbox.
+- Fixtures (`e2e/fixtures/content/`) ARE versioned; per-run screenshots
+  (`e2e/shots/`) are in `.gitignore`. The engine render is no longer tested
+  against live sites: `test:e2e:matrix` covers that.
 
-## Arquitectura
+## Desktop packaging (Electron)
 
-Un solo servidor Vite con API middleware (no Express separado):
+The app wraps the editor in a native window. Three modes: **web** (`yarn editor`),
+**dev-as-app** (`yarn electron:dev` → loads :3000), and **packaged** (`.dmg`). In
+packaged mode, `electron/main.cjs` starts the standalone server IN-PROCESS
+(`server/standalone.ts` → `start()`), which serves the SPA from `dist/` + the API + WS without Vite.
+
+- **`electron/path-fix.cjs`** — fixes `process.env.PATH` at startup (apps launched
+  from Finder do NOT see `/opt/homebrew/bin` etc.); otherwise `claude`/`git` "are not found".
+- **`electron/preload.cjs`** — sole IPC bridge (contextIsolation ON): native folder
+  dialog, login-item auto-start, and open-doctor from the menu. The client consumes
+  it via `src/composables/useElectron.ts`; on the web it degrades gracefully (osascript / no-op).
+- **Doctor screen** (`src/components/doctor/DoctorHost.vue` + `GET /api/diagnostics`,
+  `server/diagnostics.ts`) — first launch / "Help → Diagnostics" menu: validates
+  git/claude/aws + auto-start toggle.
+- **`electron-builder.yml`** — ad-hoc `.dmg` (unsigned; open with right-click → Open).
+  `asar:false` (loose native binaries = more robust). Only copies production
+  `dependencies` → `esbuild`/`chokidar`/`ws` live in dependencies (the bundled server
+  requires them at runtime); `parallax-engine` lives in devDependencies (embedded in the bundles).
+- **Packaged Claude context**: the engine's contract is baked into
+  `server/contract.generated.ts` (`scripts/embed-contract.mjs`, build/dev pre-hooks) and
+  ships inside the `.dmg` — the machine does NOT need the engine repo. See root CLAUDE.md.
+
+## Architecture
+
+A single Vite server with API middleware (no separate Express):
 - Frontend: Vue 3 + Vite + vue-router (SPA)
-- API: `/api/*` rutas servidas por middleware de Vite (`server/api.ts`)
-- WebSocket: `/__ws` para notificaciones de cambio de archivos (chokidar)
-- Assets: `/content/(eventos|site)/<slug>/*` sirve imagenes/audio/video de repos vecinos
+- API: `/api/*` routes served by Vite middleware (`server/api.ts`)
+- WebSocket: `/__ws` for file-change notifications (chokidar)
+- Assets: `/content/<workspace>/<slug>/*` serves images/audio/video from the active workspace
 
-## Estructura
+## Structure
 
 ```
 server/
-  api.ts          — middleware principal, ruteo REST
-  projects.ts     — CRUD de site.json en repos vecinos
+  api.ts          — main middleware, REST routing
+  projects.ts     — CRUD on site.json in workspace folders
   git.ts          — commit, push, log, revert via child_process
-  claude.ts       — ejecuta claude -p via shell
+  claude.ts       — runs claude -p via shell
   watcher.ts      — chokidar + WebSocket broadcast
 
 src/
-  stores/editor.ts          — estado central (site, seleccion, undo stack, zoom, tool)
-  views/ProjectSelector.vue — pantalla inicial: elegir proyecto
-  views/EditorView.vue      — layout 3 paneles
-  components/canvas/        — canvas con preview real del engine + selection overlay + smart guides
-  components/layers/        — panel izquierdo: arbol de capas con drag reorder
-  components/properties/    — panel derecho: props dinamicas + animaciones
-  components/toolbar/       — barra superior: tools, device toggle, zoom, save, publish
-  components/claude/        — input para Claude + importador PNGs
-  components/git/           — historial + boton publicar
+  stores/editor.ts          — central state (site, selection, undo stack, zoom, tool)
+  views/ProjectSelector.vue — initial screen: pick a project
+  views/EditorView.vue      — 3-pane layout
+  components/canvas/        — canvas with real engine preview + selection overlay + smart guides
+  components/layers/        — left panel: layer tree with drag-reorder
+  components/properties/    — right panel: dynamic props + animations
+  components/toolbar/       — top bar: tools, device toggle, zoom, save, publish
+  components/claude/        — input for Claude + PNG importer
+  components/git/           — history + publish button
   composables/              — useApi, useCanvas, useSelection, useShortcuts, useWebSocket
 ```
 
 ## API Routes
 
 ```
-GET  /api/projects                        — lista proyectos
-GET  /api/projects/:type/:slug            — lee site.json
-PUT  /api/projects/:type/:slug            — escribe site.json
-POST /api/projects/:type                  — crear nuevo
-POST /api/projects/:type/:slug/duplicate  — duplicar
-DEL  /api/projects/:type/:slug            — eliminar
-GET  /api/git/:type/log                   — historial
+GET  /api/projects                        — list projects
+GET  /api/projects/:type/:slug            — read site.json
+PUT  /api/projects/:type/:slug            — write site.json
+POST /api/projects/:type                  — create new
+POST /api/projects/:type/:slug/duplicate  — duplicate
+DEL  /api/projects/:type/:slug            — delete
+GET  /api/git/:type/log                   — history
 POST /api/git/:type/commit                — auto-commit
-POST /api/git/:type/push                  — publicar
-POST /api/claude                          — ejecutar claude -p
+POST /api/git/:type/push                  — publish
+POST /api/claude                          — run claude -p
 ```
 
-`:type` = `eventos` | `site` (mapea a repo vecino).
+`:type` = id of a configured workspace (resolves to the workspace's repo + content root on the host).
 
 ## Features
 
-- Canvas con preview real del engine (ParallaxSite)
-- Selection overlay: bounding box + 8 handles resize + handle rotacion
-- Drag to move, drag handles to resize, shift para proporciones
-- Smart guides (alineacion con otros elementos)
+- Canvas with real engine preview (ParallaxSite)
+- Selection overlay: bounding box + 8 resize handles + rotation handle
+- Drag to move, drag handles to resize, shift to keep aspect ratio
+- Smart guides (alignment with other elements)
 - Snap-to-grid toggle
-- Layers panel: arbol sections > layers > elements, drag reorder
-- Properties panel: dinamico segun seleccion (section/layer/element)
+- Layers panel: sections > layers > elements tree, drag-reorder
+- Properties panel: dynamic based on selection (section/layer/element)
 - Device toggle: desktop (1440x900) / mobile (390x844)
 - Zoom: cmd+scroll, cmd+/-  Pan: space+drag
 - Keyboard shortcuts: V/H (tools), cmd+Z/shift+cmd+Z (undo/redo), cmd+S (save), cmd+D (duplicate), delete
-- Claude: input libre → shell exec → file watcher refresca
-- Git: auto-commit en save, boton Publicar con confirmacion, historial
-- WebSocket: detecta cambios externos en site.json y recarga
+- Claude: free-form input → shell exec → file watcher refreshes
+- Git: auto-commit on save, Publish button with confirmation, history
+- WebSocket: detects external changes to site.json and reloads
 
-## Relacion con repos vecinos
+## Workspaces
 
-Lee/escribe en (estructura PLANA en ambos):
-- `../daniela-reyes-eventos/content/*/site.json`
-- `../daniela-reyes-site/content/*/site.json`  (incluye `home`; el sitio se simplificó a `content/<slug>` plano — ver su CLAUDE.md)
+The editor ships with no default workspaces; the user adds them from the UI via
+the native folder picker (`server/fs.ts`). A workspace can be ANY folder on
+disk — it does NOT need to sit next to this repo. The folder must follow the
+flat `<workspace>/content/<slug>/site.json` layout. The editor reads/writes
+those `site.json` files, runs git in the folder (if `useGit:true`), and
+launches `claude -p` with the workspace folder as cwd.
 
-Ejecuta git en esos repos. Ejecuta claude -p con el cwd del repo correspondiente.
+## Out of scope
 
-## No incluir
-
-- Auth, multiusuario, deploy desde editor
-- Tabs multiples (un archivo a la vez)
-- No exponer a internet
+- Auth, multi-user, deploying from the editor
+- Multiple tabs (one file at a time)
+- Exposing the editor to the internet
 
 ## Git hooks
 
-Hook `pre-commit` versionado en `hooks/pre-commit`, activado con `git config --local core.hooksPath hooks` (config local del repo; el hook vive en el árbol). En un `git commit` humano corre `yarn lint` **si** existe el script `lint` en `package.json` (hoy no existe → se omite con nota) y `yarn test` (smoke, offline). Cualquier fallo → commit bloqueado con mensaje claro en español. Emergencia: `git commit --no-verify`.
+Pre-commit hook versioned in `hooks/pre-commit`, activated with `git config --local core.hooksPath hooks` (local repo config; the hook lives in the tree). On a human `git commit` it runs `yarn lint` **if** the `lint` script exists in `package.json` (today it does not → skipped with a note) and `yarn test` (smoke, offline). Any failure → commit blocked with a clear message. Emergency: `git commit --no-verify`.
 
-**El auto-commit-on-save bypasea este hook por diseño.** `server/git.ts` → `gitCommit()` (la ruta por la que pasan Cmd+S, el botón Guardar y el timer de autosave, desde `EditorView.save()`) emite `git commit --no-verify` **en los repos de contenido vecinos** (`daniela-reyes-eventos` / `daniela-reyes-site`). Sin eso, cada autosave (~cada 1.5s mientras se edita) correría toda la suite offline de ese repo = inusable, y venía contaminando los repos de contenido con corridas de test pesadas toda la sesión. La correctitud del contenido ya está cubierta: `validateSite` del engine corre al cargar y el flujo **Publicar** (`GitPanel.vue`) revalida el schema antes del push (task #44); el push (`gitPush`) no pasa por pre-commit. Si tocas `gitCommit`/`gitPush`, conserva `--no-verify`.
+**The auto-commit-on-save bypasses this hook by design.** `server/git.ts` → `gitCommit()` (the path Cmd+S, the Save button, and the autosave timer take from `EditorView.save()`) emits `git commit --no-verify` **in the active workspace's repo**. Without that, every autosave (~every 1.5s while editing) would run the full offline test suite of that repo = unusable, and was polluting content repos with heavy test runs throughout the session. Content correctness is already covered: the engine's `validateSite` runs at load time and the **Publish** flow (`GitPanel.vue`) re-validates the schema before the push (task #44); push (`gitPush`) does not go through pre-commit. If you touch `gitCommit`/`gitPush`, keep `--no-verify`.

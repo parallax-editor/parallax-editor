@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Parallax Editor — Crea sitios inmersivos sin código</title>
-  <meta name="description" content="El Parallax Editor es una app de escritorio para macOS, estilo Illustrator, para componer sitios inmersivos arrastrando capas, con asistencia de IA y publicación con un clic." />
+  <title>Parallax Editor — Build immersive websites without code</title>
+  <meta name="description" content="The Parallax Editor is an Illustrator-style desktop app for macOS to compose immersive websites by dragging layers, with AI assistance and one-click publishing." />
   <link rel="icon" type="image/png" href="icon.png" />
   <link rel="apple-touch-icon" href="icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="style.css" />
   <style>
-    /* Nota de detección de chip bajo los botones de descarga. Bastante aire
-       arriba para que NO quede pegada a los botones. Centrada y angosta. */
+    /* Chip-detection hint under the download buttons. Generous top margin so it's
+       not glued to the buttons. Centered and narrow. */
     .dl-hint {
       margin: 34px auto 0;
       font-size: 13px;
@@ -22,9 +22,9 @@
       text-align: center;
     }
     .dl-hint:empty { display: none; }
-    /* La nota "Primera vez…" también con aire arriba. */
+    /* The "First-time…" note also gets breathing room above. */
     .note { margin-top: 22px; }
-    /* Mantiene "elige Abrir" / "(confirma Abrir…)" sin partirse a media frase. */
+    /* Keep "choose Open" / "(confirm Open…)" from breaking mid-phrase. */
     .note .nowrap { white-space: nowrap; }
   </style>
 </head>
@@ -36,14 +36,14 @@
 
   <header class="nav">
     <div class="nav-inner">
-      <a class="brand" href="index.html" aria-label="Parallax Engine — inicio">
-        <img src="icon.png" alt="Logotipo Parallax Engine" />
+      <a class="brand" href="index.html" aria-label="Parallax Engine — home">
+        <img src="icon.png" alt="Parallax Engine logo" />
         <span class="name">Parallax&nbsp;<em>Engine</em></span>
       </a>
       <nav class="nav-links">
-        <a href="index.html">Motor</a>
-        <a href="#como-funciona">Cómo funciona</a>
-        <a class="btn btn-ghost btn-sm" href="#descargar">Descargar</a>
+        <a href="index.html">Engine</a>
+        <a href="#how-it-works">How it works</a>
+        <a class="btn btn-ghost btn-sm" href="#download">Download</a>
       </nav>
     </div>
   </header>
@@ -53,19 +53,20 @@
     <!-- hero -->
     <section class="hero">
       <div class="wrap">
-        <p class="eyebrow reveal d1">App de escritorio · macOS</p>
-        <h1 class="reveal d2">Compón mundos arrastrando <em>capas</em>.</h1>
+        <p class="eyebrow reveal d1">Desktop app · macOS</p>
+        <h1 class="reveal d2">Compose worlds by dragging <em>layers</em>.</h1>
         <p class="lede reveal d3">
-          El Parallax Editor es un editor visual estilo Illustrator que pone el
-          motor en tus manos: organiza capas, edita el contenido, apóyate en la IA
-          y publica tu sitio con un clic. Pensado para crear sin escribir código.
+          The Parallax Editor is an Illustrator-style visual editor that puts
+          the engine in your hands: organize layers, edit content, lean on AI,
+          and publish your site in one click. Designed to create without
+          writing code.
         </p>
         <div class="hero-cta reveal d4">
-          <a class="btn btn-primary js-dl js-dl-apple" href="latest-arm64.dmg" download>
-            Descargar — Apple Silicon <span class="arrow">↓</span>
+          <a class="btn btn-primary js-dl js-dl-apple" href="https://github.com/parallax-editor/parallax-editor/releases/latest/download/Parallax-Editor-arm64.dmg">
+            Download — Apple Silicon <span class="arrow">↓</span>
           </a>
-          <a class="btn btn-ghost js-dl js-dl-intel" href="latest-x64.dmg" download>
-            Descargar — Intel <span class="arrow">↓</span>
+          <a class="btn btn-ghost js-dl js-dl-intel" href="https://github.com/parallax-editor/parallax-editor/releases/latest/download/Parallax-Editor-x64.dmg">
+            Download — Intel <span class="arrow">↓</span>
           </a>
         </div>
         <p class="dl-hint js-dl-hint reveal d4"></p>
@@ -74,17 +75,17 @@
 
     <hr class="divider" />
 
-    <!-- cómo funciona -->
-    <section class="block" id="como-funciona">
+    <!-- how it works -->
+    <section class="block" id="how-it-works">
       <div class="wrap">
         <div class="split">
           <!-- editor mock visual -->
           <div class="visual in-view" aria-hidden="true">
             <div class="bar"><i></i><i></i><i></i></div>
             <div class="canvas">
-              <div class="layer l1">Capa 1</div>
-              <div class="layer l2">Capa 2</div>
-              <div class="layer l3">Capa 3</div>
+              <div class="layer l1">Layer 1</div>
+              <div class="layer l2">Layer 2</div>
+              <div class="layer l3">Layer 3</div>
               <div class="grab"></div>
             </div>
           </div>
@@ -92,36 +93,36 @@
           <!-- steps -->
           <div class="in-view">
             <div class="section-head" style="margin-bottom:8px">
-              <p class="kicker">Cómo funciona</p>
-              <h2>Del lienzo a la web, <em>sin fricción</em>.</h2>
+              <p class="kicker">How it works</p>
+              <h2>From canvas to web, <em>without friction</em>.</h2>
             </div>
             <ol class="steps">
               <li>
                 <span class="s-num">01</span>
                 <div>
-                  <h4>Editor visual</h4>
-                  <p>Arrastra, escala y ordena capas en un lienzo familiar, como en una herramienta de diseño profesional.</p>
+                  <h4>Visual editor</h4>
+                  <p>Drag, scale, and arrange layers in a familiar canvas, just like a professional design tool.</p>
                 </div>
               </li>
               <li>
                 <span class="s-num">02</span>
                 <div>
-                  <h4>Editar contenido</h4>
-                  <p>Cambia textos, imágenes y ajustes de cada escena directamente, viendo el resultado al instante.</p>
+                  <h4>Edit content</h4>
+                  <p>Change text, images, and per-scene settings directly, with instant preview.</p>
                 </div>
               </li>
               <li>
                 <span class="s-num">03</span>
                 <div>
-                  <h4>Asistente Claude</h4>
-                  <p>Pide cambios en lenguaje natural y deja que la IA redacte, ajuste y proponga mejoras sobre tu sitio.</p>
+                  <h4>Claude assistant</h4>
+                  <p>Ask for changes in natural language and let the AI draft, tweak, and suggest improvements to your site.</p>
                 </div>
               </li>
               <li>
                 <span class="s-num">04</span>
                 <div>
-                  <h4>Publicar</h4>
-                  <p>Cuando todo está listo, publica con un clic y comparte tu mundo con el mundo.</p>
+                  <h4>Publish</h4>
+                  <p>When everything is ready, publish in one click and share your world with the world.</p>
                 </div>
               </li>
             </ol>
@@ -132,34 +133,34 @@
 
     <hr class="divider" />
 
-    <!-- descarga -->
-    <section class="block" id="descargar">
+    <!-- download -->
+    <section class="block" id="download">
       <div class="wrap">
         <div class="download-card in-view">
           <div class="plinth">
             <img src="icon.png" alt="Parallax Editor" />
           </div>
-          <span class="badge">Descarga gratuita</span>
-          <h2>Lleva el motor a tu <em>escritorio</em>.</h2>
+          <span class="badge">Free download</span>
+          <h2>Bring the engine to your <em>desktop</em>.</h2>
           <p class="sub">
-            Descarga el Parallax Editor y empieza a componer tus propios sitios
-            inmersivos hoy mismo.
+            Download Parallax Editor and start composing your own immersive
+            websites today.
           </p>
           <div class="dl-actions">
-            <a class="btn btn-primary js-dl js-dl-apple" href="latest-arm64.dmg" download>
-              Descargar — Apple Silicon <span class="arrow">↓</span>
+            <a class="btn btn-primary js-dl js-dl-apple" href="https://github.com/parallax-editor/parallax-editor/releases/latest/download/Parallax-Editor-arm64.dmg">
+              Download — Apple Silicon <span class="arrow">↓</span>
             </a>
-            <a class="btn btn-ghost js-dl js-dl-intel" href="latest-x64.dmg" download>
-              Descargar — Intel <span class="arrow">↓</span>
+            <a class="btn btn-ghost js-dl js-dl-intel" href="https://github.com/parallax-editor/parallax-editor/releases/latest/download/Parallax-Editor-x64.dmg">
+              Download — Intel <span class="arrow">↓</span>
             </a>
           </div>
           <p class="dl-hint js-dl-hint"></p>
           <p class="note">
-            <strong>Primera vez (app sin firma):</strong> haz clic derecho sobre la app
-            y <span class="nowrap">elige <kbd>Abrir</kbd></span>
-            <span class="nowrap">(confirma <kbd>Abrir</kbd> de nuevo)</span>.
+            <strong>First time (unsigned app):</strong> right-click the app
+            and <span class="nowrap">choose <kbd>Open</kbd></span>
+            <span class="nowrap">(confirm <kbd>Open</kbd> again)</span>.
             <br>
-            Compatible con Mac Intel y Apple Silicon.
+            Compatible with Intel and Apple Silicon Macs.
           </p>
         </div>
       </div>
@@ -173,11 +174,12 @@
         <img src="icon.png" alt="Parallax Engine" style="width:30px;height:30px;border-radius:8px" />
         <span class="name">Parallax&nbsp;<em>Engine</em></span>
       </a>
-      <p>El motor del sistema web de Daniela Reyes.</p>
+      <p>Open source · Built with Claude Code.</p>
       <div class="foot-links">
-        <a href="index.html">Inicio</a>
+        <a href="index.html">Home</a>
         <a href="editor.html">Editor</a>
-        <a href="#descargar">Descargar</a>
+        <a href="#download">Download</a>
+        <a href="https://github.com/parallax-editor/parallax-editor">GitHub</a>
       </div>
     </div>
   </footer>
@@ -192,12 +194,13 @@
       document.querySelectorAll('.in-view').forEach(function (el) { io.observe(el); });
     })();
 
-    // ── Detección de chip (Apple Silicon vs Intel) ──────────────────────────
-    // Hay DOS dmg: latest-arm64.dmg (Apple Silicon) y latest-x64.dmg (Intel).
-    // Si el navegador expone la arquitectura (Chromium: userAgentData), marcamos
-    // el botón recomendado como primario y el otro como secundario, con una nota.
-    // Si NO se puede detectar (Safari), se quedan los dos botones iguales para
-    // que el usuario elija. Sin JS: ambos botones visibles (links directos).
+    // ── Chip detection (Apple Silicon vs Intel) ─────────────────────────────
+    // There are TWO dmgs: Parallax-Editor-arm64.dmg (Apple Silicon) and
+    // Parallax-Editor-x64.dmg (Intel). If the browser exposes the architecture
+    // (Chromium: userAgentData), we mark the recommended button as primary and
+    // the other as secondary with a hint. If it can't be detected (Safari),
+    // both buttons stay equal so the user picks. Without JS: both buttons
+    // visible (direct links).
     (function () {
       var apples = document.querySelectorAll('.js-dl-apple');
       var intels = document.querySelectorAll('.js-dl-intel');
@@ -210,12 +213,12 @@
       function apply(arch) {
         if (arch === 'apple') {
           promote(apples, intels);
-          setHint('Detectamos tu Mac: Apple Silicon (M1/M2/M3…). ¿Es una Mac Intel? usa el otro botón.');
+          setHint('Detected your Mac: Apple Silicon (M1/M2/M3…). Got an Intel Mac? Use the other button.');
         } else if (arch === 'intel') {
           promote(intels, apples);
-          setHint('Detectamos tu Mac: Intel. ¿Es una Mac con chip Apple (M1/M2/M3…)? usa el otro botón.');
+          setHint('Detected your Mac: Intel. Got an Apple Silicon Mac (M1/M2/M3…)? Use the other button.');
         } else {
-          setHint('Elige según tu Mac: chip Apple (M1/M2/M3…) o Intel. ¿No sabes? Menú  → "Acerca de esta Mac".');
+          setHint('Pick the build for your Mac: Apple chip (M1/M2/M3…) or Intel. Not sure?  → "About This Mac".');
         }
       }
       var uad = navigator.userAgentData;

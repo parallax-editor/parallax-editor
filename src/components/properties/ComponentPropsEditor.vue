@@ -96,7 +96,7 @@ const groupedEntries = computed<PropGroup[]>(() => {
 // ── Required validation ─────────────────────────────────────────────────────
 // A required field is "missing" when its current value is empty (empty string,
 // null/undefined, or an empty array). Drives a red highlight + a label asterisk
-// so Daniela sees what still needs filling. Booleans are never "empty".
+// so the user sees what still needs filling. Booleans are never "empty".
 function isEmptyValue(v: any): boolean {
   if (v === undefined || v === null) return true
   if (typeof v === 'string') return v.trim() === ''
@@ -570,7 +570,7 @@ function fieldLabel(key: string, schema: EditablePropSchema): string {
   margin: 10px 0 2px; padding-bottom: 3px; border-bottom: 1px solid #333;
 }
 /* Per-field wrapper. Required-but-empty fields get a subtle red left accent so
-   Daniela sees exactly what still needs filling. */
+   the user sees exactly what still needs filling. */
 .cp-field { border-left: 2px solid transparent; padding-left: 0; }
 .cp-required-missing {
   border-left-color: #b23a3a;

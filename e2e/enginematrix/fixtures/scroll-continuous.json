@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: scrollBehavior continuous (2 sections)", "lang": "es" },
+  "sections": [
+    {
+      "id": "cont-1", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#1a1030" },
+      "layers": [ { "id": "cl1", "depth": 0, "elements": [
+        { "id": "cont-a", "type": "text", "content": "Continuous A", "semanticTag": "h1",
+          "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "32px", "color": "#fff" } ] } ]
+    },
+    {
+      "id": "cont-2", "height": "120vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#102030" },
+      "layers": [ { "id": "cl2", "depth": 0, "elements": [
+        { "id": "cont-b", "type": "text", "content": "Continuous B", "semanticTag": "h1",
+          "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "32px", "color": "#fff" } ] } ]
+    }
+  ]
+}

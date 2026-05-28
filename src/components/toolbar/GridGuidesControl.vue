@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// "Grid y guías ▾" — un popover sencillo (pensado para Daniela, no técnica) que
+// "Grid y guías ▾" — un popover sencillo (pensado para usuario no técnico) que
 // agrupa los ajustes de la cuadrícula y las guías:
 //   • Mostrar grid        → state.gridVisible  (solo la cuadrícula visible)
 //   • Tamaño de celda      → state.gridPercent  (Fina / Media / Gruesa)

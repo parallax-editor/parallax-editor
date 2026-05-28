@@ -109,7 +109,7 @@ async function loadProject() {
 // NO browser confirm, NO full reload, NO banner. Selection/zoom/undo/registry/
 // locks are left intact so there's no "refresh" flash. The last-saved baseline
 // (originalSite) is NOT touched, so isDirty flips true and "Guardar" lights up —
-// Daniela sees the change in the canvas, reads Claude's reply in the chat, and
+// The user sees the change in the canvas, reads Claude's reply in the chat, and
 // saves only if she wants. Claude never auto-commits (#120). The watcher already
 // suppresses the editor's OWN writes, so this only fires for external changes.
 async function applyExternalChange(fromClaude = false) {
@@ -139,7 +139,7 @@ async function applyExternalChange(fromClaude = false) {
   state.site = site
   // Prefijo "Claude:" (#149): si esta recarga viene de una corrida de Claude que
   // SÍ cambió el archivo, guardamos el contenido como baseline. Al Guardar, si el
-  // contenido sigue idéntico a este baseline (Daniela no editó a mano encima), el
+  // contenido sigue idéntico a este baseline (the user no editó a mano encima), el
   // commit se prefija con "Claude:". Una edición manual lo hace diferir → sin
   // prefijo. El watcher recarga con fromClaude=false y no toca el baseline.
   if (fromClaude) state.claudeBaseline = JSON.stringify(site)
@@ -209,7 +209,7 @@ async function save() {
     // `edit: <slug>`. Built BEFORE we overwrite originalSite. Same path for
     // manual Cmd+S, the Guardar button and autosave (all funnel here).
     // ¿Este cambio lo hizo Claude? Sí cuando el contenido actual sigue siendo
-    // IDÉNTICO al baseline que dejó la última corrida de Claude (Daniela no editó
+    // IDÉNTICO al baseline que dejó la última corrida de Claude (the user no editó
     // a mano encima). En ese caso el commit se prefija con "Claude:" (#149).
     const fromClaude = !!state.claudeBaseline && state.claudeBaseline === JSON.stringify(state.site)
     const commitMsg = buildCommitMessage(state.slug, state.originalSite, state.site, fromClaude)

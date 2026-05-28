@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: full-bleed png background covers its layer (regression #87)", "lang": "es" },
+  "sections": [
+    {
+      "id": "sec-fullbleed",
+      "height": "100vh",
+      "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#101015" },
+      "layers": [
+        {
+          "id": "layer-fullbleed",
+          "depth": 0,
+          "elements": [
+            { "id": "fb-bg", "type": "png", "src": "/assets/wide.png", "alt": "fondo full-bleed",
+              "position": { "x": 0, "y": 0 }, "anchor": "top-left",
+              "size": { "width": 100, "height": 100 } },
+            { "id": "fb-corner", "type": "png", "src": "/assets/wide.png", "alt": "esquina inferior derecha",
+              "position": { "x": 92, "y": 92 }, "anchor": "bottom-right",
+              "size": { "width": "160px", "height": "160px" } }
+          ]
+        }
+      ]
+    }
+  ]
+}

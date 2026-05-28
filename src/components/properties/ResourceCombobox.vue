@@ -49,7 +49,7 @@ const props = defineProps<{
   /**
    * Asset kind. When set (e.g. 'images', 'fonts', 'audio', 'video'), the
    * combobox HIDES the `<kind>/` folder prefix from the visible input and
-   * dropdown rows — Daniela already knows the field is for an image/font/etc.,
+   * dropdown rows — the user already knows the field is for an image/font/etc.,
    * so seeing `images/foo.jpg` reads as noise. The STORED value is unchanged:
    * picking a suggestion or typing a bare filename ("foo.jpg") emits
    * `<kind>/foo.jpg`; typing a path with `/` or an absolute http(s):// URL

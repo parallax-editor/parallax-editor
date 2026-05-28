@@ -1,0 +1,7 @@
+{
+  "__expectInvalid": true,
+  "_comment": "Deliberately schema-invalid: missing required meta.title and bad schemaVersion. The suite asserts mount.mjs surfaces __matrixError (engine validateSite rejects it). Proves the harness genuinely catches a broken contract rather than silently passing.",
+  "schemaVersion": "not-semver",
+  "meta": {},
+  "sections": []
+}

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: parallaxMode scroll-vertical/horizontal/mouse + perspective3d", "lang": "es" },
+  "sections": [
+    {
+      "id": "pm-spacer-top", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#0c0c12" },
+      "layers": [ { "id": "pm-st", "depth": 0, "elements": [
+        { "id": "pm-spacer-label", "type": "text", "content": "scroll down", "semanticTag": "p",
+          "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "18px", "color": "#888" } ] } ]
+    },
+    {
+      "id": "pm-main", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#0c0c12" },
+      "layers": [
+        {
+          "id": "pm-static", "depth": 0, "parallaxMode": [],
+          "elements": [ { "id": "pm-static-el", "type": "png", "src": "/assets/dot.png", "alt": "static",
+            "position": { "x": 30, "y": 50 }, "anchor": "center", "size": { "width": "40px", "height": "40px" } } ]
+        },
+        {
+          "id": "pm-scroll-v", "depth": 0.8, "parallaxMode": ["scroll-vertical"],
+          "elements": [ { "id": "pm-sv-el", "type": "png", "src": "/assets/dot.png", "alt": "sv",
+            "position": { "x": 50, "y": 50 }, "anchor": "center", "size": { "width": "40px", "height": "40px" } } ]
+        },
+        {
+          "id": "pm-scroll-h", "depth": 0.8, "parallaxMode": ["scroll-horizontal"],
+          "elements": [ { "id": "pm-sh-el", "type": "png", "src": "/assets/dot.png", "alt": "sh",
+            "position": { "x": 50, "y": 70 }, "anchor": "center", "size": { "width": "40px", "height": "40px" } } ]
+        },
+        {
+          "id": "pm-mouse", "depth": 0.9, "parallaxMode": ["mouse"],
+          "elements": [ { "id": "pm-mouse-el", "type": "png", "src": "/assets/dot.png", "alt": "mouse",
+            "position": { "x": 70, "y": 50 }, "anchor": "center", "size": { "width": "40px", "height": "40px" } } ]
+        },
+        {
+          "id": "pm-tilt", "depth": 0.5, "parallaxMode": ["tilt"], "perspective3d": true,
+          "elements": [ { "id": "pm-tilt-el", "type": "png", "src": "/assets/dot.png", "alt": "tilt",
+            "position": { "x": 50, "y": 30 }, "anchor": "center", "size": { "width": "40px", "height": "40px" } } ]
+        }
+      ]
+    }
+  ]
+}

@@ -52,7 +52,7 @@ const HELP = {
   layerOpacity: 'Transparencia de toda la capa. 1 = visible; 0 = invisible.',
   perspective3d: 'Activa un efecto de **profundidad 3D real**: las capas con distinta profundidad se inclinan en perspectiva, no solo se desplazan.\n\n» Úsalo en escenas con varias capas (fondo, medio, frente) cuando quieras una sensación de volumen tipo maqueta. Suele combinarse con el modo **Tilt 3D**.',
   blend: 'El **modo de fusión** decide cómo se mezclan los colores de esta capa con lo que tiene debajo. Por defecto la capa simplemente tapa lo de atrás; otros modos la combinan para crear luces, sombras o contraste.\n\nAgrupados por efecto:\n\n- **Oscurecer** — *Multiplicar* y *Oscurecer*: dejan pasar lo oscuro y quitan lo claro. Buenos para **sombras** o integrar una textura sobre un fondo claro.\n- **Aclarar** — *Pantalla* y *Aclarar*: dejan pasar lo claro y quitan lo oscuro. Buenos para **luces, brillos, humo o destellos** sobre fondos oscuros.\n- **Contraste** — *Superposición*: combina los dos anteriores; oscurece lo oscuro y aclara lo claro, subiendo el **contraste y la saturación**.\n- **Color** — *Tono, Saturación, Color, Luminosidad*: mezclan solo una parte del color (útil para teñir o virar tonos).\n- **Especiales** — *Diferencia, Exclusión, Sobre/Subexponer*: efectos fuertes y creativos.\n\n» Si no sabes cuál usar, deja **Normal**. Para una textura o foto que se funda con el fondo, prueba **Multiplicar** (fondo claro) o **Pantalla** (fondo oscuro).',
-  // Per-mode parallax help (item #2). Each checkbox gets its own "?" so Daniela
+  // Per-mode parallax help (item #2). Each checkbox gets its own "?" so the user
   // knows what it does AND when to use it.
   parallaxScrollVertical: '**Scroll vertical**: la capa se desplaza a distinta velocidad cuando se hace scroll hacia abajo (según su **profundidad**).\n\n» Úsalo para dar profundidad entre fondo y frente: el fondo se mueve lento y el primer plano rápido, como mirar por la ventanilla de un auto.',
   parallaxScrollHorizontal: '**Scroll horizontal**: igual que el vertical, pero el desplazamiento es de lado.\n\n» Úsalo en secciones que avanzan horizontalmente (galerías o tiras de imágenes que se recorren hacia los lados).',
@@ -536,7 +536,7 @@ function toggleParallaxMode(mode: string, on: boolean) {
 // Illustrator-style alignment. The schema field is OPTIONAL with NO default
 // (parallax-engine/schema TEXT_ALIGN = left|center|right|justify). To stay
 // additive/backward-compatible we show "(heredado)" when unset and only WRITE
-// the field once Daniela actually picks an alignment — picking the blank
+// the field once the user actually picks an alignment — picking the blank
 // option clears it back to undefined (field removed, JSON byte-identical).
 const TEXT_ALIGN_LABELS: Record<string, string> = {
   left: 'Izquierda',
@@ -975,7 +975,7 @@ const fontFamilyOptions = computed<ComboOption[]>(() => {
 
 // All element IDs in the active site view (sections > layers > elements),
 // minus the currently-selected element. Powers the "Depende de" combobox for
-// trigger==='depends' animations — Daniela picks which OTHER element drives
+// trigger==='depends' animations — the user picks which OTHER element drives
 // this one. Each option is rendered as `<id> · <kind>` (e.g.
 // "titulo-nombres · texto") so non-technical users recognise it.
 const KIND_LABELS_ES: Record<string, string> = {

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: transition world A (from)", "lang": "es" },
+  "sections": [
+    {
+      "id": "wa-sec", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#2a1030" },
+      "layers": [ { "id": "wa-l", "depth": 0, "elements": [
+        { "id": "world-a-title", "type": "text", "content": "Mundo A", "semanticTag": "h1",
+          "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "40px", "color": "#fff" } ] } ]
+    }
+  ]
+}

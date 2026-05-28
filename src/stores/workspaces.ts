@@ -3,29 +3,25 @@ import { workspaceApi, type Workspace } from '../composables/useApi'
 
 export type { Workspace }
 
-// ─── Workspaces store (Fase 2) ──────────────────────────────────────────────────
+// ─── Workspaces store ──────────────────────────────────────────────────────────
 //
 // localStorage is the CANONICAL client source of truth:
 //   parallax-editor:workspaces        → Workspace[] (the whole list)
 //   parallax-editor:active-workspace  → the active workspace id
 //
-// On boot, if there are NO workspaces yet, we SEED two defaults (Eventos /
-// Portafolio) fetched from the host (which resolves their absolute repoPaths)
-// so the existing edit flow keeps working byte-for-byte. The active workspace
-// is then ACTIVATED on the host (POST /api/workspace/activate) so the server's
+// On boot, if there are NO workspaces yet, we fetch the host defaults
+// (currently an empty list — the user adds their own). The active workspace is
+// then ACTIVATED on the host (POST /api/workspace/activate) so the server's
 // :ws routes resolve to the right repo + contentRoot.
 
 const WORKSPACES_KEY = 'parallax-editor:workspaces'
 const ACTIVE_KEY = 'parallax-editor:active-workspace'
 const SEED_VERSION_KEY = 'parallax-editor:seed-version'
 
-// Bump this whenever the SEEDED defaults change so an existing localStorage gets
-// reconciled ONCE per version (see reconcileSeedDefaults). v2: split the two
-// seeds onto their correct buckets (eventos → daniela-reyes-eventos, portafolio
-// → daniela-reyes-site + publishManifest) after some installs ended up with
-// both seeds pointing at the same bucket. v3: el sitio se simplificó a
-// estructura PLANA → el workspace 'site' pasa de contentRoot 'content/portafolio'
-// a 'content' y publishManifest false (ya no hay catálogo).
+// Bump this whenever the host-side defaults change so existing localStorage
+// installs reconcile ONCE per version (see reconcileSeedDefaults). Since the
+// current defaults list is empty, this reconcile is effectively a no-op until
+// a future version introduces real defaults.
 const SEED_VERSION = 3
 
 interface WorkspacesState {
@@ -78,17 +74,15 @@ function readSeedVersion(): number {
 }
 
 /**
- * One-shot reconciliation of the SEEDED workspaces against the host defaults
- * (Arreglo 3). The seed only ran with an EMPTY list, so an install whose
- * localStorage was created before a seed change (e.g. both seeds pointing at the
- * same bucket) never self-corrected. Here, if the stored seed version is behind
- * the current SEED_VERSION, we fetch GET /api/workspaces/defaults and, ONLY for
- * the workspaces whose id exists in defaults (the seeded 'eventos'/'site'),
- * overwrite their CANONICAL fields (repoPath, contentRoot, s3.bucket/region/
- * publishManifest) to match the default. User-created workspaces (ids not in
- * defaults) are NEVER touched, nothing is deleted, and the seed version is then
- * persisted so this runs at most once per version bump. Mutates `list` in place
- * and returns it.
+ * One-shot reconciliation of any SEEDED workspaces against the host defaults.
+ * If the stored seed version is behind the current SEED_VERSION, we fetch
+ * GET /api/workspaces/defaults and, ONLY for the workspaces whose id exists in
+ * defaults, overwrite their CANONICAL fields (repoPath, contentRoot,
+ * s3.bucket/region/publishManifest) to match the default. User-created
+ * workspaces (ids not in defaults) are NEVER touched, nothing is deleted, and
+ * the seed version is then persisted so this runs at most once per version
+ * bump. Mutates `list` in place and returns it. With the current empty
+ * defaults list this is a no-op.
  */
 async function reconcileSeedDefaults(list: Workspace[]): Promise<Workspace[]> {
   if (!list.length) return list
@@ -140,10 +134,10 @@ async function reconcileSeedDefaults(list: Workspace[]): Promise<Workspace[]> {
 }
 
 /**
- * Load workspaces from localStorage. If empty, SEED the two defaults from the
- * host (resolved absolute repoPaths). Otherwise run a one-shot reconciliation of
- * the seeded workspaces against the host defaults (Arreglo 3). Also reads the
- * git-config status for the setup banner. Idempotent (safe to call repeatedly).
+ * Load workspaces from localStorage. If empty, fetch the host defaults
+ * (currently an empty list). Otherwise run a one-shot reconciliation of the
+ * seeded workspaces against the host defaults. Also reads the git-config
+ * status for the setup banner. Idempotent (safe to call repeatedly).
  */
 export async function loadWorkspaces(): Promise<void> {
   let list = readList()

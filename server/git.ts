@@ -136,12 +136,12 @@ export function gitCommitContent(cwd: string, message: string): string | null {
   }
 }
 
-// Push "inteligente" para el flujo de 2 personas (Daniela + dev) sobre el mismo
-// repo: si el push se rechaza por estar DETRÁS del remoto (el otro ya pusheó),
-// integramos lo del remoto con un MERGE (no rebase — como se pidió) y
-// reintentamos el push. Si ambos tocaron SITES DISTINTOS, el merge es automático
-// (sin conflicto). Si tocaron el MISMO archivo, el merge falla → lo abortamos y
-// lanzamos un error claro (resolución manual / descartar desde la UI).
+// Push "inteligente" para flujos colaborativos sobre el mismo repo: si el push
+// se rechaza por estar DETRÁS del remoto (el otro colaborador ya pusheó),
+// integramos lo del remoto con un MERGE (no rebase) y reintentamos el push. Si
+// ambos tocaron SITES DISTINTOS, el merge es automático (sin conflicto). Si
+// tocaron el MISMO archivo, el merge falla → lo abortamos y lanzamos un error
+// claro (resolución manual / descartar desde la UI).
 export function gitPush(cwd: string): string {
   try {
     return git('push', cwd)
@@ -213,8 +213,8 @@ export function gitPull(
   }
 }
 
-// ── Git global config status (Fase 2) ────────────────────────────────────────
-// The editor clones/commits/pushes on Daniela's behalf using the host's git.
+// ── Git global config status ─────────────────────────────────────────────────
+// The editor clones/commits/pushes on the user's behalf using the host's git.
 // If `git config --global user.name`/`user.email` are unset, commits will fail
 // — so the workspace selector shows a persistent banner until git is set up.
 // Never throws.
@@ -241,11 +241,11 @@ export function gitConfigStatus(): GitConfigStatus {
   return { configured: !!name && !!email, name, email }
 }
 
-// ── Clone a repo for a new workspace (Fase 2) ─────────────────────────────────
-// Uses the HOST's authenticated git/ssh (Daniela is logged in as
-// danielareyesarte). `localPath` must be an absolute path whose PARENT exists
-// and is writable, and must not already exist (git clone refuses a non-empty
-// target anyway, but we fail early with a clear Spanish message). Never throws —
+// ── Clone a repo for a new workspace ─────────────────────────────────────────
+// Uses the HOST's authenticated git/ssh (whatever account the user is logged
+// in with). `localPath` must be an absolute path whose PARENT exists and is
+// writable, and must not already exist (git clone refuses a non-empty target
+// anyway, but we fail early with a clear Spanish message). Never throws —
 // returns a structured result the API passes through.
 export interface CloneResult {
   ok: boolean

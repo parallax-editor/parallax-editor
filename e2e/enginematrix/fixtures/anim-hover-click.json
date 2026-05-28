@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: animation hover + click triggers", "lang": "es" },
+  "sections": [
+    {
+      "id": "ahc-sec", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#12101a" },
+      "layers": [
+        {
+          "id": "ahc-layer", "depth": 0,
+          "elements": [
+            { "id": "el-hover", "type": "text", "content": "Hover me", "semanticTag": "h2",
+              "position": { "x": 35, "y": 50 }, "anchor": "center", "fontSize": "26px", "color": "#fff",
+              "interactive": true,
+              "animations": [ { "type": "scale", "trigger": "hover", "from": 1, "to": 1.5, "duration": 200, "easing": "easeOut" } ] },
+            { "id": "el-click", "type": "text", "content": "Click me", "semanticTag": "h2",
+              "position": { "x": 65, "y": 50 }, "anchor": "center", "fontSize": "26px", "color": "#fff",
+              "interactive": true,
+              "animations": [ { "type": "rotate", "trigger": "click", "from": 0, "to": 45, "duration": 200, "easing": "easeOut" } ] }
+          ]
+        }
+      ]
+    }
+  ]
+}

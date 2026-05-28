@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: animaciones reactivas (editor patch sin remount)", "lang": "es" },
+  "_doc": "Elementos que arrancan SIN la animacion bajo prueba. La suite usa window.__matrixPatchAnimations(id, anims) para parchear el array de animaciones del site reactivo en vivo (lo que hace el editor: regenera el site clonado sin remontar el engine). Prueba que useElementAnimations reacciona al nuevo array: hover/click empiezan a aplicar y un loop arranca/para, sin refresh.",
+  "sections": [
+    {
+      "id": "ar-sec", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#0e1018" },
+      "layers": [
+        {
+          "id": "ar-layer", "depth": 0,
+          "elements": [
+            { "id": "ar-hover", "type": "text", "content": "Hover target", "semanticTag": "h2",
+              "position": { "x": 30, "y": 50 }, "anchor": "center", "fontSize": "24px", "color": "#fff",
+              "interactive": true,
+              "animations": [] },
+            { "id": "ar-loop", "type": "text", "content": "Loop target", "semanticTag": "p",
+              "position": { "x": 70, "y": 50 }, "anchor": "center", "fontSize": "20px", "color": "#9cf",
+              "animations": [] }
+          ]
+        }
+      ]
+    }
+  ]
+}

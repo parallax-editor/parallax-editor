@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: section scrollDirection horizontal (flex track)", "lang": "es" },
+  "sections": [
+    {
+      "id": "hd-sec", "height": "100vh", "scrollBehavior": "continuous", "scrollDirection": "horizontal",
+      "background": { "type": "color", "value": "#101824" },
+      "layers": [
+        { "id": "hd-l1", "depth": 0, "elements": [
+          { "id": "hd-panel-1", "type": "text", "content": "Panel 1", "semanticTag": "h1",
+            "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "32px", "color": "#fff" } ] },
+        { "id": "hd-l2", "depth": 0, "elements": [
+          { "id": "hd-panel-2", "type": "text", "content": "Panel 2", "semanticTag": "h1",
+            "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "32px", "color": "#fc8" } ] }
+      ]
+    }
+  ]
+}

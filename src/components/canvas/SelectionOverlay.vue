@@ -757,7 +757,7 @@ function onMouseMove(e: MouseEvent) {
 
     if (state.snapToGrid) {
       // Snap to the SAME % step the visual grid overlay draws (GRID_PERCENT),
-      // so the element lands exactly on the lines Daniela sees.
+      // so the element lands exactly on the lines the user sees.
       newX = Math.round(newX / GRID_PERCENT) * GRID_PERCENT
       newY = Math.round(newY / GRID_PERCENT) * GRID_PERCENT
     }
@@ -767,7 +767,7 @@ function onMouseMove(e: MouseEvent) {
     // isn't rendered on the real site — there's no need (and it's harmful) to
     // pin the element inside. The old anchor-aware clampPos centred an
     // oversized image over the section and refused to let it leave the margin,
-    // which read as the element "locking up". Daniela can now drag an element
+    // which read as the element "locking up". The user can now drag an element
     // partly or fully outside the section freely.
     const cellX: Cell = dragOriginal.value.cellX
     const cellY: Cell = dragOriginal.value.cellY

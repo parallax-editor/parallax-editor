@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: transition world B (to)", "lang": "es" },
+  "sections": [
+    {
+      "id": "wb-sec", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#103028" },
+      "layers": [ { "id": "wb-l", "depth": 0, "elements": [
+        { "id": "world-b-title", "type": "text", "content": "Mundo B", "semanticTag": "h1",
+          "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "40px", "color": "#fff" } ] } ]
+    }
+  ]
+}

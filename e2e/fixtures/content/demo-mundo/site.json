@@ -1,0 +1,140 @@
+{
+  "schemaVersion": "1.0",
+  "meta": {
+    "title": "Mundo Demo (E2E)",
+    "description": "Sitio de prueba autocontenido del editor. No es contenido real de ningún cliente.",
+    "fonts": [
+      { "family": "Playfair Display", "source": "google" },
+      { "family": "Lato", "source": "google" }
+    ],
+    "lang": "es"
+  },
+  "theme": {
+    "colors": {
+      "ink": "#1c1c22",
+      "paper": "#f4f1ec",
+      "accent": "#b07d52"
+    },
+    "typography": {
+      "display": "Playfair Display",
+      "body": "Lato"
+    }
+  },
+  "sections": [
+    {
+      "id": "hero",
+      "height": "100vh",
+      "scrollBehavior": "continuous",
+      "scrollDirection": "vertical",
+      "background": { "type": "color", "value": "#f4f1ec" },
+      "layers": [
+        {
+          "id": "hero-content",
+          "depth": 0,
+          "parallaxMode": ["scroll-vertical"],
+          "blur": 0,
+          "opacity": 1,
+          "perspective3d": false,
+          "elements": [
+            {
+              "type": "text",
+              "id": "demo-titulo",
+              "position": { "x": 50, "y": 40 },
+              "anchor": "center",
+              "opacity": 1,
+              "rotation": 0,
+              "visible": true,
+              "interactive": false,
+              "animations": [
+                { "type": "fadeIn", "trigger": "enter", "from": 0, "to": 1, "duration": 800, "easing": "easeOut" }
+              ],
+              "content": "Mundo Demo",
+              "font": "Playfair Display",
+              "fontSize": "clamp(2.5rem, 8vw, 5rem)",
+              "fontWeight": 700,
+              "color": "#1c1c22",
+              "semanticTag": "h1",
+              "splitMode": "chars",
+              "staggerDelay": 60
+            },
+            {
+              "type": "text",
+              "id": "demo-subtitulo",
+              "position": { "x": 50, "y": 56 },
+              "anchor": "center",
+              "opacity": 1,
+              "rotation": 0,
+              "visible": true,
+              "interactive": false,
+              "animations": [
+                { "type": "fadeIn", "trigger": "enter", "from": 0, "to": 1, "duration": 1000, "delay": 300, "easing": "easeOut" },
+                { "type": "translateY", "trigger": "enter", "from": 30, "to": 0, "duration": 1000, "delay": 300, "easing": "easeOutCubic" }
+              ],
+              "content": "Un sitio de prueba para el editor",
+              "font": "Lato",
+              "fontSize": "clamp(1rem, 3vw, 1.4rem)",
+              "color": "#b07d52",
+              "letterSpacing": "0.2em",
+              "semanticTag": "p",
+              "splitMode": "none",
+              "staggerDelay": 0
+            },
+            {
+              "type": "png",
+              "id": "demo-imagen",
+              "position": { "x": 50, "y": 82 },
+              "size": { "width": "120px" },
+              "anchor": "center",
+              "opacity": 1,
+              "rotation": 0,
+              "visible": true,
+              "interactive": false,
+              "animations": [],
+              "src": "images/dot.png",
+              "alt": "Punto decorativo de prueba"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "galeria",
+      "height": "150vh",
+      "scrollBehavior": "continuous",
+      "scrollDirection": "vertical",
+      "background": { "type": "gradient", "value": "linear-gradient(180deg, #f4f1ec 0%, #e7e0d4 100%)" },
+      "layers": [
+        {
+          "id": "galeria-capa",
+          "depth": -0.2,
+          "parallaxMode": ["scroll-vertical"],
+          "blur": 0,
+          "opacity": 1,
+          "perspective3d": false,
+          "elements": [
+            {
+              "type": "text",
+              "id": "galeria-texto",
+              "position": { "x": 50, "y": 30 },
+              "anchor": "center",
+              "opacity": 1,
+              "rotation": 0,
+              "visible": true,
+              "interactive": false,
+              "animations": [
+                { "type": "fadeIn", "trigger": "scroll", "from": 0, "to": 1, "range": [0, 0.5], "easing": "easeOut" }
+              ],
+              "content": "Segunda sección",
+              "font": "Playfair Display",
+              "fontSize": "clamp(1.8rem, 5vw, 3rem)",
+              "color": "#1c1c22",
+              "semanticTag": "h2",
+              "splitMode": "words",
+              "staggerDelay": 40
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

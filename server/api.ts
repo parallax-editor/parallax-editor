@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'http'
 import type { Server as HttpServer } from 'http'
 import { createReadStream, existsSync } from 'fs'
-import { resolve, extname } from 'path'
+import { extname } from 'path'
 import { listProjects, readProject, writeProject, createProject, duplicateProject, getRepoPath, getContentRelPath, getAssetPath, saveProjectAsset, assetKindFromMime, listProjectAssets, deleteProjectAsset, contentSignature } from './projects'
 import { gitLog, gitShow, gitCommit, gitPush, gitPull, gitPendingCommits, gitOriginRecent, gitAheadCount, gitConfigStatus, gitClone } from './git'
 import { runClaude, cancelClaude, isClaudeAvailable } from './claude'
@@ -101,11 +101,11 @@ export interface CreateHandlerOptions {
 
 export function createHandler(opts: CreateHandlerOptions = {}) {
   // Setup file watcher on the host HTTP server (path /__ws, no extra port).
+  // We start with NO watched paths; each workspace the client activates extends
+  // the watch set at runtime via `addWatchPath` (see the activation route below).
   const httpServer = opts.httpServer ?? null
-  const eventosRepo = resolve(process.cwd(), '..', 'daniela-reyes-eventos')
-  const siteRepo = resolve(process.cwd(), '..', 'daniela-reyes-site')
   if (httpServer) {
-    setupWatcher(httpServer, [eventosRepo, siteRepo])
+    setupWatcher(httpServer, [])
   } else {
     console.warn('[editor-watcher] No HTTP server available — file watcher disabled')
   }
@@ -115,10 +115,9 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
     const method = req.method || 'GET'
 
     try {
-      // ─── Workspace seed defaults (Fase 2) ────────────
-      // The client seeds its localStorage from these on first run so the two
-      // built-in projects (Eventos / Portafolio) keep working with their
-      // correct ABSOLUTE repo paths (resolved host-side).
+      // ─── Workspace seed defaults ────────────
+      // Endpoint kept stable; the editor ships with no defaults (empty list).
+      // The user adds workspaces from the UI.
       if (url === '/api/workspaces/defaults' && method === 'GET') {
         return json(res, { ok: true, workspaces: defaultWorkspaces() })
       }
@@ -351,7 +350,7 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
           // Two independent `warning` channels collapse into one user-visible
           // line: the SIZE warning ("pesa 8MB, optimízalo") and the COMMIT
           // warning ("guardado pero no versionado"). Size wins when both are
-          // present — it's more actionable for Daniela ("optimiza la foto");
+          // present — it's more actionable for the user ("optimiza la foto");
           // the commit fallback is informational and already reflected in
           // `commit: 'skipped'` for the UI to render its own subtle toast.
           const sizeWarning = result.bytes > 5 * 1024 * 1024
@@ -528,7 +527,7 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
         }
         // NOTE: Claude's edits are intentionally NOT auto-committed here. They
         // land on disk; the file watcher reloads them into the editor and marks
-        // the doc dirty so the "Guardar" button enables — Daniela reviews and
+        // the doc dirty so the "Guardar" button enables — the user reviews and
         // decides whether to keep them (manual Guardar → commit). See the
         // file-changed handler in EditorView.vue.
         // cwd autoritativo: la carpeta del workspace (`type`), no lo que mande el

@@ -85,7 +85,7 @@ function diffMaps(
  *                     contenido sigue idéntico a lo que Claude dejó, sin edición
  *                     manual encima). Prefija el mensaje con "Claude:" para que
  *                     en el git log se distingan los commits de Claude de los de
- *                     Daniela/manuales (#149, blindaje de autoría).
+ *                     usuario/manuales (#149, blindaje de autoría).
  */
 export function buildCommitMessage(
   slug: string,

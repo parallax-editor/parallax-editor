@@ -1,11 +1,12 @@
 // ─── Asegura el binario de esbuild para Intel (x64) ──────────────────────────
 //
-// El editor empaqueta para x64 (la Mac de Daniela es Intel), pero `yarn install`
-// en una Mac Apple Silicon solo instala el binario de esbuild de SU arch
-// (@esbuild/darwin-arm64). Sin el de x64, el .app x64 llevaría un esbuild arm64
-// que NO corre en Intel → al cargar parallax.config.ts (componentes custom)
-// fallaría. Este script baja el binario x64 del registry si falta, así el build
-// x64 es reproducible en cualquier máquina de dev. Corre antes de dist:*.
+// El editor empaqueta para x64 (Mac Intel) y arm64 (Apple Silicon), pero
+// `yarn install` en una Mac Apple Silicon solo instala el binario de esbuild
+// de SU arch (@esbuild/darwin-arm64). Sin el de x64, el .app x64 llevaría un
+// esbuild arm64 que NO corre en Intel → al cargar parallax.config.ts
+// (componentes custom) fallaría. Este script baja el binario x64 del registry
+// si falta, así el build x64 es reproducible en cualquier máquina de dev.
+// Corre antes de dist:*.
 
 import { existsSync, readFileSync, mkdirSync } from 'node:fs'
 import { execSync } from 'node:child_process'

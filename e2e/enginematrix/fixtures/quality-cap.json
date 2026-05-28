@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: quality tier cap (maxLayers exceeded, graceful degrade)", "lang": "es" },
+  "quality": {
+    "desktop": { "maxLayers": 3, "blurEnabled": false, "loopFps": 60 },
+    "mobile": { "maxLayers": 2, "blurEnabled": false, "loopFps": 30 }
+  },
+  "sections": [
+    {
+      "id": "qc-sec", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#0f0f16" },
+      "layers": [
+        { "id": "qc-l0", "depth": 0, "blur": 8, "elements": [
+          { "id": "qc-el-0", "type": "text", "content": "L0", "semanticTag": "p",
+            "position": { "x": 20, "y": 50 }, "anchor": "center", "fontSize": "20px", "color": "#fff" } ] },
+        { "id": "qc-l1", "depth": 0, "elements": [
+          { "id": "qc-el-1", "type": "text", "content": "L1", "semanticTag": "p",
+            "position": { "x": 35, "y": 50 }, "anchor": "center", "fontSize": "20px", "color": "#fff" } ] },
+        { "id": "qc-l2", "depth": 0, "elements": [
+          { "id": "qc-el-2", "type": "text", "content": "L2", "semanticTag": "p",
+            "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "20px", "color": "#fff" } ] },
+        { "id": "qc-l3", "depth": 0, "elements": [
+          { "id": "qc-el-3", "type": "text", "content": "L3", "semanticTag": "p",
+            "position": { "x": 65, "y": 50 }, "anchor": "center", "fontSize": "20px", "color": "#fff" } ] },
+        { "id": "qc-l4", "depth": 0, "elements": [
+          { "id": "qc-el-4", "type": "text", "content": "L4", "semanticTag": "p",
+            "position": { "x": 80, "y": 50 }, "anchor": "center", "fontSize": "20px", "color": "#fff" } ] },
+        { "id": "qc-l5", "depth": 0, "elements": [
+          { "id": "qc-el-5", "type": "text", "content": "L5", "semanticTag": "p",
+            "position": { "x": 92, "y": 50 }, "anchor": "center", "fontSize": "20px", "color": "#fff" } ] }
+      ]
+    }
+  ]
+}

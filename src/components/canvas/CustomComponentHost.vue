@@ -9,18 +9,22 @@ import {
 } from 'vue'
 
 // Best-effort resolver + error boundary for ONE custom component instance
-// rendered inside the canvas preview (PLAN §16). The real presentational SFCs
-// live in the sibling content repo (`daniela-reyes-site/components/<Name>.vue`).
-// We dynamically import them; if the import OR the render fails (e.g. a
-// component that depends on Nuxt auto-imports like <NuxtLink>), we show a RED
-// placeholder "Componente <Name> falló: <error>" instead of crashing the whole
-// <ParallaxSite> preview. The editor must stay usable regardless.
+// rendered inside the canvas preview. Workspaces can register custom Vue
+// components via `parallax.config.ts`; if the SFC can be resolved at runtime
+// it renders, otherwise we show a RED placeholder ("Componente <Name>
+// falló: <error>") instead of crashing the whole <ParallaxSite> preview.
 //
-// import.meta.glob picks up every SFC under the sibling repo's components/ at
-// build/dev time so a name → loader map is statically known to Vite (relative
-// path is required; bare/aliased dynamic paths can't be globbed). eventos has
-// no such folder → the glob is simply empty there (placeholder shown if a
-// site-only component somehow appears, which it won't for eventos projects).
+// KNOWN LIMITATION: Vite's `import.meta.glob` is build-time and only works
+// against the editor's own source tree. Workspaces live wherever the user
+// picks them with the native folder picker — there is no static path that
+// can reach them. As a convenience we glob `../../../../*/components/*.vue`
+// so a workspace cloned **next to parallax-editor on the same machine** has
+// its components rendered in preview; arbitrary-path workspaces always fall
+// through to the placeholder. A proper server-side bundler that compiles the
+// active workspace's SFC and serves it over HTTP for runtime import is the
+// planned fix (tracked as a follow-up; see CONTRIBUTING). The placeholder
+// keeps the editor usable in the meantime: layout/size are accurate, the
+// real component renders correctly in the published site.
 
 const props = defineProps<{
   name: string
@@ -29,7 +33,7 @@ const props = defineProps<{
 }>()
 
 const SFC_MODULES = import.meta.glob(
-  '../../../../daniela-reyes-site/components/*.vue',
+  '../../../../*/components/*.vue',
 ) as Record<string, () => Promise<{ default: Component }>>
 
 // Build a name → loader map keyed by the file's basename (component name).
@@ -52,7 +56,7 @@ watch(
     failure.value = null
     const loader = LOADERS[name]
     if (!loader) {
-      failure.value = `no encontrado en daniela-reyes-site/components/${name}.vue`
+      failure.value = `no encontrado en ningún <workspace>/components/${name}.vue`
       return
     }
     try {

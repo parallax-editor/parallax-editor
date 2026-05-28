@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: animation enter(fadeIn) + loop+yoyo", "lang": "es" },
+  "sections": [
+    {
+      "id": "anim-el-sec", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#101018" },
+      "layers": [
+        {
+          "id": "anim-el-layer", "depth": 0,
+          "elements": [
+            { "id": "el-enter", "type": "text", "content": "Enter fadeIn", "semanticTag": "h1",
+              "position": { "x": 50, "y": 35 }, "anchor": "center", "fontSize": "30px", "color": "#fff",
+              "animations": [ { "type": "fadeIn", "trigger": "enter", "from": 0, "to": 1, "duration": 500, "easing": "easeOut" } ] },
+            { "id": "el-loop", "type": "text", "content": "Loop yoyo", "semanticTag": "p",
+              "position": { "x": 50, "y": 65 }, "anchor": "center", "fontSize": "20px", "color": "#9cf",
+              "animations": [ { "type": "translateY", "trigger": "loop", "from": -20, "to": 20, "duration": 600, "loop": true, "yoyo": true, "easing": "easeInOut" } ] }
+          ]
+        }
+      ]
+    }
+  ]
+}

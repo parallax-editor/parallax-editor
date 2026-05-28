@@ -14,9 +14,8 @@ import { loadParallaxConfigDefault } from './configLoader'
 //     editableProps         // schema the editor renders → kept
 //   } } })
 //
-// `daniela-reyes-eventos` has NO config (built-in FormBlock only) → {}.
-// `daniela-reyes-site` registers NavButtons / HeroCTA / PortfolioCard /
-// WorldNav / SocialLinks.
+// Workspaces without a `parallax.config.ts` resolve to {} → only the engine's
+// built-in components (e.g. FormBlock) are available in that workspace.
 //
 // The editor only needs the JSON-serializable shape (names + labels +
 // editableProps). The actual `component` refs are Vue objects (functions /

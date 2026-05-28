@@ -749,7 +749,7 @@ function onCanvasDrop(e: DragEvent) {
    and zoomed to fit. The inner scroller must NOT clip or scroll here — the
    whole composition is meant to be visible at once — so it shows overflow
    and never offsets. (Normal mode keeps overflow:auto, untouched.) A subtle
-   accent outline tells Daniela she's looking at the whole sheet. */
+   accent outline tells the user they're looking at the whole sheet. */
 .editor-canvas.is-overview .preview-scroll {
   overflow: visible;
 }

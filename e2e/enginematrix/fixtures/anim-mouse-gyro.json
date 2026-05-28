@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: animation mouse + gyroscope triggers", "lang": "es" },
+  "sections": [
+    {
+      "id": "amg-sec", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#0e1216" },
+      "layers": [
+        {
+          "id": "amg-layer", "depth": 0,
+          "elements": [
+            { "id": "el-mouse-anim", "type": "png", "src": "/assets/dot.png", "alt": "mouse-anim",
+              "position": { "x": 50, "y": 35 }, "anchor": "center", "size": { "width": "40px", "height": "40px" },
+              "animations": [ { "type": "translateX", "trigger": "mouse", "from": -120, "to": 120, "easing": "linear" } ] },
+            { "id": "el-gyro-anim", "type": "png", "src": "/assets/dot.png", "alt": "gyro-anim",
+              "position": { "x": 50, "y": 65 }, "anchor": "center", "size": { "width": "40px", "height": "40px" },
+              "animations": [ { "type": "translateY", "trigger": "gyroscope", "from": -100, "to": 100, "easing": "linear" } ] }
+          ]
+        }
+      ]
+    }
+  ]
+}

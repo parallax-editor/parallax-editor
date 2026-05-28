@@ -9,3 +9,6 @@ dist-server
 dist-electron
 release
 out
+
+# E2E: capturas/reportes por corrida (las fixtures SÍ se versionan; los shots no).
+e2e/shots

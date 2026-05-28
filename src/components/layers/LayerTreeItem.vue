@@ -231,7 +231,7 @@ function onRowClick(e: MouseEvent) {
     @dragleave="onDragLeave"
     @drop="onDrop"
   >
-    <!-- Insertion line affordance (Daniela is non-technical: clear where it lands) -->
+    <!-- Insertion line affordance (the user is non-technical: clear where it lands) -->
     <div v-if="dropEdge === 'before'" class="drop-line drop-before" />
     <div v-if="dropEdge === 'after'" class="drop-line drop-after" />
 

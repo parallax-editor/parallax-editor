@@ -52,7 +52,7 @@ export interface EditorState {
   originalSite: string | null
   // Blindaje de autoría (#claude-prefix): cuando un cambio en disco vino de una
   // corrida de `claude -p`, guardamos aquí el JSON resultante. Al guardar, si el
-  // contenido sigue siendo IDÉNTICO a este baseline (Daniela no editó a mano
+  // contenido sigue siendo IDÉNTICO a este baseline (the user no editó a mano
   // encima), el commit se prefija con "Claude:". Cualquier edición manual lo hace
   // diferir → sin prefijo. Se auto-invalida solo, sin enganchar cada mutación.
   claudeBaseline: string | null
@@ -472,7 +472,7 @@ export function restartPreview() {
 //
 // A legacy/compartido site keeps ONE shared `site.sections` tree (current
 // behavior, per-element mobile/desktop overrides intact). It is NEVER
-// auto-migrated. Daniela opts in via the "Configuración independiente
+// auto-migrated. The user opts in via the "Configuración independiente
 // móvil/escritorio" toggle, which calls toViews(site) ONCE to materialize two
 // genuinely independent trees (site.views.desktop / .mobile), bumps
 // schemaVersion to '1.1' and marks dirty (undoable).
@@ -549,7 +549,7 @@ export function enableIndependentViews() {
 // Grid step, expressed as a PERCENT of the artboard (position.x/y and
 // size.width/height are %-of-artboard in the schema). The visual grid overlay
 // in EditorCanvas and the snap math in SelectionOverlay BOTH use this so what
-// Daniela sees lines up exactly with where elements land.
+// The user sees lines up exactly with where elements land.
 //
 // The cell size is now user-configurable (state.gridPercent, default 5%). This
 // is a LIVE export binding kept mirrored to state.gridPercent by a watcher:
@@ -763,7 +763,7 @@ export function selectGlobal(which: 'site' | 'theme' | 'resources') {
 // has none. We DON'T force-change rendering: this mirrors the engine's own
 // fallbacks (ParallaxSite only applies CSS vars when theme exists; with no
 // theme the page is browser-default black-on-white). Scaffolding only happens
-// when Daniela actively edits a theme value, and seeds sensible neutrals so
+// when the user actively edits a theme value, and seeds sensible neutrals so
 // the very first edit doesn't repaint everything to an arbitrary palette.
 // Exported so color controls (FormColorField) can paint their theme-preset
 // swatches with the real resolved theme, falling back to these neutrals when
@@ -1986,7 +1986,7 @@ export function centerArtboardOnLoad(canvasW: number, canvasH: number) {
 // Default OFF → today's behavior is byte-for-byte unchanged (device-proportion
 // artboard + per-section vertical scroll). ON → the WHOLE composition (every
 // section stacked, full total height) is scaled to fit the visible canvas at
-// once so Daniela can eyeball the whole sheet, no per-screen scrolling.
+// once so the user can eyeball the whole sheet, no per-screen scrolling.
 //
 // Implementation: the canvas already renders a scaled `.preview-frame`
 // (vp.width × vp.height) that clips its tall content to a native inner
@@ -2268,7 +2268,7 @@ function newAudioElement(): AnyElement {
 }
 
 // FormBlock is an engine built-in component (type: "component",
-// name: "FormBlock"). Default props give Daniela a working RSVP form she
+// name: "FormBlock"). Default props give the user a working RSVP form she
 // can edit in the Properties panel (a couple of starter fields).
 function newFormElement(): AnyElement {
   return {
@@ -2332,7 +2332,7 @@ function defaultForProp(schema: EditablePropSchema): unknown {
 }
 
 // Build the props object for a NEW custom-component element from its
-// registered editableProps schema (defaults only — Daniela edits in
+// registered editableProps schema (defaults only — the user edits in
 // PROPIEDADES afterwards).
 function defaultPropsFor(reg: ComponentRegistration): Record<string, unknown> {
   const props: Record<string, unknown> = {}

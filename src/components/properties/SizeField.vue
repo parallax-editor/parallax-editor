@@ -7,7 +7,7 @@ import HelpHint from './HelpHint.vue'
  *
  * The schema stores the value as a string OR number. Powerful forms like
  * `min(46%, 520px)` are confusing for a non-technical user, so this control
- * lets Daniela pick a clear MODE and fills friendly inputs per mode:
+ * lets the user pick a clear MODE and fills friendly inputs per mode:
  *
  *   • Fijo        → "520px"            (un tamaño exacto en píxeles)
  *   • Porcentual  → "46%"             (relativo al ancho disponible)

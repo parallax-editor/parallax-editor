@@ -13,7 +13,7 @@ const props = defineProps<{
   step?: number
   help?: string
   // Display-only unit hint shown next to the control (e.g. "%", "°", "ms").
-  // Never coerces/strips the stored value — purely an affordance for Daniela.
+  // Never coerces/strips the stored value — purely an affordance for the user.
   unit?: string
   // Placeholder shown when an empty value is allowed (e.g. "auto").
   placeholder?: string
@@ -83,7 +83,7 @@ select.field-input {
   background-position: right 10px center;
 }
 /* Hide the native number spinner (#109): the vertical up/down arrows render
-   mid-height and look misaligned in the slim panel rows. Daniela edits via
+   mid-height and look misaligned in the slim panel rows. The user edits via
    typing + arrow-key nudge, so the spinner is pure noise — drop it everywhere
    number fields appear, consistent with NumberSlider/RangeSlider. */
 .field-input[type='number'] { -moz-appearance: textfield; }

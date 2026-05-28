@@ -32,7 +32,7 @@ const testId = computed(() =>
   props.id || props.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'blend',
 )
 
-// The CSS keywords + Spanish labels (Daniela is non-technical — she sees
+// The CSS keywords + Spanish labels (the user is non-technical — she sees
 // "Multiplicar", we still write `multiply`).
 const BLENDS: { value: string; label: string }[] = [
   { value: 'normal', label: 'Normal' },

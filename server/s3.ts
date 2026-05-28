@@ -217,16 +217,17 @@ export function readDeploySidecar(ws: Workspace, slug: string): DeploySidecar | 
   }
 }
 
-// ── Catálogo: manifest.json (Fase 1 site — resolver el catálogo stale) ─────────
+// ── Catálogo: manifest.json ──────────────────────────────────────────────────
 //
-// El sitio público lista sus mundos desde /content/portafolio/manifest.json en
-// RUNTIME (ver daniela-reyes-site/composables/usePortfolioList). Al publicar un
-// mundo regeneramos ese manifest escaneando TODOS los slugs hermanos del
-// contentRoot y lo subimos a S3, así un mundo nuevo aparece en el catálogo SIN
-// rebuild. Gated por ws.s3.publishManifest → NUNCA corre para eventos (privado).
+// Cuando el sitio consumidor lista sus mundos desde un `manifest.json` cargado
+// en RUNTIME, al publicar un slug regeneramos ese manifest escaneando TODOS
+// los slugs hermanos del contentRoot y lo subimos a S3 — así un mundo nuevo
+// aparece en el catálogo SIN rebuild. Gated por `ws.s3.publishManifest`: solo
+// se activa en workspaces cuyo catálogo es público (no en workspaces privados
+// donde los slugs no deben enumerarse).
 //
-// El BUILDER del manifest vive ahora en server/catalog.ts (single source of
-// truth, compartido con el archivo local versionado). Aquí solo subimos a S3 el
+// El BUILDER del manifest vive en server/catalog.ts (single source of truth,
+// compartido con el archivo local versionado). Aquí solo subimos a S3 el
 // MISMO cuerpo que se escribe en disco.
 
 export interface ManifestResult {

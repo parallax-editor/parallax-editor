@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: all 9 anchors, NO explicit size (shrink-to-fit text)", "lang": "es" },
+  "sections": [
+    {
+      "id": "sec-anchors",
+      "height": "100vh",
+      "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#101015" },
+      "layers": [
+        {
+          "id": "layer-anchors",
+          "depth": 0,
+          "elements": [
+            { "id": "a-center", "type": "text", "content": "C", "semanticTag": "p",
+              "position": { "x": 50, "y": 50 }, "anchor": "center",
+              "fontSize": "16px", "color": "#fff" },
+            { "id": "a-top-left", "type": "text", "content": "TL", "semanticTag": "p",
+              "position": { "x": 10, "y": 10 }, "anchor": "top-left",
+              "fontSize": "16px", "color": "#fff" },
+            { "id": "a-top-right", "type": "text", "content": "TR", "semanticTag": "p",
+              "position": { "x": 90, "y": 10 }, "anchor": "top-right",
+              "fontSize": "16px", "color": "#fff" },
+            { "id": "a-bottom-left", "type": "text", "content": "BL", "semanticTag": "p",
+              "position": { "x": 10, "y": 90 }, "anchor": "bottom-left",
+              "fontSize": "16px", "color": "#fff" },
+            { "id": "a-bottom-right", "type": "text", "content": "BR", "semanticTag": "p",
+              "position": { "x": 90, "y": 90 }, "anchor": "bottom-right",
+              "fontSize": "16px", "color": "#fff" },
+            { "id": "a-top", "type": "text", "content": "T", "semanticTag": "p",
+              "position": { "x": 50, "y": 15 }, "anchor": "top",
+              "fontSize": "16px", "color": "#fff" },
+            { "id": "a-bottom", "type": "text", "content": "B", "semanticTag": "p",
+              "position": { "x": 50, "y": 85 }, "anchor": "bottom",
+              "fontSize": "16px", "color": "#fff" },
+            { "id": "a-left", "type": "text", "content": "L", "semanticTag": "p",
+              "position": { "x": 15, "y": 50 }, "anchor": "left",
+              "fontSize": "16px", "color": "#fff" },
+            { "id": "a-right", "type": "text", "content": "R", "semanticTag": "p",
+              "position": { "x": 85, "y": 50 }, "anchor": "right",
+              "fontSize": "16px", "color": "#fff" }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,137 @@
+{
+  "schemaVersion": "1.1",
+  "meta": {
+    "title": "Evento Demo (E2E)",
+    "description": "Evento de prueba autocontenido del editor, con un FormBlock. No es contenido real de ningún cliente.",
+    "fonts": [
+      { "family": "Playfair Display", "source": "google" },
+      { "family": "Lato", "source": "google" }
+    ],
+    "lang": "es"
+  },
+  "theme": {
+    "colors": {
+      "ink": "#22201b",
+      "paper": "#faf6ef",
+      "accent": "#9a7b4f"
+    },
+    "typography": {
+      "display": "Playfair Display",
+      "body": "Lato"
+    }
+  },
+  "sections": [
+    {
+      "id": "hero",
+      "height": "100vh",
+      "scrollBehavior": "continuous",
+      "scrollDirection": "vertical",
+      "background": { "type": "color", "value": "#faf6ef" },
+      "layers": [
+        {
+          "id": "hero-content",
+          "depth": 0,
+          "parallaxMode": ["scroll-vertical"],
+          "blur": 0,
+          "opacity": 1,
+          "perspective3d": false,
+          "elements": [
+            {
+              "type": "text",
+              "id": "evento-titulo",
+              "position": { "x": 50, "y": 42 },
+              "anchor": "center",
+              "opacity": 1,
+              "rotation": 0,
+              "visible": true,
+              "interactive": false,
+              "animations": [
+                { "type": "fadeIn", "trigger": "enter", "from": 0, "to": 1, "duration": 800, "easing": "easeOut" }
+              ],
+              "content": "Celebración Demo",
+              "font": "Playfair Display",
+              "fontSize": "clamp(2.5rem, 8vw, 5rem)",
+              "fontWeight": 700,
+              "color": "#22201b",
+              "semanticTag": "h1",
+              "splitMode": "chars",
+              "staggerDelay": 60
+            },
+            {
+              "type": "text",
+              "id": "evento-fecha",
+              "position": { "x": 50, "y": 58 },
+              "anchor": "center",
+              "opacity": 1,
+              "rotation": 0,
+              "visible": true,
+              "interactive": false,
+              "animations": [
+                { "type": "fadeIn", "trigger": "enter", "from": 0, "to": 1, "duration": 1000, "delay": 400, "easing": "easeOut" },
+                { "type": "translateY", "trigger": "enter", "from": 30, "to": 0, "duration": 1000, "delay": 400, "easing": "easeOutCubic" }
+              ],
+              "content": "Fecha por confirmar",
+              "font": "Lato",
+              "fontSize": "clamp(1rem, 3vw, 1.4rem)",
+              "color": "#9a7b4f",
+              "letterSpacing": "0.3em",
+              "semanticTag": "p",
+              "splitMode": "none",
+              "staggerDelay": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "rsvp",
+      "height": "120vh",
+      "scrollBehavior": "continuous",
+      "scrollDirection": "vertical",
+      "background": { "type": "color", "value": "#f1e9dc" },
+      "layers": [
+        {
+          "id": "rsvp-capa",
+          "depth": 0,
+          "parallaxMode": ["scroll-vertical"],
+          "blur": 0,
+          "opacity": 1,
+          "perspective3d": false,
+          "elements": [
+            {
+              "type": "component",
+              "id": "rsvp-form",
+              "name": "FormBlock",
+              "position": { "x": 50, "y": 50 },
+              "size": { "width": "min(90%, 500px)" },
+              "anchor": "center",
+              "opacity": 1,
+              "rotation": 0,
+              "visible": true,
+              "interactive": true,
+              "animations": [],
+              "props": {
+                "webhookUrl": "https://example.com/webhook-demo",
+                "fields": [
+                  { "name": "nombre", "label": "Tu nombre", "type": "text", "required": true },
+                  { "name": "asistencia", "label": "¿Asistirás?", "type": "select", "options": ["Sí", "No"], "required": true }
+                ],
+                "submitLabel": "Confirmar",
+                "successMessage": "¡Gracias por confirmar!",
+                "errorMessage": "Hubo un error, intenta de nuevo.",
+                "honeypotField": "website",
+                "styling": {
+                  "inputBg": "var(--color-paper)",
+                  "inputBorder": "var(--color-accent)",
+                  "buttonBg": "var(--color-ink)",
+                  "buttonText": "var(--color-paper)",
+                  "fontFamily": "var(--font-body)"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

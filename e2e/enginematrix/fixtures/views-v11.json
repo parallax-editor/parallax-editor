@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: v1.1 views — independent desktop/mobile trees", "lang": "es" },
+  "views": {
+    "desktop": {
+      "sections": [
+        {
+          "id": "v-desktop-sec", "height": "100vh", "scrollBehavior": "continuous",
+          "background": { "type": "color", "value": "#10203a" },
+          "layers": [ { "id": "vd-l", "depth": 0, "elements": [
+            { "id": "view-desktop-only", "type": "text", "content": "DESKTOP TREE", "semanticTag": "h1",
+              "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "34px", "color": "#fff" } ] } ]
+        }
+      ]
+    },
+    "mobile": {
+      "sections": [
+        {
+          "id": "v-mobile-sec", "height": "100vh", "scrollBehavior": "continuous",
+          "background": { "type": "color", "value": "#3a1020" },
+          "layers": [ { "id": "vm-l", "depth": 0, "elements": [
+            { "id": "view-mobile-only", "type": "text", "content": "MOBILE TREE", "semanticTag": "h1",
+              "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "28px", "color": "#fff" } ] } ]
+        }
+      ]
+    }
+  }
+}

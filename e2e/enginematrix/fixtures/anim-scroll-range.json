@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: animation scroll trigger with range", "lang": "es" },
+  "sections": [
+    {
+      "id": "asr-spacer", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#0d0d14" },
+      "layers": [ { "id": "asr-sp", "depth": 0, "elements": [
+        { "id": "asr-spacer-label", "type": "text", "content": "scroll", "semanticTag": "p",
+          "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "16px", "color": "#666" } ] } ]
+    },
+    {
+      "id": "asr-sec", "height": "150vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#0d0d14" },
+      "layers": [
+        {
+          "id": "asr-layer", "depth": 0,
+          "elements": [
+            { "id": "el-scroll", "type": "text", "content": "Scroll-driven", "semanticTag": "h1",
+              "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "28px", "color": "#fff",
+              "animations": [ { "type": "translateX", "trigger": "scroll", "from": -200, "to": 200, "range": [0.2, 0.8], "easing": "linear" } ] }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "asr-tail", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#141414" },
+      "layers": [ { "id": "asr-tl", "depth": 0, "elements": [
+        { "id": "asr-tail-label", "type": "text", "content": "fin", "semanticTag": "p",
+          "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "16px", "color": "#666" } ] } ]
+    }
+  ]
+}

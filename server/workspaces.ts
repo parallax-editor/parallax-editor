@@ -1,29 +1,19 @@
-// ─── Host-side workspace registry (Fase 2) ─────────────────────────────────────
+// ─── Host-side workspace registry ──────────────────────────────────────────────
 //
-// The editor used to HARDCODE two project "types" (eventos / site) that each
-// mapped to a fixed sibling repo + content root (server/projects.ts → REPO_MAP
-// / contentDir). Fase 2 de-hardcodes that into WORKSPACES: a workspace is an
-// absolute git repo path + a content root (relative, e.g. `content` or
-// `content/portafolio`) + optional S3 config.
+// A workspace is an absolute git repo path + a content root (relative, e.g.
+// `content` or `content/portafolio`) + optional S3 config.
 //
 // CANONICAL SOURCE OF TRUTH = the CLIENT (localStorage). The host does NOT
 // persist workspaces to disk; instead the client POSTs the active workspace's
 // config to /api/workspace/activate, and the host VALIDATES + CACHES it here in
-// memory (a Map keyed by workspace id). Every request that used to take a
-// `:type` now takes a workspace id and resolves repoPath/contentRoot through
-// this cache.
+// memory (a Map keyed by workspace id). Every request takes a workspace id and
+// resolves repoPath/contentRoot through this cache.
 //
-// Backwards compatibility: the client seeds two default workspaces with ids
-// `eventos` and `site` whose repoPath/contentRoot match the OLD hardcoded
-// mapping, so the existing edit flow is byte-for-byte unchanged. The seeded ids
-// being the same strings the old routes used means even a workspace that was
-// never explicitly activated can fall back to the legacy resolution (see
-// resolveWorkspace below).
+// The editor ships with NO default workspaces: a fresh install starts empty and
+// the user adds workspaces from the UI.
 
-import { existsSync, statSync, accessSync, mkdirSync, constants } from 'fs'
+import { statSync, accessSync, existsSync, mkdirSync, constants } from 'fs'
 import { resolve, isAbsolute } from 'path'
-
-const BASE = process.cwd()
 
 // S3 publish target for a workspace (Fase 3). All optional / additive.
 export interface WorkspaceS3 {
@@ -32,11 +22,11 @@ export interface WorkspaceS3 {
   prefix: string
   region: string
   /**
-   * Si true, al publicar un slug también se regenera y sube
-   * `<contentRoot>/manifest.json` (la lista del catálogo) a S3, así un mundo
-   * nuevo aparece en el catálogo del sitio público SIN rebuild. SOLO se activa
-   * en workspaces tipo "portafolio" — NUNCA en eventos, cuyos slugs son
-   * privados/por-URL y no deben enumerarse públicamente.
+   * If true, publishing a slug also regenerates and uploads
+   * `<contentRoot>/manifest.json` (the catalog list) to S3, so a new world
+   * appears in the public site's catalog WITHOUT a rebuild. Only enable for
+   * "public catalog" workspaces — keep off for private/per-URL workspaces
+   * whose slugs must not be enumerated publicly.
    */
   publishManifest?: boolean
 }
@@ -53,52 +43,23 @@ export interface Workspace {
   contentRoot: string
   s3?: WorkspaceS3
   /**
-   * ¿El workspace usa git? Default true (seeds eventos/site + back-compat). Si es
-   * false: la carpeta NO necesita ser repo git, Guardar solo escribe a disco (sin
-   * commit) y Publicar sube SOLO a S3 (sin push), o se deshabilita si no hay S3.
+   * Does the workspace use git? Default true. If false: the folder does NOT
+   * need to be a git repo, Save only writes to disk (no commit), and Publish
+   * uploads to S3 only (no push) — or is disabled if S3 isn't configured.
    */
   useGit?: boolean
-}
-
-// ── Legacy default workspaces (back-compat) ──────────────────────────────────
-// The two seeded workspaces resolve to the same repos/roots the hardcoded
-// REPO_MAP/contentDir used. Kept here so a request that arrives BEFORE the
-// client activated anything (or for a stale-but-known id) still resolves.
-const LEGACY_WORKSPACES: Record<string, Workspace> = {
-  eventos: {
-    id: 'eventos',
-    name: 'Eventos',
-    repoPath: resolve(BASE, '..', 'daniela-reyes-eventos'),
-    contentRoot: 'content',
-    useGit: true,
-    s3: { enabled: true, bucket: 'daniela-reyes-eventos', prefix: '', region: 'us-east-1' },
-  },
-  site: {
-    id: 'site',
-    name: 'Sitio Daniela',
-    repoPath: resolve(BASE, '..', 'daniela-reyes-site'),
-    // Estructura PLANA: cada site (home + mundos) vive en content/<slug>/. El
-    // editor lista todos (incluido "home", editable por Daniela).
-    contentRoot: 'content',
-    useGit: true,
-    // Sin catálogo/manifest (el sitio se simplificó: el engine + el home hacen
-    // la navegación vía link.site), así que NO regeneramos manifest al publicar.
-    s3: { enabled: true, bucket: 'daniela-reyes-site', prefix: '', region: 'us-east-1', publishManifest: false },
-  },
 }
 
 // In-memory cache of workspaces the client has activated this process.
 const activated = new Map<string, Workspace>()
 
 /**
- * The two seed workspaces with ABSOLUTE repoPaths resolved on the host (the
- * client can't resolve absolute fs paths). The client uses these to SEED its
- * localStorage on first run so the existing edit flow works untouched. Only
- * the ones whose repo actually exists on disk are returned (a clean machine
- * missing a sibling repo simply won't seed that one).
+ * The editor ships with no default workspaces. The client seeds an empty list;
+ * the user adds workspaces from the UI. Kept as an exported function so the
+ * `/api/workspaces/defaults` endpoint can remain stable.
  */
 export function defaultWorkspaces(): Workspace[] {
-  return Object.values(LEGACY_WORKSPACES).filter((w) => existsSync(w.repoPath))
+  return []
 }
 
 export interface ActivateResult {
@@ -186,13 +147,12 @@ export function activateWorkspace(raw: any): ActivateResult {
 }
 
 /**
- * Resolve a workspace by id from the activated cache, falling back to a legacy
- * default workspace (eventos/site) so the existing flow keeps working even if
- * the client hasn't POSTed an activation yet. Returns null for an unknown id.
+ * Resolve a workspace by id from the activated cache. Returns null for an
+ * unknown id (the client must POST /api/workspace/activate first).
  */
 export function resolveWorkspace(id: string): Workspace | null {
   if (!id) return null
-  return activated.get(id) || LEGACY_WORKSPACES[id] || null
+  return activated.get(id) || null
 }
 
 /** Absolute repo path for a workspace id, or '' if unknown. */

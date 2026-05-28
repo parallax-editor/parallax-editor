@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: splitMode words/chars/lines + staggerDelay", "lang": "es" },
+  "sections": [
+    {
+      "id": "split-sec", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#14101c" },
+      "layers": [
+        {
+          "id": "split-layer", "depth": 0,
+          "elements": [
+            { "id": "split-words", "type": "text", "content": "Nos casamos pronto", "semanticTag": "h1",
+              "position": { "x": 50, "y": 25 }, "anchor": "center", "fontSize": "30px", "color": "#fff",
+              "splitMode": "words", "staggerDelay": 80,
+              "animations": [ { "type": "fadeIn", "trigger": "enter", "from": 0, "to": 1, "duration": 400, "easing": "easeOut" } ] },
+            { "id": "split-chars", "type": "text", "content": "Sofia y Juan", "semanticTag": "h2",
+              "position": { "x": 50, "y": 50 }, "anchor": "center", "fontSize": "26px", "color": "#fc8",
+              "splitMode": "chars", "staggerDelay": 50,
+              "animations": [ { "type": "fadeIn", "trigger": "enter", "from": 0, "to": 1, "duration": 350, "easing": "easeOut" } ] },
+            { "id": "split-lines", "type": "text", "content": "Linea uno\nLinea dos\nLinea tres", "semanticTag": "p",
+              "position": { "x": 50, "y": 78 }, "anchor": "center", "fontSize": "18px", "color": "#9cf",
+              "splitMode": "lines", "staggerDelay": 120,
+              "animations": [ { "type": "fadeIn", "trigger": "enter", "from": 0, "to": 1, "duration": 300, "easing": "easeOut" } ] }
+          ]
+        }
+      ]
+    }
+  ]
+}

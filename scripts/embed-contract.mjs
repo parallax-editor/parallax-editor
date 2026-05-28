@@ -4,8 +4,8 @@
 // El engine es la FUENTE DE VERDAD del contrato de autoría de site.json
 // (`parallax-engine/ai/contract.md`). El editor lo inyecta en cada `claude -p`
 // (server/claude.ts) para que los repos de contenido NO necesiten skill y para
-// que TODO viaje dentro del .dmg empaquetado (Daniela no tiene el repo del
-// engine en su máquina).
+// que TODO viaje dentro del .dmg empaquetado (la máquina del usuario no
+// necesita tener el repo del engine).
 //
 // Este script lee ese contrato (vía el symlink `node_modules/parallax-engine`,
 // o el repo vecino como fallback) y lo "hornea" en un módulo TS
@@ -48,8 +48,8 @@ if (src) {
   )
   contract =
     '# Contrato de site.json (stub)\n\n' +
-    'Asistente del sistema parallax de Daniela Reyes. Solo edita `site.json` y ' +
-    'assets dentro de `content/<slug>/`. Responde en español. (Contrato completo ' +
+    'Asistente de un sistema parallax. Solo edita `site.json` y assets dentro ' +
+    'de `content/<slug>/`. Responde en el idioma del usuario. (Contrato completo ' +
     'no disponible: el engine no estaba presente al compilar el editor.)'
 }
 

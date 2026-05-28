@@ -1,11 +1,12 @@
-# ─── Empaquetado de la app de escritorio (FASE 3) ────────────────────────────
+# ─── Empaquetado de la app de escritorio ─────────────────────────────────────
 #
 # Genera un .dmg ad-hoc (SIN firma ni notarización: no requiere cuenta de Apple
-# Developer). Daniela tendrá que abrirlo la primera vez con clic derecho → Abrir
-# (Gatekeeper). Es una herramienta interna, nunca se distribuye públicamente.
+# Developer). El usuario tendrá que abrirlo la primera vez con clic derecho →
+# Abrir (Gatekeeper). El editor está pensado para uso local, no distribución
+# masiva.
 #
 # asar: false — empaqueta los archivos sueltos (sin el archivo único app.asar).
-# Para una app interna esto es MÁS robusto: esbuild y fsevents traen binarios
+# Para una app local esto es MÁS robusto: esbuild y fsevents traen binarios
 # nativos que dentro de un asar requerirían "asarUnpack" y suelen dar problemas;
 # sueltos simplemente funcionan. Coste: arranque un pelín más lento. Aceptable.
 #
@@ -15,17 +16,18 @@
 # devDependencies a propósito: el editor lo empotra en dist/ y dist-server/, no
 # lo necesita en runtime, y así electron-builder NO copia su symlink al paquete.
 
-appId: com.danielareyes.parallax-editor
+appId: io.parallax.editor
 productName: Parallax Editor
-copyright: © Daniela Reyes
+copyright: © Parallax Editor contributors
 
 asar: false
 
-# Nombre con sufijo de arquitectura SIEMPRE (x64 y arm64), para distinguir los
-# dos dmg en S3 (`Parallax Editor-<v>-x64.dmg` / `-arm64.dmg`). Por defecto
-# electron-builder no le pone sufijo a x64; lo forzamos para que el release
-# encuentre ambos y la página de descarga elija por chip.
-artifactName: ${productName}-${version}-${arch}.${ext}
+# Stable artifact filename (no version, no spaces): `Parallax-Editor-arm64.dmg`
+# / `Parallax-Editor-x64.dmg`. The version comes from the GitHub Release tag
+# instead of the filename, and the stable name lets the landing point at
+# `/releases/latest/download/Parallax-Editor-<arch>.dmg` without rewrites per
+# release. Hyphens (not spaces) avoid URL-encoding issues.
+artifactName: Parallax-Editor-${arch}.${ext}
 
 directories:
   output: dist-electron

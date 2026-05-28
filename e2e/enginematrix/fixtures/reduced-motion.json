@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.1",
+  "meta": { "title": "Matrix: prefers-reduced-motion (visible, no loop)", "lang": "es" },
+  "sections": [
+    {
+      "id": "rm-sec", "height": "100vh", "scrollBehavior": "continuous",
+      "background": { "type": "color", "value": "#101014" },
+      "layers": [
+        {
+          "id": "rm-layer", "depth": 0,
+          "elements": [
+            { "id": "rm-enter", "type": "text", "content": "Reduced fadeIn", "semanticTag": "h1",
+              "position": { "x": 50, "y": 40 }, "anchor": "center", "fontSize": "28px", "color": "#fff",
+              "animations": [ { "type": "fadeIn", "trigger": "enter", "from": 0, "to": 1, "duration": 600, "easing": "easeOut" } ] },
+            { "id": "rm-loop", "type": "text", "content": "Reduced loop", "semanticTag": "p",
+              "position": { "x": 50, "y": 60 }, "anchor": "center", "fontSize": "20px", "color": "#9cf",
+              "animations": [ { "type": "translateY", "trigger": "loop", "from": -30, "to": 30, "duration": 500, "loop": true, "yoyo": true, "easing": "linear" } ] }
+          ]
+        }
+      ]
+    }
+  ]
+}
