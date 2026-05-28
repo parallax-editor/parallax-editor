@@ -46,7 +46,23 @@ const ENGINE_DIST = (function () {
   }
   return candidates[0]
 })()
-const ENGINE_NM = path.resolve(HERE, '..', '..', '..', 'parallax-engine', 'node_modules')
+// Resolve Vue + lenis node_modules. Prefer the engine repo's own
+// node_modules (the dev workflow has the engine cloned as a sibling),
+// fall back to the editor's own node_modules (CI / fresh clones — the
+// editor has Vue + lenis transitively via @parallax-editor/parallax-engine
+// peerDependencies). The first existing path wins.
+const ENGINE_NM = (function () {
+  const candidates = [
+    path.resolve(HERE, '..', '..', '..', 'parallax-engine', 'node_modules'),
+    path.resolve(HERE, '..', '..', 'node_modules'),
+    path.resolve(HERE, '..', 'node_modules'),
+  ]
+  const fs = require('fs')
+  for (const p of candidates) {
+    if (fs.existsSync(path.join(p, 'vue'))) return p
+  }
+  return candidates[0]
+})()
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
