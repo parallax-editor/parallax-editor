@@ -34,7 +34,10 @@
   <link rel="stylesheet" href="https://esm.sh/@parallax-editor/parallax-engine@0.1.0/style.css" />
   <style>
     /* Live hero container — gives the engine a defined box. The engine's
-       `fit="container"` prop (≥0.1.1) handles the rest (sizing, normalization). */
+       `fit="container"` prop (≥0.1.1) handles the rest (sizing, normalization).
+       Padding-bottom hack for a 5:3 aspect: more reliable than `aspect-ratio`
+       across browsers because it establishes a definite height that
+       descendant `height: 100%` rules can resolve against. */
     .parallax-hero { margin-top: 36px; }
     .parallax-hero-mount {
       background: rgba(255,255,255,0.02);
@@ -42,7 +45,12 @@
       overflow: hidden;
       position: relative;
       width: 100%;
-      aspect-ratio: 5 / 3;
+      height: 0;
+      padding-bottom: 60%; /* 3 / 5 = 60% */
+    }
+    .parallax-hero-mount > * {
+      position: absolute;
+      inset: 0;
     }
     @media (prefers-reduced-motion: reduce) {
       .parallax-hero-mount { display: none; }
