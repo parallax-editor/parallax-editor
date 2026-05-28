@@ -32,7 +32,20 @@ const HERE = __dirname
 // e2e/ vive DENTRO de parallax-editor (autocontenido). parallax-engine es
 // hermano de parallax-editor, así que desde e2e/enginematrix/ son 3 niveles
 // arriba: enginematrix → e2e → parallax-editor → (workspace) → parallax-engine.
-const ENGINE_DIST = path.resolve(HERE, '..', '..', '..', 'parallax-engine', 'dist')
+// Resolve the engine's dist/: prefer a sibling-cloned `parallax-engine`
+// (the dev workflow with yarn link), fall back to the npm-installed
+// package under node_modules (CI / fresh clones).
+const ENGINE_DIST = (function () {
+  const candidates = [
+    path.resolve(__dirname, '..', '..', '..', 'parallax-engine', 'dist'),
+    path.resolve(__dirname, '..', '..', 'node_modules', '@parallax-editor', 'parallax-engine', 'dist'),
+    path.resolve(__dirname, '..', 'node_modules', '@parallax-editor', 'parallax-engine', 'dist'),
+  ]
+  for (const p of candidates) {
+    try { if (require('fs').existsSync(path.join(p, 'index.js'))) return p } catch {}
+  }
+  return candidates[0]
+})()
 const ENGINE_NM = path.resolve(HERE, '..', '..', '..', 'parallax-engine', 'node_modules')
 
 const MIME = {

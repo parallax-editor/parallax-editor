@@ -50,7 +50,20 @@ const CHROME = CHROME_CANDIDATES.find((p) => {
 
 // e2e/ vive dentro de parallax-editor; parallax-engine es su hermano → 3 niveles
 // arriba desde e2e/suites/ (suites → e2e → parallax-editor → workspace).
-const ENGINE_DIST = path.resolve(__dirname, '..', '..', '..', 'parallax-engine', 'dist')
+// Resolve the engine's dist/: prefer a sibling-cloned `parallax-engine`
+// (the dev workflow with yarn link), fall back to the npm-installed
+// package under node_modules (CI / fresh clones).
+const ENGINE_DIST = (function () {
+  const candidates = [
+    path.resolve(__dirname, '..', '..', '..', 'parallax-engine', 'dist'),
+    path.resolve(__dirname, '..', '..', 'node_modules', '@parallax-editor', 'parallax-engine', 'dist'),
+    path.resolve(__dirname, '..', 'node_modules', '@parallax-editor', 'parallax-engine', 'dist'),
+  ]
+  for (const p of candidates) {
+    try { if (require('fs').existsSync(path.join(p, 'index.js'))) return p } catch {}
+  }
+  return candidates[0]
+})()
 
 // ─── Report ────────────────────────────────────────────────────────────────
 const stamp = new Date().toISOString().replace(/[:.]/g, '-')
