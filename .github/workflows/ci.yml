@@ -28,7 +28,7 @@ jobs:
           cache: yarn
       - run: yarn install --frozen-lockfile
       # Install Chrome (Playwright-core does not bundle browsers).
-      - uses: browser-actions/setup-chrome@v1
+      - uses: browser-actions/setup-chrome@v2
       - run: yarn test:e2e:matrix
         env:
           CHROME_BIN: ${{ steps.setup-chrome.outputs.chrome-path }}
