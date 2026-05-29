@@ -1210,7 +1210,7 @@ function openAnimHelp(section: string | null = null) {
           Propiedades generales del sitio. Se comparten en escritorio y móvil.
         </p>
 
-        <div class="prop-group-title">General</div>
+        <div class="prop-group-title">{{ t('properties.groupGeneral') }}</div>
         <PropField label="Título" :help="HELP.metaTitle" data-test="meta-title-field" :modelValue="meta.title || ''" @update:modelValue="updateMeta('title', $event)" />
         <PropField label="Descripción" :help="HELP.metaDescription" type="textarea" :modelValue="meta.description || ''" @update:modelValue="updateMeta('description', $event || undefined)" />
         <PropField label="Idioma" :help="HELP.metaLang" placeholder="es" :modelValue="meta.lang || ''" @update:modelValue="updateMeta('lang', $event || undefined)" />
@@ -1314,7 +1314,7 @@ function openAnimHelp(section: string | null = null) {
              Additive: `cursor` is NOT written until she ticks the box. The
              color/size/blend controls only appear once enabled. Shared across
              escritorio/móvil (cursor is a top-level field, not per-view). -->
-        <div class="prop-group-title">Cursor</div>
+        <div class="prop-group-title">{{ t('properties.groupCursor') }}</div>
         <div class="prop-field" data-test="site-cursor-enabled-field">
           <label class="field-label">Sigue el puntero</label>
           <label class="checkbox-wrap field-control">
@@ -1380,7 +1380,7 @@ function openAnimHelp(section: string | null = null) {
           />
         </template>
 
-        <div class="prop-group-title">Transición de mundo</div>
+        <div class="prop-group-title">{{ t('properties.groupWorldTransition') }}</div>
         <div class="prop-field" data-test="meta-transition-in-field">
           <label class="field-label">Entrada</label>
           <select
@@ -1499,7 +1499,7 @@ function openAnimHelp(section: string | null = null) {
           <template v-if="!theme"><br />Aún sin tema: al cambiar un valor se creará uno con valores neutros.</template>
         </p>
 
-        <div class="prop-group-title">Colores</div>
+        <div class="prop-group-title">{{ t('properties.groupColors') }}</div>
         <div class="prop-field" data-test="theme-ink-field">
           <label class="field-label">Tinta (texto)</label>
           <span class="field-control color-row">
@@ -1525,7 +1525,7 @@ function openAnimHelp(section: string | null = null) {
           <HelpHint :text="HELP.themeAccent" label="Acento" />
         </div>
 
-        <div class="prop-group-title">Tipografía</div>
+        <div class="prop-group-title">{{ t('properties.groupTypography') }}</div>
         <ResourceCombobox
           label="Títulos"
           :help="HELP.themeDisplay"
@@ -1580,7 +1580,7 @@ function openAnimHelp(section: string | null = null) {
              whole key; color → standard color row (picker + hex text, same
              chrome as Tema/Texto); gradient → CSS text input; image → the SAME
              ResourceCombobox + dropzone used by png src / OG image. -->
-        <div class="prop-group-title">Fondo</div>
+        <div class="prop-group-title">{{ t('properties.groupBackground') }}</div>
         <div class="prop-field" data-test="section-bg-type-field">
           <label class="field-label">Tipo de fondo</label>
           <select
@@ -1679,7 +1679,7 @@ function openAnimHelp(section: string | null = null) {
         <!-- Per-section transition ({in?,out?,duration?}) — NOT meta.transition.
              Mirrors the Sitio transition editor (same TRANSITION_OPTS / write-
              only-when-set) but writes <section>.transition. -->
-        <div class="prop-group-title">Transición de sección</div>
+        <div class="prop-group-title">{{ t('properties.groupSectionTransition') }}</div>
         <div class="prop-field" data-test="section-transition-in-field">
           <label class="field-label">Entrada</label>
           <select
@@ -1740,7 +1740,7 @@ function openAnimHelp(section: string | null = null) {
              flush right — fixes the misaligned far-right checkbox (item #2).
              An empty array = static layer (valid); only writes when toggled.
              Each mode gets its OWN per-item help. -->
-        <div class="prop-group-title">Parallax</div>
+        <div class="prop-group-title">{{ t('properties.groupParallax') }}</div>
         <label
           v-for="o in PARALLAX_MODE_OPTS"
           :key="o.value"
@@ -1758,7 +1758,7 @@ function openAnimHelp(section: string | null = null) {
           <HelpHint :text="o.help" :label="o.label" />
         </label>
 
-        <div class="prop-group-title">Capa</div>
+        <div class="prop-group-title">{{ t('properties.groupLayer') }}</div>
         <NumberSlider
           id="layer-blur"
           label="Blur"
@@ -1801,7 +1801,7 @@ function openAnimHelp(section: string | null = null) {
           <span class="ro-value">{{ TYPE_LABELS[selected.data.type] || selected.data.type }}</span>
         </div>
 
-        <div class="prop-group-title">Posicion</div>
+        <div class="prop-group-title">{{ t('properties.groupPosition') }}</div>
         <NumberSlider
           id="element-pos-x"
           label="X"
@@ -1825,11 +1825,11 @@ function openAnimHelp(section: string | null = null) {
           @update:modelValue="updateNestedProp('position', 'y', $event)"
         />
 
-        <div class="prop-group-title">Tamano</div>
+        <div class="prop-group-title">{{ t('properties.groupSize') }}</div>
         <SizeField label="Ancho" test-id="width" :help="HELP.width" :modelValue="selected.data.size?.width" @update:modelValue="updateNestedProp('size', 'width', $event)" />
         <SizeField label="Alto" test-id="height" :help="HELP.height" :modelValue="selected.data.size?.height" @update:modelValue="updateNestedProp('size', 'height', $event)" />
 
-        <div class="prop-group-title">Estilo</div>
+        <div class="prop-group-title">{{ t('properties.groupStyle') }}</div>
         <PropField label="Anchor" :help="HELP.anchor" :modelValue="selected.data.anchor || 'center'" type="select" :options="[...ANCHOR_TYPES]" @update:modelValue="updateProp('anchor', $event)" />
         <NumberSlider
           id="element-opacity"
@@ -1856,12 +1856,12 @@ function openAnimHelp(section: string | null = null) {
           :modelValue="selected.data.rotation"
           @update:modelValue="updateProp('rotation', $event)"
         />
-        <PropField label="Visible" :help="HELP.visible" :modelValue="selected.data.visible" type="checkbox" @update:modelValue="updateProp('visible', $event)" />
+        <PropField label="Visible" :help="HELP.visible" :modelValue="selected.data.visible !== false" type="checkbox" @update:modelValue="updateProp('visible', $event)" />
         <PropField label="Interactivo" :help="HELP.interactive" :modelValue="selected.data.interactive" type="checkbox" @update:modelValue="updateProp('interactive', $event)" />
 
         <!-- Type-specific -->
         <template v-if="selected.data.type === 'png'">
-          <div class="prop-group-title">PNG</div>
+          <div class="prop-group-title">{{ t('properties.groupPng') }}</div>
 
           <PropField label="Voltear horizontal" :help="HELP.flipX" type="checkbox" :modelValue="selected.data.flipX || false" @update:modelValue="updateProp('flipX', $event || undefined)" />
           <PropField label="Voltear vertical" :help="HELP.flipY" type="checkbox" :modelValue="selected.data.flipY || false" @update:modelValue="updateProp('flipY', $event || undefined)" />
@@ -1921,7 +1921,7 @@ function openAnimHelp(section: string | null = null) {
         </template>
 
         <template v-if="selected.data.type === 'gif'">
-          <div class="prop-group-title">GIF</div>
+          <div class="prop-group-title">{{ t('properties.groupGif') }}</div>
 
           <PropField label="Voltear horizontal" :help="HELP.flipX" type="checkbox" :modelValue="selected.data.flipX || false" @update:modelValue="updateProp('flipX', $event || undefined)" />
           <PropField label="Voltear vertical" :help="HELP.flipY" type="checkbox" :modelValue="selected.data.flipY || false" @update:modelValue="updateProp('flipY', $event || undefined)" />
@@ -1987,7 +1987,7 @@ function openAnimHelp(section: string | null = null) {
         </template>
 
         <template v-if="selected.data.type === 'text'">
-          <div class="prop-group-title">Texto</div>
+          <div class="prop-group-title">{{ t('properties.groupText') }}</div>
           <PropField label="Contenido" :help="HELP.content" :modelValue="selected.data.content" type="textarea" @update:modelValue="updateProp('content', $event)" />
           <ResourceCombobox
             label="Fuente"
@@ -2095,7 +2095,7 @@ function openAnimHelp(section: string | null = null) {
         </template>
 
         <template v-if="selected.data.type === 'video'">
-          <div class="prop-group-title">Video</div>
+          <div class="prop-group-title">{{ t('properties.groupVideo') }}</div>
 
           <div
             class="img-dropzone"
@@ -2212,7 +2212,7 @@ function openAnimHelp(section: string | null = null) {
         </template>
 
         <template v-if="selected.data.type === 'audio'">
-          <div class="prop-group-title">Audio</div>
+          <div class="prop-group-title">{{ t('properties.groupAudio') }}</div>
 
           <div
             class="img-dropzone"
@@ -2311,7 +2311,7 @@ function openAnimHelp(section: string | null = null) {
 
         <!-- FormBlock (component/FormBlock) -->
         <template v-if="isFormBlock">
-          <div class="prop-group-title">Formulario</div>
+          <div class="prop-group-title">{{ t('properties.groupForm') }}</div>
           <div class="form-editor" data-test="formblock-editor">
 
             <!-- ── CAMPOS (the essence of a form) — FIRST, open by default ── -->
@@ -2528,7 +2528,7 @@ function openAnimHelp(section: string | null = null) {
              read-only Tipo stays above; this just makes the situation legible
              instead of an empty panel. -->
         <template v-if="isUnknownComponent">
-          <div class="prop-group-title">Componente</div>
+          <div class="prop-group-title">{{ t('properties.groupComponent') }}</div>
           <p class="prop-unknown-note" data-test="component-unknown-note">
             Componente “{{ selected.data.name }}” no está registrado en este
             proyecto. Verifica parallax.config.ts del sitio.
@@ -2539,7 +2539,7 @@ function openAnimHelp(section: string | null = null) {
              "URL" keeps the existing href/target fields; "Sitio" navigates
              in-engine to another workspace project (link = { site: '<slug>' }).
              Every write goes through setAtPath('<selectedPath>.link', …). -->
-        <div class="prop-group-title">Link</div>
+        <div class="prop-group-title">{{ t('properties.groupLink') }}</div>
         <div class="prop-field" data-test="link-mode-field">
           <label class="field-label">Tipo</label>
           <select

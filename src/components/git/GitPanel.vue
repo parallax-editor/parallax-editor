@@ -245,19 +245,17 @@ onMounted(loadStatus)
 <template>
   <div class="git-panel" data-test="git-panel" :ref="gitScrollRef">
     <div class="git-header">
-      <span class="git-title">Publicar</span>
+      <span class="git-title">{{ t('git.panelTitle') }}</span>
       <div class="git-header-actions">
-        <span v-if="!ready" class="git-loading" data-test="git-loading">Cargando…</span>
+        <span v-if="!ready" class="git-loading" data-test="git-loading">{{ t('common.loading') }}</span>
         <button v-else class="publish-btn" data-test="git-publish" @click="publish" :disabled="!canPublish">
-          {{ loading ? 'Publicando...' : 'Publicar' }}
+          {{ loading ? t('git.publishing') : t('git.panelTitle') }}
         </button>
-        <!-- Close X: the toolbar "Publicar" button disables itself once there's
-             nothing pending, so it can't toggle the panel shut — this X always can. -->
         <button
           class="git-close"
           data-test="git-close"
-          title="Cerrar"
-          aria-label="Cerrar"
+          :title="t('common.close')"
+          :aria-label="t('common.close')"
           @click="emit('close')"
         >&times;</button>
       </div>
@@ -278,19 +276,18 @@ onMounted(loadStatus)
       class="validation-block"
       data-test="git-validation-errors"
     >
-      <div class="vb-title">No se puede publicar: hay errores en el proyecto</div>
+      <div class="vb-title">{{ t('git.validationTitle') }}</div>
       <ul class="vb-list">
         <li v-for="(e, i) in validationErrors" :key="i">{{ e }}</li>
       </ul>
-      <div class="vb-hint">Corrige estos errores y vuelve a intentar.</div>
+      <div class="vb-hint">{{ t('git.validationHint') }}</div>
     </div>
 
     <div v-if="pushResult" class="push-result" data-test="git-result">{{ pushResult }}</div>
 
     <!-- Workspace sin git: no hay historial de commits; Publicar solo sube a S3. -->
     <div v-if="noGit" class="nogit-note" data-test="git-nogit-note">
-      Este workspace no usa git. Guardar escribe en disco;
-      {{ hasS3 ? 'Publicar sube los cambios a S3.' : 'activa S3 en la configuración para poder publicar.' }}
+      {{ hasS3 ? t('git.nogitNoteWithS3') : t('git.nogitNoteWithoutS3') }}
     </div>
 
     <template v-if="!noGit">
@@ -305,7 +302,7 @@ onMounted(loadStatus)
           data-test="git-pending-entry"
           role="button"
           tabindex="0"
-          title="Ver los cambios de este commit"
+          :title="t('git.seeChanges')"
           @click="openDiff(entry)"
           @keydown.enter="openDiff(entry)"
         >
@@ -316,7 +313,7 @@ onMounted(loadStatus)
             class="restore-btn"
             data-test="git-restore-pending"
             :disabled="restoring || !state.slug"
-            title="Restaurar este sitio al estado del commit (no commitea — solo trae los archivos)"
+            :title="t('git.restoreTooltip')"
             @click.stop="restoreSnapshot(entry)"
           >&#x21BA;</button>
         </div>
@@ -336,7 +333,7 @@ onMounted(loadStatus)
           data-test="git-origin-entry"
           role="button"
           tabindex="0"
-          title="Ver los cambios de este commit"
+          :title="t('git.seeChanges')"
           @click="openDiff(entry)"
           @keydown.enter="openDiff(entry)"
         >
@@ -347,7 +344,7 @@ onMounted(loadStatus)
             class="restore-btn"
             data-test="git-restore-origin"
             :disabled="restoring || !state.slug"
-            title="Restaurar este sitio al estado del commit (no commitea — solo trae los archivos)"
+            :title="t('git.restoreTooltip')"
             @click.stop="restoreSnapshot(entry)"
           >&#x21BA;</button>
         </div>
@@ -368,16 +365,16 @@ onMounted(loadStatus)
       data-test="git-diff-modal"
       @click.self="closeDiff"
     >
-      <div class="diff-modal" role="dialog" aria-modal="true" aria-label="Cambios del commit">
+      <div class="diff-modal" role="dialog" aria-modal="true" :aria-label="t('git.diffModalAria')">
         <div class="diff-head">
           <div class="diff-titlewrap">
             <code class="diff-hash">{{ diffEntry?.hash?.slice(0, 7) }}</code>
             <span class="diff-msg" :title="diffEntry?.message">{{ diffEntry?.message }}</span>
           </div>
-          <button class="diff-close" title="Cerrar" aria-label="Cerrar" @click="closeDiff">&times;</button>
+          <button class="diff-close" :title="t('common.close')" :aria-label="t('common.close')" @click="closeDiff">&times;</button>
         </div>
         <div class="diff-body" :ref="diffScrollRef">
-          <div v-if="diffLoading" class="diff-state">Cargando cambios…</div>
+          <div v-if="diffLoading" class="diff-state">{{ t('git.diffLoading') }}</div>
           <div v-else-if="diffError" class="diff-state error">{{ diffError }}</div>
           <div v-else class="diff-pre" data-test="git-diff-content">
             <div

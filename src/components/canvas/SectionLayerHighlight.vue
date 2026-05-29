@@ -20,7 +20,10 @@
 // the active view's tree in document order — index-based mapping matches the
 // active view's tree the CAPAS panel shows.
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { state, isGlobalPath, resizeSectionWithRecalc, activeSectionsRoot } from '../../stores/editor'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   canvasRef: HTMLElement | null
@@ -286,7 +289,7 @@ function onResizeHandleUp(e: PointerEvent) {
       class="sl-resize-handle"
       :class="{ 'is-resizing': isResizing }"
       data-test="section-resize-handle"
-      title="Arrastra para cambiar la altura. Los elementos mantienen su posición relativa."
+      :title="t('canvas.resizeHint')"
       @pointerdown="onResizeHandleDown"
       @pointermove="onResizeHandleMove"
       @pointerup="onResizeHandleUp"
