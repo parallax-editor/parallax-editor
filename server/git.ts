@@ -429,6 +429,11 @@ export function gitRestoreSnapshot(
     return { ok: false, error: 'Ruta de contenido fuera del workspace.' }
   }
 
+  // If the slug folder didn't exist at <hash> (project added after that commit),
+  // ls-tree returns empty. Without this guard the subsequent walkAndRemove
+  // would delete the entire current `content/<slug>/` folder, leaving the user
+  // with an empty project they can't recover from the UI. Bail out early so
+  // the workspace is never destructively touched on a no-op snapshot.
   let listed: string[]
   try {
     const out = execFileSync(
@@ -448,6 +453,17 @@ export function gitRestoreSnapshot(
     p.startsWith(cleanDir + '/') &&
     !p.split('/').some((seg) => seg === '..' || seg === '')
   const snapshotFiles = new Set(listed.filter(safe))
+
+  // Missing-at-commit guard: if the commit had ZERO files under <cleanDir>,
+  // either the slug never existed at that point in time or all files were
+  // (re)moved. Either way restoring would just delete everything currently in
+  // the working tree — refuse, with a clear error.
+  if (snapshotFiles.size === 0) {
+    return {
+      ok: false,
+      error: `Este sitio no existía en el commit ${hash.slice(0, 7)} (ningún archivo bajo ${cleanDir}). No se restauró nada.`,
+    }
+  }
 
   // 1) Restore each file in the snapshot.
   let restored = 0

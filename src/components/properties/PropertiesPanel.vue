@@ -17,6 +17,7 @@ import { ANCHOR_TYPES, SCROLL_BEHAVIORS, SCROLL_DIRECTIONS, PARALLAX_MODES, SEMA
 import { projectsApi, workspaceApi } from '../../composables/useApi'
 import type { UploadKind, ProjectAsset, ProjectListItem } from '../../composables/useApi'
 import { usePanelScroll } from '../../composables/usePanelScroll'
+import { useI18n } from 'vue-i18n'
 import PropField from './PropField.vue'
 import FontSizeField from './FontSizeField.vue'
 import HelpHint from './HelpHint.vue'
@@ -74,8 +75,9 @@ const HELP = {
   sectionVisible: 'Si está desactivado, esta sección entera se oculta en el sitio publicado (no aparece en el flujo de scroll). Sigue editable aquí.',
   layerVisible: 'Si está desactivado, esta capa (con todos sus elementos) se oculta en el sitio publicado. Sigue editable aquí.',
   gifAutoplay: 'Si está activo, el GIF empieza a animarse al cargar. Si está desactivado, se queda en el primer cuadro (foto estática).',
-  gifLoop: 'Si está activo, el GIF se repite indefinidamente (depende del archivo). Si está desactivado, el motor lo congela tras una reproducción aproximada.',
+  gifLoop: 'Si está activo, el GIF se repite indefinidamente (depende del archivo). Si está desactivado, el motor lo congela tras la duración indicada.',
   gifPauseOnHover: 'Cuando el cursor entra al GIF, se congela en el cuadro actual; al salir, vuelve a animarse desde el comienzo.',
+  gifPlayDurationMs: 'Duración aproximada de UNA reproducción en milisegundos. Solo se usa cuando "Loop" está desactivado: el motor congela el GIF tras este tiempo. Déjalo en 0 para el valor por defecto (2500 ms).',
   interactive: 'Permite que el elemento responda al mouse (clicks, hover).',
   src: 'Ruta del archivo de imagen. Normalmente se llena solo al cargar una imagen.',
   alt: 'Texto descriptivo de la imagen para accesibilidad y buscadores.',
@@ -304,6 +306,8 @@ const FORM_FIELD_TYPES = ['text', 'email', 'tel', 'number', 'textarea', 'select'
 // Wheel scrolling fix: keep wheel events over this panel away from the
 // engine's window-level Lenis listener (see usePanelScroll).
 const { panelScrollRef } = usePanelScroll()
+
+const { t } = useI18n()
 
 const selected = computed(() => getSelected())
 
@@ -1975,10 +1979,11 @@ function openAnimHelp(section: string | null = null) {
           />
           <PropField label="Alt" :help="HELP.alt" :modelValue="selected.data.alt || ''" @update:modelValue="updateProp('alt', $event)" />
 
-          <div class="prop-group-title">Reproducción</div>
-          <PropField label="Reproducir al cargar" :help="HELP.gifAutoplay" type="checkbox" :modelValue="selected.data.autoplay !== false" @update:modelValue="updateProp('autoplay', $event)" />
-          <PropField label="Loop" :help="HELP.gifLoop" type="checkbox" :modelValue="selected.data.loop !== false" @update:modelValue="updateProp('loop', $event)" />
-          <PropField label="Pausar al pasar el cursor" :help="HELP.gifPauseOnHover" type="checkbox" :modelValue="selected.data.pauseOnHover === true" @update:modelValue="updateProp('pauseOnHover', $event)" />
+          <div class="prop-group-title">{{ t('properties.gifPlayback') }}</div>
+          <PropField :label="t('properties.gifAutoplay')" :help="HELP.gifAutoplay" type="checkbox" :modelValue="selected.data.autoplay !== false" @update:modelValue="updateProp('autoplay', $event)" />
+          <PropField :label="t('properties.gifLoop')" :help="HELP.gifLoop" type="checkbox" :modelValue="selected.data.loop !== false" @update:modelValue="updateProp('loop', $event)" />
+          <PropField :label="t('properties.gifPauseOnHover')" :help="HELP.gifPauseOnHover" type="checkbox" :modelValue="selected.data.pauseOnHover === true" @update:modelValue="updateProp('pauseOnHover', $event)" />
+          <PropField :label="t('properties.gifPlayDurationMs')" :help="HELP.gifPlayDurationMs" type="number" :min="0" :modelValue="selected.data.playDurationMs ?? 0" @update:modelValue="updateProp('playDurationMs', $event ? Number($event) : undefined)" />
         </template>
 
         <template v-if="selected.data.type === 'text'">
