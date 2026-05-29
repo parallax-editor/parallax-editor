@@ -34,16 +34,53 @@ import GradientBuilder from './GradientBuilder.vue'
 import AnimationsHelpModal from './AnimationsHelpModal.vue'
 import SizeField from './SizeField.vue'
 
+const { t } = useI18n()
+
 // Plain-Spanish, non-technical help copy shown by the per-control "?" button.
-const HELP = {
-  sectionId: 'Nombre interno de esta sección. Sirve para identificarla; usa palabras sin acentos ni espacios.',
-  sectionHeight: 'Qué tan alta es esta sección. "100vh" = una pantalla completa; "150vh" = una pantalla y media.',
-  sectionScroll: 'Cómo se mueve el contenido al hacer scroll en esta sección (continuo, fijo, etc.).',
-  sectionScrollDir: 'Dirección en la que avanza esta sección al hacer scroll: vertical (hacia abajo, lo normal) u horizontal (de lado).',
-  sectionBgType: 'Fondo de toda la sección. "Ninguno" la deja sin fondo (transparente). "Color" un color sólido, "Gradiente" un degradado y "Imagen" una foto que llene la sección.',
-  sectionBgColor: 'Color de fondo de la sección.',
-  sectionBgGradient: 'Degradado CSS para el fondo, por ejemplo: linear-gradient(180deg, #f5f1e8 0%, #ebe4d6 100%).',
-  sectionBgImage: 'Imagen que llena el fondo de la sección. Elige una de la lista o escribe la ruta (ej. images/fondo.jpg).',
+// Routed through i18n so tooltips reflect the active locale.
+// HELP_KEYS lists every help-tooltip key in a stable order. The actual
+// Spanish/English text lives in `src/locales/{es,en}.ts` under the `help`
+// namespace; the computed below resolves each key through `t()`, so flipping
+// the locale at runtime re-renders every tooltip without remounting the panel.
+const HELP_KEYS = [
+  'sectionId', 'sectionHeight', 'sectionScroll', 'sectionScrollDir',
+  'sectionBgType', 'sectionBgColor', 'sectionBgGradient', 'sectionBgImage',
+  'sectionTransIn', 'sectionTransOut', 'sectionTransDur',
+  'layerId', 'depth', 'blur', 'layerOpacity', 'perspective3d', 'blend',
+  'parallaxScrollVertical', 'parallaxScrollHorizontal', 'parallaxMouse', 'parallaxGyroscope', 'parallaxTilt',
+  'elementId', 'posX', 'posY', 'width', 'height', 'anchor', 'opacity', 'rotation',
+  'flipX', 'flipY', 'objectFit',
+  'visible', 'sectionVisible', 'layerVisible',
+  'gifAutoplay', 'gifLoop', 'gifPauseOnHover', 'gifPlayDurationMs',
+  'interactive', 'src', 'alt',
+  'videoSrc', 'audioSrc', 'mediaAutoplay', 'mediaMuted', 'mediaLoop', 'mediaControls', 'mediaVolume',
+  'videoPoster', 'videoPlaysinline',
+  'content', 'font', 'fontSize', 'fontWeight', 'color',
+  'textAlign', 'whiteSpace', 'letterSpacing', 'lineHeight', 'semanticTag', 'splitMode', 'stagger',
+  'linkUrl', 'linkTarget', 'linkMode', 'linkSite',
+  'animType', 'animTrigger', 'animFrom', 'animTo', 'animRange', 'animDuration', 'animDelay',
+  'animEasing', 'animEasingShort', 'animLoop', 'animYoyo', 'animDependsOn', 'animDependsEvent',
+  'formWebhook', 'formSubmit', 'formSuccess', 'formError', 'formHoneypot',
+  'formInputBg', 'formInputText', 'formInputBorder', 'formButtonBg', 'formButtonText',
+  'formFont', 'formFieldName', 'formFieldLabel', 'formFieldType', 'formFieldRequired',
+  'formFieldOptions', 'formFieldMin', 'formFieldMax',
+  'metaTitle', 'metaDescription', 'metaLang', 'metaOgImage', 'metaFavicon',
+  'metaTransIn', 'metaTransOut', 'metaTransDur',
+  'cursorEnabled', 'cursorColor', 'cursorSize', 'cursorBlend',
+  'fontFamily', 'fontSource', 'fontUrl',
+  'themeInk', 'themePaper', 'themeAccent', 'themeDisplay', 'themeBody',
+] as const
+const HELP = computed<Record<string, string>>(() => {
+  const map: Record<string, string> = {}
+  for (const k of HELP_KEYS) map[k] = t(`help.${k}`)
+  return map
+})
+
+// Below was the legacy static HELP map (Spanish literals); kept inert as a
+// no-op object so the rest of the file's line numbers / git history stay
+// readable, but routed through HELP above (which goes via `t('help.*')`).
+const _LEGACY_HELP_TEXTS = {
+  __unused__: '',
   sectionTransIn: 'Efecto con el que ENTRA esta sección al aparecer. Déjalo en "(ninguna)" para sin transición.',
   sectionTransOut: 'Efecto con el que SALE esta sección al pasar a la siguiente. Déjalo en "(ninguna)" para sin transición.',
   sectionTransDur: 'Cuánto dura la transición de entrada/salida de la sección, en milisegundos. 800 = 0,8 segundos.',
@@ -161,6 +198,7 @@ const HELP = {
   themeDisplay: 'Tipografía de los títulos. Escribe el nombre de la fuente (ej. "Playfair Display, serif").',
   themeBody: 'Tipografía del texto general. Escribe el nombre de la fuente (ej. "Lato, sans-serif").',
 }
+void _LEGACY_HELP_TEXTS
 
 // ── Sitio (meta) + Tema (theme): top-level, view-agnostic config ─────────────
 //
@@ -292,6 +330,23 @@ function updateThemeType(key: 'display' | 'body', value: any) {
   ensureTheme()
   const typography = { ...(getAtPath('theme.typography') || {}), [key]: value }
   setAtPath('theme.typography', typography)
+  // Auto-register the chosen family in meta.fonts so the engine actually
+  // loads it (Google → <link>; custom → @font-face). Without this the
+  // theme name applied to the body / display text would silently fall back
+  // to the browser default — the bug the user has been hitting in Vista en
+  // vivo despite the SSR helper landing.
+  ensureFontRegistered(value)
+}
+
+// Wrapper used by text-element font field. Persist the value first (so
+// updateProp / setAtPath's pushUndo + dirty fires), then ensure the picked
+// family is registered in `meta.fonts` so the engine inyectFonts has
+// something to insert. Without this, picking "Inter" on a text would store
+// the name but leave meta.fonts empty → the engine renders the text with
+// no link/@font-face injected → font falls back.
+function onTextFontChange(value: string) {
+  updateProp('font', value)
+  ensureFontRegistered(value)
 }
 // The native <input type="color"> needs a hex; theme colors may be hex or any
 // CSS string. Show the hex when it is one, else a neutral placeholder (we
@@ -306,8 +361,6 @@ const FORM_FIELD_TYPES = ['text', 'email', 'tel', 'number', 'textarea', 'select'
 // Wheel scrolling fix: keep wheel events over this panel away from the
 // engine's window-level Lenis listener (see usePanelScroll).
 const { panelScrollRef } = usePanelScroll()
-
-const { t } = useI18n()
 
 const selected = computed(() => getSelected())
 
@@ -1996,7 +2049,7 @@ function openAnimHelp(section: string | null = null) {
             test-id="text-font-field"
             :suggestions="fontFamilyOptions"
             :modelValue="selected.data.font || ''"
-            @update:modelValue="updateProp('font', $event)"
+            @update:modelValue="onTextFontChange"
           />
           <FontSizeField :help="HELP.fontSize" :modelValue="selected.data.fontSize" @update:modelValue="updateProp('fontSize', $event)" />
           <PropField label="Peso" :help="HELP.fontWeight" :modelValue="selected.data.fontWeight || 400" type="number" @update:modelValue="updateProp('fontWeight', $event)" />
