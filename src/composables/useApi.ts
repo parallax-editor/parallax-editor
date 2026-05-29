@@ -176,6 +176,15 @@ export const gitApi = {
       `/git/${type}/pull`,
       { method: 'POST', body: JSON.stringify({ force }) },
     ),
+  // Snapshot revert (Phase 6): bring the workspace's content for ONE slug to
+  // the state it had at <hash>. NOT a git revert: the files end up in the
+  // working tree; the user reviews and commits with their own message via the
+  // normal save flow. Safe by design — no commit, no push.
+  restoreSnapshot: (type: string, hash: string, slug: string) =>
+    api<{ ok: boolean; error?: string; restored?: number; removed?: number }>(
+      `/git/${type}/restore-snapshot`,
+      { method: 'POST', body: JSON.stringify({ hash, slug }) },
+    ),
 }
 
 // ─── Workspaces (Fase 2) + S3 (Fase 3) ──────────────────────────────────────

@@ -13,7 +13,7 @@ import {
   updateCursor,
   getComponentRegistration,
 } from '../../stores/editor'
-import { ANCHOR_TYPES, SCROLL_BEHAVIORS, SCROLL_DIRECTIONS, PARALLAX_MODES, SEMANTIC_TAGS, SPLIT_MODES, TEXT_ALIGN, TRIGGER_TYPES, ANIMATION_TYPES, EASING_PRESETS, TRANSITION_TYPES } from '@parallax-editor/parallax-engine/schema'
+import { ANCHOR_TYPES, SCROLL_BEHAVIORS, SCROLL_DIRECTIONS, PARALLAX_MODES, SEMANTIC_TAGS, SPLIT_MODES, TEXT_ALIGN, WHITE_SPACE, TRIGGER_TYPES, ANIMATION_TYPES, EASING_PRESETS, TRANSITION_TYPES } from '@parallax-editor/parallax-engine/schema'
 import { projectsApi, workspaceApi } from '../../composables/useApi'
 import type { UploadKind, ProjectAsset, ProjectListItem } from '../../composables/useApi'
 import { usePanelScroll } from '../../composables/usePanelScroll'
@@ -70,7 +70,12 @@ const HELP = {
   flipX: 'Voltea la imagen en espejo horizontal (izquierda↔derecha).',
   flipY: 'Voltea la imagen en espejo vertical (arriba↔abajo).',
   objectFit: 'Cómo rellena la imagen su caja (cuando le pones un tamaño). "Llenar" la encaja recortando lo que sobra (sin deformar). "Encajar completa" la muestra entera (puede dejar espacio). "Estirar" la deforma para llenar exacto. "Natural" usa su tamaño real. Si no estás seguro, deja "Llenar".',
-  visible: 'Si está desactivado, el elemento no se muestra en el sitio.',
+  visible: 'Si está desactivado, el elemento no se muestra en el sitio publicado. Lo sigues viendo aquí en el editor para activarlo de nuevo cuando quieras.',
+  sectionVisible: 'Si está desactivado, esta sección entera se oculta en el sitio publicado (no aparece en el flujo de scroll). Sigue editable aquí.',
+  layerVisible: 'Si está desactivado, esta capa (con todos sus elementos) se oculta en el sitio publicado. Sigue editable aquí.',
+  gifAutoplay: 'Si está activo, el GIF empieza a animarse al cargar. Si está desactivado, se queda en el primer cuadro (foto estática).',
+  gifLoop: 'Si está activo, el GIF se repite indefinidamente (depende del archivo). Si está desactivado, el motor lo congela tras una reproducción aproximada.',
+  gifPauseOnHover: 'Cuando el cursor entra al GIF, se congela en el cuadro actual; al salir, vuelve a animarse desde el comienzo.',
   interactive: 'Permite que el elemento responda al mouse (clicks, hover).',
   src: 'Ruta del archivo de imagen. Normalmente se llena solo al cargar una imagen.',
   alt: 'Texto descriptivo de la imagen para accesibilidad y buscadores.',
@@ -89,6 +94,7 @@ const HELP = {
   fontWeight: 'Grosor del texto. 400 = normal, 700 = negrita.',
   color: 'Color del texto.',
   textAlign: 'Alineación del texto: a la izquierda, centrado, a la derecha o justificado. Déjalo en "(heredado)" para usar la alineación que ya trae el texto.',
+  whiteSpace: 'Cómo se manejan los espacios y saltos de línea. Por defecto "pre-wrap" preserva múltiples espacios y saltos tal como los escribes. Cámbialo si necesitas comportamiento clásico HTML (normal) o un único renglón (nowrap).',
   letterSpacing: 'Espacio entre letras. Escríbelo con su unidad, por ejemplo "0.05em" o "1px". Déjalo vacío para el espaciado normal.',
   lineHeight: 'Altura de línea: separación vertical entre renglones. Un número como "1.4" funciona bien; también puedes usar una medida como "24px". Déjalo vacío para la separación normal.',
   semanticTag: 'Rol del texto en la página (título, párrafo…). Afecta accesibilidad y SEO, no el tamaño.',
@@ -553,6 +559,28 @@ function onTextAlignSelect(value: string) {
   // Empty → remove the field (undefined) so absent stays absent; otherwise
   // write the enum value through the normal store path (undo + dirty).
   updateProp('textAlign', value === '' ? undefined : value)
+}
+
+// ─── Text typography: whiteSpace (additive, optional) ─────────────────────────
+// Schema field is optional with no default; engine fallback is 'pre-wrap'
+// (preserves consecutive spaces + newlines as the author typed). Editor
+// surfaces "(default: pre-wrap)" when unset and only writes the field once
+// the author opts in.
+const WHITE_SPACE_LABELS: Record<string, string> = {
+  normal: 'Normal (colapsa espacios)',
+  nowrap: 'Sin saltos (nowrap)',
+  pre: 'Pre (preserva todo, sin wrap)',
+  'pre-wrap': 'Pre-wrap (preserva espacios + wrap)',
+  'pre-line': 'Pre-line (preserva saltos, colapsa espacios)',
+  'break-spaces': 'Break-spaces',
+}
+const WHITE_SPACE_OPTS = [
+  { value: '', label: '(default: pre-wrap)' },
+  ...WHITE_SPACE.map((v) => ({ value: v, label: WHITE_SPACE_LABELS[v] || v })),
+]
+
+function onWhiteSpaceSelect(value: string) {
+  updateProp('whiteSpace', value === '' ? undefined : value)
 }
 
 // ─── FormBlock (component/FormBlock) editor ────────────────────────────────────
@@ -1523,6 +1551,7 @@ function openAnimHelp(section: string | null = null) {
       <!-- Section props -->
       <template v-if="selected.type === 'section'">
         <PropField label="ID" :help="HELP.sectionId" :modelValue="selected.data.id" @update:modelValue="updateProp('id', $event)" />
+        <PropField label="Visible" :help="HELP.sectionVisible" :modelValue="selected.data.visible !== false" type="checkbox" @update:modelValue="updateProp('visible', $event)" />
         <PropField label="Altura" :help="HELP.sectionHeight" :modelValue="selected.data.height" @update:modelValue="updateProp('height', $event)" />
         <PropField label="Scroll" :help="HELP.sectionScroll" :modelValue="selected.data.scrollBehavior" type="select" :options="[...SCROLL_BEHAVIORS]" @update:modelValue="updateProp('scrollBehavior', $event)" />
 
@@ -1688,6 +1717,7 @@ function openAnimHelp(section: string | null = null) {
       <!-- Layer props -->
       <template v-if="selected.type === 'layer'">
         <PropField label="ID" :help="HELP.layerId" :modelValue="selected.data.id" @update:modelValue="updateProp('id', $event)" />
+        <PropField label="Visible" :help="HELP.layerVisible" :modelValue="selected.data.visible !== false" type="checkbox" @update:modelValue="updateProp('visible', $event)" />
         <NumberSlider
           id="layer-depth"
           label="Depth"
@@ -1886,6 +1916,71 @@ function openAnimHelp(section: string | null = null) {
           <PropField label="Alt" :help="HELP.alt" :modelValue="selected.data.alt || ''" @update:modelValue="updateProp('alt', $event)" />
         </template>
 
+        <template v-if="selected.data.type === 'gif'">
+          <div class="prop-group-title">GIF</div>
+
+          <PropField label="Voltear horizontal" :help="HELP.flipX" type="checkbox" :modelValue="selected.data.flipX || false" @update:modelValue="updateProp('flipX', $event || undefined)" />
+          <PropField label="Voltear vertical" :help="HELP.flipY" type="checkbox" :modelValue="selected.data.flipY || false" @update:modelValue="updateProp('flipY', $event || undefined)" />
+          <PropField label="Relleno" :help="HELP.objectFit" type="select" :options="OBJECT_FIT_OPTS" :modelValue="selected.data.objectFit || 'cover'" @update:modelValue="updateProp('objectFit', $event === 'cover' ? undefined : $event)" />
+
+          <div
+            class="img-dropzone"
+            :class="{ 'drag-over': dragOver, 'is-uploading': uploading }"
+            data-test="gif-dropzone"
+            @dragover.prevent="dragOver = true"
+            @dragenter.prevent="dragOver = true"
+            @dragleave.prevent="dragOver = false"
+            @drop.prevent="onDrop"
+          >
+            <img
+              v-if="selected.data.src"
+              class="img-preview-thumb"
+              :src="selected.data.src.startsWith('http') || selected.data.src.startsWith('/')
+                ? selected.data.src
+                : `/content/${state.projectType}/${state.slug}/${selected.data.src}`"
+              alt=""
+            />
+            <div class="img-dz-text">
+              <span v-if="uploading">Subiendo…</span>
+              <span v-else>Arrastra un GIF aquí</span>
+            </div>
+            <button
+              class="img-pick-btn"
+              type="button"
+              data-test="gif-upload-btn"
+              :disabled="uploading"
+              @click="fileInput?.click()"
+            >Cargar GIF</button>
+            <input
+              ref="fileInput"
+              class="img-file-input"
+              type="file"
+              accept="image/gif"
+              data-test="gif-file-input"
+              @change="onFilePick"
+            />
+          </div>
+          <div v-if="uploadError" class="img-msg img-err" data-test="gif-upload-error">{{ uploadError }}</div>
+          <div v-if="uploadWarning" class="img-msg img-warn" data-test="gif-upload-warning">{{ uploadWarning }}</div>
+
+          <ResourceCombobox
+            label="Src"
+            :help="HELP.src"
+            placeholder="animacion.gif"
+            test-id="gif-src"
+            kind="images"
+            :suggestions="imageOptions"
+            :modelValue="selected.data.src || ''"
+            @update:modelValue="updateProp('src', $event)"
+          />
+          <PropField label="Alt" :help="HELP.alt" :modelValue="selected.data.alt || ''" @update:modelValue="updateProp('alt', $event)" />
+
+          <div class="prop-group-title">Reproducción</div>
+          <PropField label="Reproducir al cargar" :help="HELP.gifAutoplay" type="checkbox" :modelValue="selected.data.autoplay !== false" @update:modelValue="updateProp('autoplay', $event)" />
+          <PropField label="Loop" :help="HELP.gifLoop" type="checkbox" :modelValue="selected.data.loop !== false" @update:modelValue="updateProp('loop', $event)" />
+          <PropField label="Pausar al pasar el cursor" :help="HELP.gifPauseOnHover" type="checkbox" :modelValue="selected.data.pauseOnHover === true" @update:modelValue="updateProp('pauseOnHover', $event)" />
+        </template>
+
         <template v-if="selected.data.type === 'text'">
           <div class="prop-group-title">Texto</div>
           <PropField label="Contenido" :help="HELP.content" :modelValue="selected.data.content" type="textarea" @update:modelValue="updateProp('content', $event)" />
@@ -1948,6 +2043,21 @@ function openAnimHelp(section: string | null = null) {
               <option v-for="o in TEXT_ALIGN_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
             </select>
             <HelpHint :text="HELP.textAlign" label="Alineación" />
+          </div>
+
+          <!-- Espacios y saltos (whiteSpace): additive, default 'pre-wrap'
+               applied by the engine. Same chrome contract as textAlign. -->
+          <div class="prop-field" data-test="white-space-field">
+            <label class="field-label">Espacios</label>
+            <select
+              class="field-input field-control"
+              data-test="white-space-select"
+              :value="selected.data.whiteSpace || ''"
+              @change="onWhiteSpaceSelect(($event.target as any).value)"
+            >
+              <option v-for="o in WHITE_SPACE_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
+            </select>
+            <HelpHint :text="HELP.whiteSpace" label="Espacios" />
           </div>
 
           <!-- Interletra (letterSpacing): CSS length string e.g. "0.05em" /

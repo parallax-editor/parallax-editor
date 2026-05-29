@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { ProjectListItem } from '../../composables/useApi'
+
+const { t } = useI18n()
 
 /**
  * One project card on the start screen (ProjectSelector). Shows a thumbnail
@@ -40,29 +43,29 @@ const initial = computed(() =>
 const editedLabel = computed(() => formatEdited(props.project.updatedAt))
 
 function formatEdited(ms: number): string {
-  if (!ms || Number.isNaN(ms)) return 'Sin fecha'
+  if (!ms || Number.isNaN(ms)) return t('card.noDate')
   const now = Date.now()
   const diff = now - ms
   const min = 60_000
   const hour = 60 * min
   const day = 24 * hour
-  if (diff < min) return 'Editado hace un momento'
+  if (diff < min) return t('card.editedJustNow')
   if (diff < hour) {
     const n = Math.round(diff / min)
-    return `Editado hace ${n} ${n === 1 ? 'minuto' : 'minutos'}`
+    return t(n === 1 ? 'card.editedMinute' : 'card.editedMinutes', { n })
   }
   if (diff < day) {
     const n = Math.round(diff / hour)
-    return `Editado hace ${n} ${n === 1 ? 'hora' : 'horas'}`
+    return t(n === 1 ? 'card.editedHour' : 'card.editedHours', { n })
   }
   if (diff < 7 * day) {
     const n = Math.round(diff / day)
-    return `Editado hace ${n} ${n === 1 ? 'día' : 'días'}`
+    return t(n === 1 ? 'card.editedDay' : 'card.editedDays', { n })
   }
-  // Older than a week → absolute Spanish date "Editado el 14 nov 2026".
+  // Older than a week → absolute localized date.
   const d = new Date(ms)
   const fmt = d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
-  return `Editado el ${fmt.replace(/\./g, '')}`
+  return t('card.editedOn', { date: fmt.replace(/\./g, '') })
 }
 </script>
 
@@ -102,15 +105,15 @@ function formatEdited(ms: number): string {
         class="act-spinner"
         :data-test="`project-deleting-${project.slug}`"
         role="status"
-        aria-label="Eliminando…"
-        title="Eliminando…"
+        :aria-label="t('card.deleting')"
+        :title="t('card.deleting')"
       ></span>
       <template v-else>
         <button
           type="button"
           class="act"
-          title="Duplicar"
-          aria-label="Duplicar"
+          :title="t('card.duplicate')"
+          :aria-label="t('card.duplicate')"
           @click="emit('duplicate')"
         >
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -121,8 +124,8 @@ function formatEdited(ms: number): string {
         <button
           type="button"
           class="act danger"
-          title="Eliminar"
-          aria-label="Eliminar"
+          :title="t('card.delete')"
+          :aria-label="t('card.delete')"
           @click="emit('remove')"
         >
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

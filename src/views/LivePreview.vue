@@ -25,7 +25,10 @@
 // active-view resolution from the shared core are applied.
 
 import { ref, shallowRef, computed, nextTick, onMounted, onBeforeUnmount, h, type Component } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ParallaxSite, FormBlock } from '@parallax-editor/parallax-engine'
+
+const { t } = useI18n()
 import { validateSite, type Site } from '@parallax-editor/parallax-engine/schema'
 // Reuse the SAME custom-component host the editor canvas uses, so the registry
 // is identical (FormBlock + every parallax.config custom component, e.g.
@@ -137,7 +140,7 @@ async function go(targetSlug: string, opts: { skipStack?: boolean } = {}) {
     // bien). Remontar por key al navegar era justo lo que descuadraba el mundo
     // destino a la derecha (la web nunca remonta, solo parchea). El remount por
     // `nonce` se reserva para ediciones en vivo del MISMO sitio (applyPayload).
-    document.title = `Vista en vivo · ${targetSlug}`
+    document.title = t('live.titleWithSlug', { slug: targetSlug })
     // Arranca el cross-fade del mundo saliente SOLO si hay transición configurada.
     if (outgoing && txType) {
       fadeSite.value = outgoing
@@ -233,10 +236,9 @@ function onStorage(e: StorageEvent) {
 }
 
 onMounted(() => {
-  document.title = originalSlug ? `Vista en vivo · ${originalSlug}` : 'Vista en vivo'
+  document.title = originalSlug ? t('live.titleWithSlug', { slug: originalSlug }) : t('live.title')
   if (!validType || !originalSlug) {
-    errorMsg.value =
-      'Falta el proyecto. Abre "Vista en vivo" desde el editor con un proyecto abierto.'
+    errorMsg.value = t('live.missingProject')
     return
   }
   const sKey = liveStorageKey(projectType as string, originalSlug)
@@ -263,8 +265,7 @@ onMounted(() => {
   // live path when BroadcastChannel is unavailable.
   window.addEventListener('storage', onStorage)
   if (rawSite.value === null) {
-    errorMsg.value =
-      'Esperando datos del editor… (vuelve a pulsar "Vista en vivo")'
+    errorMsg.value = t('live.waitingForData')
   }
 })
 
@@ -283,7 +284,7 @@ onBeforeUnmount(() => {
   <div class="live-root" data-test="live-root">
     <!-- Botón Volver: aparece tras navegar a otro sitio (link.site). -->
     <button v-if="backStack.length" class="live-back" type="button" @click="goBack" data-test="live-back">
-      ← Volver
+      {{ t('live.backBtn') }}
     </button>
 
     <!-- Mundo ENTRANTE: siempre <ParallaxSite> normal en flujo, viewport completo
@@ -309,7 +310,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-if="!previewSite" class="live-waiting" data-test="live-waiting">
-      <span v-if="!errorMsg" class="live-spinner" aria-label="Cargando" role="status" />
+      <span v-if="!errorMsg" class="live-spinner" :aria-label="t('live.waiting')" role="status" />
       <p v-if="errorMsg" class="live-waiting-msg">{{ errorMsg }}</p>
     </div>
   </div>

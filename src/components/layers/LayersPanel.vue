@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   state,
   moveNode,
@@ -23,6 +24,8 @@ import { usePanelScroll } from '../../composables/usePanelScroll'
 import LayerTreeItem from './LayerTreeItem.vue'
 import AddElementMenu from './AddElementMenu.vue'
 
+const { t } = useI18n()
+
 // Wheel scrolling fix: keep wheel events over this panel away from the
 // engine's window-level Lenis listener (see usePanelScroll).
 const { panelScrollRef } = usePanelScroll()
@@ -34,11 +37,11 @@ const showAddMenu = ref(false)
 // store rebases them to the active view's canonical root.
 const sections = computed(() => activeSections())
 
-// Singular/plural Spanish noun for a clipboard kind (count-aware).
+// Singular/plural noun for a clipboard kind (count-aware), localized.
 function kindNoun(kind: 'section' | 'layer' | 'element', n: number): string {
-  if (kind === 'section') return n === 1 ? 'sección' : 'secciones'
-  if (kind === 'layer') return n === 1 ? 'capa' : 'capas'
-  return n === 1 ? 'elemento' : 'elementos'
+  if (kind === 'section') return n === 1 ? t('layers.kindSectionSingular') : t('layers.kindSectionPlural')
+  if (kind === 'layer') return n === 1 ? t('layers.kindLayerSingular') : t('layers.kindLayerPlural')
+  return n === 1 ? t('layers.kindElementSingular') : t('layers.kindElementPlural')
 }
 
 // Status text reflects HOW MANY nodes are on the clipboard (task #107). One
@@ -47,11 +50,11 @@ function kindNoun(kind: 'section' | 'layer' | 'element', n: number): string {
 const clipboardLabel = computed(() => {
   const c = state.clipboard
   if (!c) return ''
-  const verb = c.op === 'cut' ? 'Cortado' : 'Copiado'
+  const verb = c.op === 'cut' ? t('layers.clipCut') : t('layers.clipCopied')
   const items = c.items && c.items.length ? c.items : [{ kind: c.kind }]
   if (items.length === 1) {
     const k = items[0].kind
-    const cap = k === 'section' ? 'Sección' : k === 'layer' ? 'Capa' : 'Elemento'
+    const cap = k === 'section' ? t('layers.kindSectionCap') : k === 'layer' ? t('layers.kindLayerCap') : t('layers.kindElementCap')
     return `${verb}: ${cap}`
   }
   const kinds = new Set(items.map((i) => i.kind))
@@ -59,7 +62,7 @@ const clipboardLabel = computed(() => {
     const k = items[0].kind
     return `${verb}: ${items.length} ${kindNoun(k, items.length)}`
   }
-  return `${verb}: ${items.length} nodos`
+  return `${verb}: ${items.length} ${t('layers.kindNodesPlural')}`
 })
 
 // A row is highlighted if it's the primary OR part of the tree multi-set
@@ -94,22 +97,22 @@ function onMove(sourcePath: string, targetArrayPath: string, toIndex: number) {
 <template>
   <div class="layers-panel">
     <div class="panel-header">
-      <span>Capas</span>
+      <span>{{ t('layers.title') }}</span>
       <div class="header-actions">
         <button
           v-if="state.site"
           class="add-btn add-btn-el"
           @click="showAddMenu = true"
-          title="Agregar elemento"
-          aria-label="Agregar elemento"
-        >+ Elemento</button>
+          :title="t('layers.addElementTitle')"
+          :aria-label="t('layers.addElementTitle')"
+        >{{ t('layers.addElementShort') }}</button>
         <button
           v-if="state.site"
           class="add-btn"
           @click="addSection()"
-          title="Agregar seccion"
-          aria-label="Agregar seccion"
-        >+ Seccion</button>
+          :title="t('layers.addSectionTitle')"
+          :aria-label="t('layers.addSectionTitle')"
+        >{{ t('layers.addSectionShort') }}</button>
       </div>
     </div>
 
@@ -124,12 +127,12 @@ function onMove(sourcePath: string, targetArrayPath: string, toIndex: number) {
       :data-active-view="isIndependent ? state.deviceMode : 'shared'"
     >
       <template v-if="isIndependent">
-        Editando: <strong>{{ state.deviceMode === 'mobile' ? 'Móvil' : 'Escritorio' }}</strong>
-        <span class="vb-sub">configuración independiente</span>
+        {{ t('layers.editingPrefix') }} <strong>{{ state.deviceMode === 'mobile' ? t('layers.deviceMobile') : t('layers.deviceDesktop') }}</strong>
+        <span class="vb-sub">{{ t('layers.independentHint') }}</span>
       </template>
       <template v-else>
-        Configuración <strong>compartida</strong>
-        <span class="vb-sub">escritorio y móvil</span>
+        {{ t('layers.sharedConfigurationLabel') }} <strong>{{ t('layers.sharedConfigurationStrong') }}</strong>
+        <span class="vb-sub">{{ t('layers.sharedHint') }}</span>
       </template>
     </div>
 
@@ -141,23 +144,23 @@ function onMove(sourcePath: string, targetArrayPath: string, toIndex: number) {
         class="clip-btn"
         data-test="layers-copy"
         :disabled="!state.selectedPath"
-        title="Copiar selección (Cmd+C)"
+        :title="t('layers.copyTitle')"
         @click="copySelected()"
-      >⧉ Copiar</button>
+      >{{ t('layers.copy') }}</button>
       <button
         class="clip-btn"
         data-test="layers-cut"
         :disabled="!state.selectedPath"
-        title="Cortar selección (Cmd+X)"
+        :title="t('layers.cutTitle')"
         @click="cutSelected()"
-      >✂ Cortar</button>
+      >{{ t('layers.cut') }}</button>
       <button
         class="clip-btn"
         data-test="layers-paste"
         :disabled="!state.clipboard"
-        title="Pegar aquí / en la vista activa (Cmd+V)"
+        :title="t('layers.pasteTitle')"
         @click="pasteClipboard()"
-      >⎘ Pegar</button>
+      >{{ t('layers.paste') }}</button>
     </div>
     <div v-if="state.clipboard || state.pasteHint" class="clip-status" data-test="layers-clip-status">
       <span v-if="state.clipboard" class="clip-chip">{{ clipboardLabel }}</span>
@@ -178,36 +181,36 @@ function onMove(sourcePath: string, targetArrayPath: string, toIndex: number) {
           :class="{ selected: state.selectedPath === GLOBAL_SITE }"
           data-test="tree-site"
           @click="selectGlobal('site')"
-          title="Propiedades generales del sitio"
+          :title="t('layers.globalSiteTitle')"
         >
           <span class="item-icon">&#x1F310;</span>
-          <span class="item-label">Sitio</span>
+          <span class="item-label">{{ t('layers.globalSite') }}</span>
         </div>
         <div
           class="global-item"
           :class="{ selected: state.selectedPath === GLOBAL_THEME }"
           data-test="tree-theme"
           @click="selectGlobal('theme')"
-          title="Tema global (colores y tipografía)"
+          :title="t('layers.globalThemeTitle')"
         >
           <span class="item-icon">&#x1F3A8;</span>
-          <span class="item-label">Tema</span>
+          <span class="item-label">{{ t('layers.globalTheme') }}</span>
         </div>
         <div
           class="global-item"
           :class="{ selected: state.selectedPath === GLOBAL_RESOURCES }"
           data-test="tree-resources"
           @click="selectGlobal('resources')"
-          title="Recursos del proyecto (imágenes, fuentes, audio, video)"
+          :title="t('layers.globalResourcesTitle')"
         >
           <span class="item-icon">&#x1F4C1;</span>
-          <span class="item-label">Recursos</span>
+          <span class="item-label">{{ t('layers.globalResources') }}</span>
         </div>
       </div>
 
       <div v-for="(section, si) in sections" :key="section.id || si" class="tree-section">
         <LayerTreeItem
-          :label="section.id || `Seccion ${si + 1}`"
+          :label="section.id || t('layers.sectionFallback', { n: si + 1 })"
           :path="`sections.${si}`"
           :selected="isRowSelected(`sections.${si}`)"
           :primary="isRowPrimary(`sections.${si}`)"
@@ -224,9 +227,9 @@ function onMove(sourcePath: string, targetArrayPath: string, toIndex: number) {
             <button
               class="add-mini"
               @click.stop="addLayer(`sections.${si}`)"
-              title="Agregar capa a esta seccion"
-              aria-label="Agregar capa"
-            >+ capa</button>
+              :title="t('layers.addLayerToSectionTitle')"
+              :aria-label="t('layers.addLayer')"
+            >{{ t('layers.addLayerShort') }}</button>
           </template>
         </LayerTreeItem>
 
@@ -236,7 +239,7 @@ function onMove(sourcePath: string, targetArrayPath: string, toIndex: number) {
         >
           <div v-for="(layer, li) in section.layers" :key="layer.id || li" class="tree-layer">
             <LayerTreeItem
-              :label="layer.id || `Layer ${li + 1}`"
+              :label="layer.id || t('layers.layerFallback', { n: li + 1 })"
               :path="`sections.${si}.layers.${li}`"
               :selected="isRowSelected(`sections.${si}.layers.${li}`)"
               :primary="isRowPrimary(`sections.${si}.layers.${li}`)"
@@ -254,14 +257,14 @@ function onMove(sourcePath: string, targetArrayPath: string, toIndex: number) {
                 <button
                   class="add-mini"
                   @click.stop="addElement(`sections.${si}.layers.${li}`, 'text')"
-                  title="Agregar texto a esta capa"
-                  aria-label="Agregar texto"
+                  :title="t('layers.addTextToLayerTitle')"
+                  :aria-label="t('layers.addText')"
                 >+ T</button>
                 <button
                   class="add-mini"
                   @click.stop="addElement(`sections.${si}.layers.${li}`, 'png')"
-                  title="Agregar imagen PNG a esta capa"
-                  aria-label="Agregar imagen"
+                  :title="t('layers.addImageToLayerTitle')"
+                  :aria-label="t('layers.addImage')"
                 >+ &#x1F5BC;</button>
               </template>
             </LayerTreeItem>
@@ -278,7 +281,7 @@ function onMove(sourcePath: string, targetArrayPath: string, toIndex: number) {
                 :selected="isRowSelected(`sections.${si}.layers.${li}.elements.${ei}`)"
                 :primary="isRowPrimary(`sections.${si}.layers.${li}.elements.${ei}`)"
                 @select="selectPath(`sections.${si}.layers.${li}.elements.${ei}`, $event)"
-                :icon="el.type === 'png' ? '&#x1F5BC;' : el.type === 'text' ? 'T' : '&#x25C6;'"
+                :icon="el.type === 'png' ? '&#x1F5BC;' : el.type === 'gif' ? '&#x1F39E;' : el.type === 'text' ? 'T' : '&#x25C6;'"
                 :level="2"
                 draggable
                 :drag-array-path="`sections.${si}.layers.${li}.elements`"

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   addElement,
   addCustomComponent,
@@ -6,6 +8,8 @@ import {
   customComponents,
   type ElementKind,
 } from '../../stores/editor'
+
+const { t } = useI18n()
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -17,14 +21,16 @@ interface TypeOption {
 }
 
 // UI types map to schema element types: texto→text, imagen→png,
-// video→video, audio→audio, formulario→component/FormBlock.
-const TYPES: TypeOption[] = [
-  { kind: 'text', label: 'Texto', icon: 'T', hint: 'Título o párrafo' },
-  { kind: 'png', label: 'Imagen', icon: '\u{1F5BC}', hint: 'PNG / imagen' },
-  { kind: 'video', label: 'Video', icon: '\u{25B6}', hint: 'Clip de video' },
-  { kind: 'audio', label: 'Audio', icon: '\u{1F50A}', hint: 'Pista de audio' },
-  { kind: 'form', label: 'Formulario', icon: '\u{1F4DD}', hint: 'Formulario / RSVP' },
-]
+// video→video, audio→audio, formulario→component/FormBlock. Labels and hints
+// are pulled from i18n so they re-evaluate when the locale changes.
+const TYPES = computed<TypeOption[]>(() => [
+  { kind: 'text', label: t('layers.typeText'), icon: 'T', hint: t('layers.typeTextHint') },
+  { kind: 'png', label: t('layers.typeImage'), icon: '\u{1F5BC}', hint: t('layers.typeImageHint') },
+  { kind: 'gif', label: t('layers.typeGif'), icon: '\u{1F39E}', hint: t('layers.typeGifHint') },
+  { kind: 'video', label: t('layers.typeVideo'), icon: '\u{25B6}', hint: t('layers.typeVideoHint') },
+  { kind: 'audio', label: t('layers.typeAudio'), icon: '\u{1F50A}', hint: t('layers.typeAudioHint') },
+  { kind: 'form', label: t('layers.typeForm'), icon: '\u{1F4DD}', hint: t('layers.typeFormHint') },
+])
 
 function pick(kind: ElementKind) {
   const layerPath = resolveAddElementLayerPath()
@@ -48,22 +54,22 @@ function pickComponent(name: string) {
 <template>
   <div class="add-element-menu">
     <div class="aem-header">
-      <span>Agregar elemento</span>
-      <button class="aem-close" @click="emit('close')" aria-label="Cerrar">&times;</button>
+      <span>{{ t('layers.addElementMenuTitle') }}</span>
+      <button class="aem-close" @click="emit('close')" :aria-label="t('common.close')">&times;</button>
     </div>
     <div class="aem-list">
       <button
-        v-for="t in TYPES"
-        :key="t.kind"
+        v-for="opt in TYPES"
+        :key="opt.kind"
         class="aem-item"
-        :data-test="`add-element-${t.kind}`"
-        @click="pick(t.kind)"
-        :aria-label="`Agregar ${t.label}`"
+        :data-test="`add-element-${opt.kind}`"
+        @click="pick(opt.kind)"
+        :aria-label="t('layers.addNamed', { name: opt.label })"
       >
-        <span class="aem-icon" v-html="t.icon" />
+        <span class="aem-icon" v-html="opt.icon" />
         <span class="aem-text">
-          <span class="aem-label">{{ t.label }}</span>
-          <span class="aem-hint">{{ t.hint }}</span>
+          <span class="aem-label">{{ opt.label }}</span>
+          <span class="aem-hint">{{ opt.hint }}</span>
         </span>
       </button>
 
@@ -72,7 +78,7 @@ function pickComponent(name: string) {
            registered for this project type (e.g. eventos). -->
       <template v-if="customComponents.length">
         <div class="aem-group-title" data-test="add-element-components-group">
-          Componentes
+          {{ t('layers.customComponentsGroup') }}
         </div>
         <button
           v-for="c in customComponents"
@@ -80,7 +86,7 @@ function pickComponent(name: string) {
           class="aem-item"
           :data-test="`add-element-component-${c.name}`"
           @click="pickComponent(c.name)"
-          :aria-label="`Agregar ${c.label}`"
+          :aria-label="t('layers.addNamed', { name: c.label })"
         >
           <span class="aem-icon">&#x1F9E9;</span>
           <span class="aem-text">

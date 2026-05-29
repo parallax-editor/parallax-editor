@@ -85,7 +85,7 @@ export function buildPreviewSite(
     for (const layer of section.layers || []) {
       for (const el of layer.elements || []) {
         if (
-          (el.type === 'png' || el.type === 'audio') &&
+          (el.type === 'png' || el.type === 'gif' || el.type === 'audio') &&
           isRelativeAsset(el.src)
         )
           el.src = base + el.src + q

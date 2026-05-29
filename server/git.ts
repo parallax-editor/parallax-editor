@@ -363,3 +363,153 @@ export function gitAheadCount(cwd: string): number {
     return 0
   }
 }
+
+// ── Snapshot revert (Phase 6) ────────────────────────────────────────────────
+//
+// "Restaurar a este punto" — bring the ENTIRE workspace folder of ONE site
+// (every file under `content/<slug>/`) to the state it had at <hash>, leaving
+// the changes in the working tree (NOT committed). The user reviews + commits
+// with their own message via the normal save flow.
+//
+// Implementation:
+//   1. Hash is validated as hex (same guard gitShow uses) so it can never carry
+//      shell metacharacters or flags.
+//   2. `git ls-tree -r --name-only <hash> -- <contentDir>` lists every file
+//      that existed under that subtree at the commit.
+//   3. For each listed path: `git show <hash>:<path>` streams the file's
+//      contents (text or binary, via Buffer) and we write it to disk in the
+//      working tree (creating parent dirs as needed).
+//   4. Files currently present under <contentDir> in the working tree that do
+//      NOT appear in the snapshot's tree are deleted, so the result is the
+//      EXACT set of files from the commit — additions made since are removed,
+//      not left behind.
+//   5. Nothing is committed. The user sees the diff in the editor / their
+//      next Cmd+S commits the snapshot with whatever message they choose.
+//
+// SECURITY:
+//   - Hash validated as hex.
+//   - `contentDir` must be a clean relative path (no leading `/`, no `..`).
+//   - All git invocations use execFileSync (no shell). Paths from `git ls-tree`
+//     are git's canonical normalized POSIX paths, but we still re-check they
+//     start with the contentDir prefix and reject `..` segments before writing.
+//   - File deletions are scoped to under <cwd>/<contentDir>.
+export interface RestoreSnapshotResult {
+  ok: boolean
+  error?: string
+  /** Total file count that ended up reflecting the commit's state. */
+  restored?: number
+  /** How many working-tree-only files were removed to match the snapshot. */
+  removed?: number
+}
+
+export function gitRestoreSnapshot(
+  cwd: string,
+  hash: string,
+  contentDir: string,
+): RestoreSnapshotResult {
+  if (!/^[0-9a-fA-F]{4,40}$/.test(hash)) {
+    return { ok: false, error: 'Hash de commit inválido.' }
+  }
+  const cleanDir = (contentDir || '').replace(/^\/+|\/+$/g, '')
+  if (!cleanDir || cleanDir.split(/[\\/]/).some((seg) => seg === '..' || seg === '')) {
+    return { ok: false, error: 'Ruta de contenido inválida.' }
+  }
+  // Eagerly require fs APIs (we're in node — top-level imports in this file
+  // are CommonJS-compatible).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { mkdirSync, writeFileSync, existsSync, statSync, readdirSync, unlinkSync, rmdirSync } = require('fs') as typeof import('fs')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { join, dirname, resolve, relative } = require('path') as typeof import('path')
+
+  const absRoot = resolve(cwd, cleanDir)
+  // Guard: absRoot must stay inside cwd.
+  const rel = relative(resolve(cwd), absRoot)
+  if (rel.startsWith('..') || resolve(absRoot) !== absRoot.replace(/\/+$/, '')) {
+    // The startsWith('..') check handles a contentDir that escapes cwd.
+    return { ok: false, error: 'Ruta de contenido fuera del workspace.' }
+  }
+
+  let listed: string[]
+  try {
+    const out = execFileSync(
+      'git',
+      ['ls-tree', '-r', '--name-only', '-z', hash, '--', cleanDir],
+      { cwd, encoding: 'utf-8', timeout: 30000, maxBuffer: 16 * 1024 * 1024 },
+    )
+    listed = out.split(' ').filter(Boolean)
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'No se pudo leer el árbol del commit.' }
+  }
+
+  // Defensive: reject any returned path that escapes cleanDir or contains '..'.
+  // Git itself won't emit '..' segments, but treating this as a hard rule keeps
+  // every write/delete bounded to the workspace.
+  const safe = (p: string) =>
+    p.startsWith(cleanDir + '/') &&
+    !p.split('/').some((seg) => seg === '..' || seg === '')
+  const snapshotFiles = new Set(listed.filter(safe))
+
+  // 1) Restore each file in the snapshot.
+  let restored = 0
+  for (const repoPath of snapshotFiles) {
+    let buf: Buffer
+    try {
+      buf = execFileSync('git', ['show', `${hash}:${repoPath}`], {
+        cwd,
+        timeout: 30000,
+        maxBuffer: 64 * 1024 * 1024,
+      })
+    } catch {
+      // If a single file fails (e.g. a path with submodule mode), skip it.
+      continue
+    }
+    const absTarget = join(cwd, repoPath)
+    try {
+      mkdirSync(dirname(absTarget), { recursive: true })
+      writeFileSync(absTarget, buf)
+      restored++
+    } catch {
+      /* swallow per-file errors so one bad file doesn't abort the whole restore */
+    }
+  }
+
+  // 2) Delete files in working tree under <cleanDir> that are NOT in the
+  //    snapshot (we're targeting an EXACT mirror of the commit's tree).
+  let removed = 0
+  function walkAndRemove(absDir: string) {
+    if (!existsSync(absDir)) return
+    const entries = readdirSync(absDir, { withFileTypes: true })
+    for (const entry of entries) {
+      const abs = join(absDir, entry.name)
+      const repoPath = relative(resolve(cwd), abs).split(/[\\/]/).join('/')
+      if (entry.isDirectory()) {
+        walkAndRemove(abs)
+        // Clean up empty dirs.
+        try {
+          const rest = readdirSync(abs)
+          if (rest.length === 0) rmdirSync(abs)
+        } catch {
+          /* ignore */
+        }
+        continue
+      }
+      if (!snapshotFiles.has(repoPath)) {
+        try {
+          unlinkSync(abs)
+          removed++
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }
+  try {
+    if (existsSync(absRoot) && statSync(absRoot).isDirectory()) {
+      walkAndRemove(absRoot)
+    }
+  } catch {
+    /* keep going — restore counts are already populated */
+  }
+
+  return { ok: true, restored, removed }
+}

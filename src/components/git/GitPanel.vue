@@ -6,8 +6,10 @@ import { activeWorkspace } from '../../stores/workspaces'
 import { validateSite } from '@parallax-editor/parallax-engine/schema'
 import { useDialog } from '../../composables/useDialog'
 import { usePanelScroll } from '../../composables/usePanelScroll'
+import { useI18n } from 'vue-i18n'
 
 const dialog = useDialog()
+const { t } = useI18n()
 // Lenis (engine) registra un wheel NO-pasivo en window y preventDefault'ea TODO,
 // así que el overflow nativo no scrollea con la rueda. usePanelScroll detiene el
 // wheel en captura (sin preventDefault) para que el elemento sí scrollee. Una
@@ -179,6 +181,49 @@ async function openDiff(entry: GitStatusCommit) {
 }
 function closeDiff() { diffOpen.value = false }
 
+// Snapshot revert (Phase 6). Brings the entire content/<slug>/ folder to the
+// state it had at <hash>. NOT a git revert — files end up in the working tree
+// and the user reviews + commits with Cmd+S. Confirms before applying because
+// it overwrites images/site.json/etc. for the active site (other slugs and the
+// rest of the repo are untouched).
+const restoring = ref(false)
+const restoreNote = ref('')
+async function restoreSnapshot(entry: GitStatusCommit) {
+  if (!state.projectType || !state.slug || !entry?.hash) return
+  if (restoring.value) return
+  const short = entry.hash.slice(0, 7)
+  const ok = await dialog.confirm({
+    title: t('git.restoreTitle'),
+    message:
+      `${t('git.restoreConfirm')} (${state.slug} · ${short} · "${entry.message}")`,
+    confirmText: t('git.restoreTitle'),
+    cancelText: t('common.cancel'),
+    danger: true,
+  })
+  if (!ok) return
+  restoring.value = true
+  restoreNote.value = ''
+  try {
+    const r = await gitApi.restoreSnapshot(state.projectType, entry.hash, state.slug)
+    if (!r.ok) {
+      restoreNote.value = r.error || t('git.restoreError')
+      return
+    }
+    restoreNote.value = t('git.restoreSuccess', {
+      restored: r.restored ?? 0,
+      removed: r.removed ?? 0,
+    })
+    // The chokidar watcher broadcasts the file changes on WebSocket; the editor
+    // reloads site.json/assets automatically. Bumping the nonce here is belt
+    // and suspenders for the case the watcher doesn't fire fast enough.
+    state.gitLogNonce++
+  } catch (e: any) {
+    restoreNote.value = e?.message || t('git.restoreError')
+  } finally {
+    restoring.value = false
+  }
+}
+
 // Clasifica cada línea del `git show` para colorear el diff (+/-/hunk/meta).
 const diffLines = computed(() =>
   diffText.value.split('\n').map((text) => {
@@ -251,7 +296,7 @@ onMounted(loadStatus)
     <template v-if="!noGit">
     <!-- (a) Cambios locales que aún no están en el sitio publicado -->
     <div class="git-section">
-      <div class="section-title">Pendientes por publicar</div>
+      <div class="section-title">{{ t('git.pending') }}</div>
       <div class="git-log">
         <div
           v-for="entry in pending"
@@ -267,15 +312,22 @@ onMounted(loadStatus)
           <span class="log-hash">{{ entry.hash?.slice(0, 7) }}</span>
           <span class="log-msg" :title="entry.message">{{ entry.message }}</span>
           <span class="log-date">{{ relativeDate(entry.date) }}</span>
+          <button
+            class="restore-btn"
+            data-test="git-restore-pending"
+            :disabled="restoring || !state.slug"
+            title="Restaurar este sitio al estado del commit (no commitea — solo trae los archivos)"
+            @click.stop="restoreSnapshot(entry)"
+          >&#x21BA;</button>
         </div>
-        <div v-if="!ready" class="empty loading-row"><span class="mini-spinner" /> Cargando commits…</div>
-        <div v-else-if="pending.length === 0" class="empty">No hay cambios pendientes</div>
+        <div v-if="!ready" class="empty loading-row"><span class="mini-spinner" /> {{ t('git.loading') }}</div>
+        <div v-else-if="pending.length === 0" class="empty">{{ t('git.noPending') }}</div>
       </div>
     </div>
 
     <!-- (b) Lo último que ya está en el remoto -->
     <div class="git-section">
-      <div class="section-title">En el remoto (origin/main)</div>
+      <div class="section-title">{{ t('git.remote') }}</div>
       <div class="git-log">
         <div
           v-for="entry in originRecent"
@@ -291,9 +343,17 @@ onMounted(loadStatus)
           <span class="log-hash">{{ entry.hash?.slice(0, 7) }}</span>
           <span class="log-msg" :title="entry.message">{{ entry.message }}</span>
           <span class="log-date">{{ relativeDate(entry.date) }}</span>
+          <button
+            class="restore-btn"
+            data-test="git-restore-origin"
+            :disabled="restoring || !state.slug"
+            title="Restaurar este sitio al estado del commit (no commitea — solo trae los archivos)"
+            @click.stop="restoreSnapshot(entry)"
+          >&#x21BA;</button>
         </div>
-        <div v-if="!ready" class="empty loading-row"><span class="mini-spinner" /> Cargando…</div>
-        <div v-else-if="originRecent.length === 0" class="empty">Sin información del remoto</div>
+        <div v-if="!ready" class="empty loading-row"><span class="mini-spinner" /> {{ t('common.loading') }}</div>
+        <div v-else-if="originRecent.length === 0" class="empty">{{ t('git.noRemote') }}</div>
+        <div v-if="restoreNote" class="restore-note" data-test="git-restore-note">{{ restoreNote }}</div>
       </div>
     </div>
     </template>
@@ -378,6 +438,33 @@ onMounted(loadStatus)
 .log-entry.clickable { cursor: pointer; border-radius: 4px; padding-left: 4px; padding-right: 4px; }
 .log-entry.clickable:hover { background: #2a2a2a; }
 .log-entry.clickable:focus-visible { outline: 1px solid var(--accent-strong); }
+/* Restaurar (snapshot revert) — tiny icon at the row's right edge, becomes
+   visible on hover so it doesn't compete with the date for attention. */
+.restore-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  width: 22px; height: 22px;
+  color: #aaa;
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+.log-entry.clickable:hover .restore-btn,
+.restore-btn:focus-visible { opacity: 1; }
+.restore-btn:hover { background: #2f2f2f; color: #fff; border-color: var(--accent-strong); }
+.restore-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.restore-note {
+  margin-top: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: #d6d6d6;
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+}
 
 .empty.loading-row { display: flex; align-items: center; gap: 8px; }
 .mini-spinner {

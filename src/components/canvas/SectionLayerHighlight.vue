@@ -20,7 +20,7 @@
 // the active view's tree in document order — index-based mapping matches the
 // active view's tree the CAPAS panel shows.
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { state, isGlobalPath } from '../../stores/editor'
+import { state, isGlobalPath, resizeSectionWithRecalc, activeSectionsRoot } from '../../stores/editor'
 
 const props = defineProps<{
   canvasRef: HTMLElement | null
@@ -194,6 +194,79 @@ const labelText = computed(() => {
   if (!t) return ''
   return t.kind === 'section' ? `Sección: ${t.id}` : `Capa: ${t.id}`
 })
+
+// ─── Section resize handle (Phase 5) ─────────────────────────────────────────
+//
+// When the target is a SECTION, render a draggable bottom-edge handle that
+// resizes the section's height. Mouse → screen px; divided by canvasZoom to
+// get artboard px. Live preview mutates state.site directly through the
+// store helper, which also recomputes every child element's % positions
+// against the new height so their absolute pixel locations stay put.
+// pushUndo is fired ONLY on the first move event so the whole gesture is one
+// undo step (mousedown alone shouldn't already burn an undo if the user lets
+// go without dragging).
+const MIN_SECTION_HEIGHT_PX = 80
+
+const isResizing = ref(false)
+let resizeStartScreenY = 0
+let resizeStartHeightPx = 0
+let originalSectionSnapshot: any = null
+let resizeSectionPath: string | null = null
+let undoPushedThisGesture = false
+
+function sectionDotPath(sectionIndex: number): string {
+  return `${activeSectionsRoot()}.${sectionIndex}`
+}
+
+function getActiveSectionObject(sectionIndex: number): any {
+  return activeSectionAt(sectionIndex)
+}
+
+function onResizeHandleDown(e: PointerEvent) {
+  const t = target.value
+  if (!t || t.kind !== 'section' || !bounds.value) return
+  e.preventDefault()
+  e.stopPropagation()
+  const section = getActiveSectionObject(t.sectionIndex)
+  if (!section) return
+  originalSectionSnapshot = JSON.parse(JSON.stringify(section))
+  resizeSectionPath = sectionDotPath(t.sectionIndex)
+  resizeStartHeightPx = bounds.value.height / (state.canvasZoom || 1)
+  resizeStartScreenY = e.clientY
+  undoPushedThisGesture = false
+  isResizing.value = true
+  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+}
+
+function onResizeHandleMove(e: PointerEvent) {
+  if (!isResizing.value || !originalSectionSnapshot || !resizeSectionPath) return
+  const deltaScreen = e.clientY - resizeStartScreenY
+  const deltaArtboard = deltaScreen / (state.canvasZoom || 1)
+  const newHeightPx = Math.max(MIN_SECTION_HEIGHT_PX, resizeStartHeightPx + deltaArtboard)
+  // First move of the gesture: capture undo state. Subsequent moves reuse it.
+  const opts = undoPushedThisGesture ? {} : { pushUndo: true }
+  resizeSectionWithRecalc(
+    resizeSectionPath,
+    originalSectionSnapshot,
+    resizeStartHeightPx,
+    newHeightPx,
+    opts,
+  )
+  undoPushedThisGesture = true
+}
+
+function onResizeHandleUp(e: PointerEvent) {
+  if (!isResizing.value) return
+  isResizing.value = false
+  originalSectionSnapshot = null
+  resizeSectionPath = null
+  undoPushedThisGesture = false
+  try {
+    ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+  } catch {
+    /* releasePointerCapture can throw if the capture was already lost */
+  }
+}
 </script>
 
 <template>
@@ -208,6 +281,19 @@ const labelText = computed(() => {
     <div class="sl-fill" />
     <div class="sl-border" />
     <div class="sl-label" :data-test="`section-layer-label-${target.kind}`">{{ labelText }}</div>
+    <div
+      v-if="target.kind === 'section'"
+      class="sl-resize-handle"
+      :class="{ 'is-resizing': isResizing }"
+      data-test="section-resize-handle"
+      title="Arrastra para cambiar la altura. Los elementos mantienen su posición relativa."
+      @pointerdown="onResizeHandleDown"
+      @pointermove="onResizeHandleMove"
+      @pointerup="onResizeHandleUp"
+      @pointercancel="onResizeHandleUp"
+    >
+      <span class="sl-resize-grip" />
+    </div>
   </div>
 </template>
 
@@ -232,4 +318,37 @@ const labelText = computed(() => {
 }
 .sl-highlight.section .sl-label { background: #b06bff; }
 .sl-highlight.layer .sl-label { background: #2ad1c9; }
+
+/* Resize handle: a thin, interactive band along the section's BOTTOM edge.
+   Sits on top of the overlay (z-index above the dashed border) and overrides
+   the parent's `pointer-events:none` so it can capture pointer events without
+   the rest of the overlay swallowing element selection. The cursor is the
+   standard ns-resize so the affordance reads at a glance. */
+.sl-resize-handle {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -6px;
+  height: 12px;
+  cursor: ns-resize;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  touch-action: none;
+}
+.sl-resize-handle:hover .sl-resize-grip,
+.sl-resize-handle.is-resizing .sl-resize-grip {
+  background: #b06bff;
+  width: 56px;
+}
+.sl-resize-grip {
+  display: block;
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(176, 107, 255, 0.7);
+  transition: width 0.12s ease, background 0.12s ease;
+}
 </style>

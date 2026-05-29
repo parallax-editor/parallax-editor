@@ -210,11 +210,10 @@ const previewSite = computed(() => {
   // <PreviewCursor> instead (Preview mode only). state.site stays canonical —
   // the real eventos/site keep their engine cursor untouched.
   delete copy.cursor
-  // Per-node visibility. The engine honors element.visible (v-if), but has NO
-  // visible field for layers/sections. We mirror the eye toggle by dropping
-  // hidden layers/sections from this THROWAWAY render copy so the canvas
-  // preview reflects the toggle. state.site stays canonical (the extra
-  // visible:false key is additive and ignored by the sites/engine).
+  // Per-node visibility. The engine honors `.visible` at section, layer AND
+  // element level as of v1.1, so this filter is technically redundant —
+  // kept as a cheap pre-pass so the overview-height math (which iterates
+  // copy.sections downstream) does not waste work on hidden sections.
   copy.sections = (copy.sections || []).filter((sec: any) => sec.visible !== false)
   for (const section of copy.sections) {
     section.layers = (section.layers || []).filter((l: any) => l.visible !== false)

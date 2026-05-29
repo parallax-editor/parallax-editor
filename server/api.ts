@@ -3,7 +3,7 @@ import type { Server as HttpServer } from 'http'
 import { createReadStream, existsSync } from 'fs'
 import { extname } from 'path'
 import { listProjects, readProject, writeProject, createProject, duplicateProject, getRepoPath, getContentRelPath, getAssetPath, saveProjectAsset, assetKindFromMime, listProjectAssets, deleteProjectAsset, contentSignature } from './projects'
-import { gitLog, gitShow, gitCommit, gitPush, gitPull, gitPendingCommits, gitOriginRecent, gitAheadCount, gitConfigStatus, gitClone } from './git'
+import { gitLog, gitShow, gitCommit, gitPush, gitPull, gitPendingCommits, gitOriginRecent, gitAheadCount, gitConfigStatus, gitClone, gitRestoreSnapshot } from './git'
 import { runClaude, cancelClaude, isClaudeAvailable } from './claude'
 import { setupWatcher, addWatchPath } from './watcher'
 import { loadComponentRegistry, formatComponentCatalogForPrompt } from './components'
@@ -456,6 +456,28 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
       const gpmatch = url.match(/^\/api\/git\/([^/]+)\/push$/)
       if (gpmatch && method === 'POST') {
         return json(res, { ok: true, result: gitPush(getRepoPath(gpmatch[1])) })
+      }
+
+      // Snapshot revert (Phase 6): bring the workspace's content folder for ONE
+      // slug to the exact state it had at <hash>. Working-tree only (NO commit
+      // — the user reviews + commits with their own message via Cmd+S).
+      const grestore = url.match(/^\/api\/git\/([^/]+)\/restore-snapshot$/)
+      if (grestore && method === 'POST') {
+        // git-disabled workspaces have no history to restore from.
+        if (resolveWorkspace(grestore[1])?.useGit === false) {
+          return json(res, { ok: false, error: 'Este workspace no usa git.' })
+        }
+        const body = await parseBody(req)
+        const hash = String((body as any).hash || '').trim()
+        const slug = String((body as any).slug || '').trim()
+        if (!hash || !slug) {
+          return json(res, { ok: false, error: 'Faltan hash o slug.' })
+        }
+        const contentRel = getContentRelPath(grestore[1], slug)
+        if (!contentRel) {
+          return json(res, { ok: false, error: 'Ruta de contenido no válida para este workspace.' })
+        }
+        return json(res, gitRestoreSnapshot(getRepoPath(grestore[1]), hash, contentRel))
       }
 
       // Traer cambios del remoto (menú Git → "Traer cambios"). No-op si el

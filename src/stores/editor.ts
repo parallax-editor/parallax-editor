@@ -696,6 +696,95 @@ export function getAtPath(path: string): any {
 }
 
 // Set a value at a view-relative dot-path, with undo
+// ─── Section resize with proportional element recalc (Phase 5) ──────────────
+//
+// When the user drags the section's bottom edge to change its height, child
+// elements with PERCENTAGE-based y / size.height (the engine's "number = %" or
+// `"<N>%"` strings) would normally shift to a different artboard pixel as the
+// section grows/shrinks. To keep their absolute pixel position constant we
+// scale every percentage by `oldHeightPx / newHeightPx`. Non-percent units
+// (`px`, `vh`, `vw`, `rem`…) are absolute or unrelated to section height — we
+// leave them alone.
+//
+// Caller contract:
+//   - `originalSection` is a DEEP-CLONED snapshot taken BEFORE the first
+//     mousedown of the resize. Passing the same snapshot for every move event
+//     means percentages don't compound (we always recompute from the original).
+//   - `oldHeightPx` / `newHeightPx` are in the artboard's coordinate space
+//     (canvas zoom already divided out).
+//   - `opts.pushUndo` should be true on the FIRST move event of the gesture so
+//     the whole drag collapses into one undo step.
+function applySectionResizeAndRecalc(
+  sectionPath: string,
+  originalSection: any,
+  oldHeightPx: number,
+  newHeightPx: number,
+  opts: { pushUndo?: boolean } = {},
+) {
+  if (!state.site) return
+  const node = getAtPath(sectionPath)
+  if (!node || oldHeightPx <= 0 || newHeightPx <= 0) return
+  if (opts.pushUndo) pushUndo()
+  node.height = `${Math.round(newHeightPx)}px`
+  const ratio = oldHeightPx / newHeightPx
+  const origLayers = Array.isArray(originalSection.layers) ? originalSection.layers : []
+  const liveLayers = Array.isArray(node.layers) ? node.layers : []
+  for (let li = 0; li < origLayers.length; li++) {
+    const layerNow = liveLayers[li]
+    const layerOrig = origLayers[li]
+    if (!layerNow || !layerOrig) continue
+    const origElems = Array.isArray(layerOrig.elements) ? layerOrig.elements : []
+    for (let ei = 0; ei < origElems.length; ei++) {
+      const elNow = layerNow.elements[ei]
+      const elOrig = origElems[ei]
+      if (!elNow || !elOrig) continue
+      scaleProportional(elNow, 'position', 'y', elOrig.position?.y, ratio)
+      scaleProportional(elNow, 'size', 'height', elOrig.size?.height, ratio)
+      for (const k of ['mobile', 'desktop'] as const) {
+        const liveOverride = elNow[k]
+        const origOverride = elOrig[k]
+        if (!liveOverride || !origOverride) continue
+        scaleProportional(liveOverride, 'position', 'y', origOverride.position?.y, ratio)
+        scaleProportional(liveOverride, 'size', 'height', origOverride.size?.height, ratio)
+      }
+    }
+  }
+}
+
+function scaleProportional(
+  host: any,
+  container: 'position' | 'size',
+  field: 'y' | 'height',
+  originalValue: any,
+  ratio: number,
+) {
+  if (originalValue == null) return
+  const c = host[container] ?? (host[container] = {})
+  if (typeof originalValue === 'number') {
+    // schema "number = %"
+    c[field] = Math.round(originalValue * ratio * 10000) / 10000
+  } else if (typeof originalValue === 'string') {
+    const m = originalValue.trim().match(/^(-?[\d.]+)\s*%$/)
+    if (m) {
+      const scaled = Math.round(parseFloat(m[1]) * ratio * 10000) / 10000
+      c[field] = `${scaled}%`
+    } else {
+      // px / vh / rem / etc. — restore original verbatim (no scaling).
+      c[field] = originalValue
+    }
+  }
+}
+
+export function resizeSectionWithRecalc(
+  sectionPath: string,
+  originalSection: any,
+  oldHeightPx: number,
+  newHeightPx: number,
+  opts: { pushUndo?: boolean } = {},
+) {
+  applySectionResizeAndRecalc(sectionPath, originalSection, oldHeightPx, newHeightPx, opts)
+}
+
 export function setAtPath(path: string, value: any) {
   if (!state.site) return
   pushUndo()
@@ -1148,11 +1237,12 @@ export function moveNode(
 
 // ─── Per-node visibility ───────────────────────────────────────────────────────
 //
-// Elements have a schema `visible` field (engine honors it → preview updates).
-// Sections/layers have NO schema field; we still write a `visible:false` key on
-// them (additive, ignored by the engine/sites) and the editor's previewSite
-// computed strips hidden layers/sections from the throwaway render copy so the
-// canvas preview reflects it. Absence of `visible` = visible.
+// Elements, layers and sections ALL have a schema `visible` field as of engine
+// v1.1 (Phase 3). The engine honors it in render — sections/layers are filtered
+// out at the ParallaxSite/ParallaxSection level, elements at their own
+// template's `v-if`. The editor's previewSite still strips hidden nodes from
+// its throwaway render copy (cheap belt+suspenders so the canvas overview math
+// matches what the engine paints). Absence of `visible` = visible.
 export function isNodeVisible(node: any): boolean {
   return !node || node.visible !== false
 }
@@ -2225,6 +2315,28 @@ function newPngElement(): AnyElement {
   } as AnyElement
 }
 
+function newGifElement(): AnyElement {
+  return {
+    type: 'gif',
+    id: uid('gif'),
+    position: { x: 50, y: 50 },
+    size: { width: 30 },
+    anchor: 'center',
+    opacity: 1,
+    rotation: 0,
+    visible: true,
+    interactive: false,
+    src: '',
+    alt: '',
+    autoplay: true,
+    loop: true,
+    pauseOnHover: false,
+    animations: [
+      { type: 'fadeIn', trigger: 'enter', from: 0, to: 1, duration: 800, easing: 'easeOut' },
+    ],
+  } as AnyElement
+}
+
 function newVideoElement(): AnyElement {
   return {
     type: 'video',
@@ -2399,11 +2511,12 @@ export function addLayer(sectionPath: string) {
 
 // UI element kinds → schema element types.
 // 'form' → component/FormBlock (engine built-in).
-export type ElementKind = 'text' | 'png' | 'video' | 'audio' | 'form'
+export type ElementKind = 'text' | 'png' | 'gif' | 'video' | 'audio' | 'form'
 
 const ELEMENT_FACTORIES: Record<ElementKind, () => AnyElement> = {
   text: newTextElement,
   png: newPngElement,
+  gif: newGifElement,
   video: newVideoElement,
   audio: newAudioElement,
   form: newFormElement,

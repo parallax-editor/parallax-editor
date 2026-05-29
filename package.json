@@ -15,7 +15,7 @@
     "prebuild": "node scripts/embed-contract.mjs",
     "build": "vite build",
     "prebuild:server": "node scripts/embed-contract.mjs",
-    "build:server": "esbuild server/standalone.ts --bundle --platform=node --format=cjs --outfile=dist-server/server.cjs --external:esbuild --external:@aws-sdk/client-s3 --external:chokidar --external:ws --external:fsevents",
+    "build:server": "esbuild server/standalone.ts --bundle --platform=node --format=cjs --outfile=dist-server/server.cjs --external:esbuild --external:@aws-sdk/client-s3 --external:chokidar --external:ws --external:fsevents --external:@vue/compiler-sfc",
     "start": "yarn build && yarn build:server && node dist-server/server.cjs",
     "preelectron:dev": "node scripts/embed-contract.mjs",
     "electron:dev": "ELECTRON_DEV=1 electron electron/main.cjs",

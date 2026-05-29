@@ -174,9 +174,14 @@ tree (desktop/mobile) is independent and overrides are NOT mixed.
 
 **png** — \`src: string\` (REQUIRED, e.g. \`"images/flor.png"\`; **the file MUST exist** in \`content/<slug>/images/\`, use its exact name — see §2), \`alt?: string\` (generate a descriptive one), \`objectFit?: "cover"|"contain"|"fill"|"none"|"scale-down"\` (how it fills the box when it has \`size\`; default \`cover\` = fills cropping; \`fill\` = stretches/distorts).
 
+**gif** — \`src: string\` (REQUIRED, \`.gif\` under \`content/<slug>/images/\`), \`alt?\`, \`objectFit?\` (same enum as png), plus playback controls:
+\`autoplay?: boolean = true\` (when false, only the first frame is shown — engine captures it to a canvas snapshot),
+\`loop?: boolean = true\` (when false, the engine freezes the gif on its current frame after one estimated playback duration),
+\`pauseOnHover?: boolean = false\` (when true, the gif freezes while the pointer is over it, resumes on leave).
+
 **text** — \`content: string\` (REQUIRED), \`font?\`, \`fontSize?: string\` (\`"clamp(2rem,5vw,4rem)"\`),
 \`fontWeight?: number\`, \`color?: string\`, \`letterSpacing?: string\`, \`lineHeight?: string\`,
-\`textAlign?: "left"|"center"|"right"|"justify"\`, \`semanticTag?: "h1".."h6"|"p"|"span" = "p"\`,
+\`textAlign?: "left"|"center"|"right"|"justify"\`, \`whiteSpace?: "normal"|"nowrap"|"pre"|"pre-wrap"|"pre-line"|"break-spaces"\` (engine fallback \`"pre-wrap"\` preserves consecutive spaces + newlines as typed), \`semanticTag?: "h1".."h6"|"p"|"span" = "p"\`,
 \`splitMode?: "none"|"words"|"chars"|"lines" = "none"\`, \`staggerDelay?: number = 0\`.
 
 **component** — \`name: string\` (REQUIRED, registered name), \`props?: { ... }\`.

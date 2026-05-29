@@ -18,6 +18,7 @@
 // and fall back to 'es' to preserve the current UX.
 
 import { createI18n } from 'vue-i18n'
+import { setEngineLocale } from '@parallax-editor/parallax-engine'
 import es from '../locales/es'
 import en from '../locales/en'
 
@@ -45,12 +46,19 @@ export const i18n = createI18n<[typeof es], Locale>({
   fallbackWarn: false,
 })
 
-/** Persist + apply a new locale. */
+/** Persist + apply a new locale. Also propagates to the engine so error
+ *  overlay + console messages localize together (single user-visible language
+ *  across the whole app). */
 export function setLocale(locale: Locale): void {
   ;(i18n.global.locale as unknown as { value: Locale }).value = locale
   try { localStorage.setItem(STORAGE_KEY, locale) } catch { /* noop */ }
   if (typeof document !== 'undefined') document.documentElement.lang = locale
+  try { setEngineLocale(locale) } catch { /* engine may be older — no-op */ }
 }
+
+// Sync the engine to whatever locale we resolved at boot, before any
+// <ParallaxSite> mounts.
+try { setEngineLocale(detectInitialLocale()) } catch { /* noop */ }
 
 export function currentLocale(): Locale {
   return (i18n.global.locale as unknown as { value: Locale }).value

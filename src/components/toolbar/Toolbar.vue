@@ -18,10 +18,13 @@ import {
 import { openLivePreview } from '../../composables/useLivePreview'
 import { claudeApi, gitApi } from '../../composables/useApi'
 import { useDialog } from '../../composables/useDialog'
+import { useI18n } from 'vue-i18n'
 
 const dialog = useDialog()
+const { t } = useI18n()
 import MobileSizeControl from './MobileSizeControl.vue'
 import GridGuidesControl from './GridGuidesControl.vue'
+import LanguageSwitcher from '../ui/LanguageSwitcher.vue'
 
 // ── Claude button availability ───────────────────────────────────────────────
 // The "Claude" button is only usable when the `claude` CLI is installed on this
@@ -210,8 +213,9 @@ async function onEnableIndependent() {
           data-test="toggle-git"
           @click="emit('toggle-git')"
           :title="publishTitle"
-        >Publicar{{ gitAhead > 0 ? ` (${gitAhead})` : '' }}</button>
-        <button class="save-btn" data-test="save" @click="emit('save')" :disabled="!isDirty" title="Guardar (Cmd+S)">Guardar</button>
+        >{{ t('toolbar.publish') }}{{ gitAhead > 0 ? ` (${gitAhead})` : '' }}</button>
+        <button class="save-btn" data-test="save" @click="emit('save')" :disabled="!isDirty" :title="t('toolbar.save') + ' (Cmd+S)'">{{ t('toolbar.save') }}</button>
+        <LanguageSwitcher />
       </div>
     </div>
 

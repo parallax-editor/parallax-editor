@@ -2,6 +2,9 @@
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { diagnosticsApi, type Diagnostics } from '../../composables/useApi'
 import { useElectron } from '../../composables/useElectron'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 /**
  * Pantalla "doctor" (FASE 4). Verifica el entorno de la máquina del usuario:
@@ -78,26 +81,25 @@ function statusClass(ok: boolean, optional = false) {
 
 <template>
   <div v-if="open" class="doctor-backdrop" @click.self="dismiss()">
-    <div class="doctor" role="dialog" aria-modal="true" aria-label="Diagnóstico del editor" data-test="doctor">
+    <div class="doctor" role="dialog" aria-modal="true" :aria-label="t('doctor.aria')" data-test="doctor">
       <header class="doctor-head">
-        <h2>Diagnóstico del editor</h2>
-        <p class="sub">Revisamos que tu Mac tenga todo listo para crear y publicar sitios.</p>
+        <h2>{{ t('doctor.heading') }}</h2>
+        <p class="sub">{{ t('doctor.subtitle') }}</p>
       </header>
 
-      <div v-if="loading && !diag" class="doctor-loading">Revisando entorno…</div>
+      <div v-if="loading && !diag" class="doctor-loading">{{ t('doctor.checkingEnv') }}</div>
 
       <div v-else class="checks">
         <!-- GIT (opcional: solo workspaces con git) -->
         <div class="check" :class="statusClass(gitOk, true)" data-test="doctor-git">
           <span class="dot" />
           <div class="body">
-            <div class="title">Git {{ gitOk ? 'configurado' : 'sin configurar (opcional)' }}</div>
+            <div class="title">{{ gitOk ? t('doctor.gitConfigured') : t('doctor.gitUnconfigured') }}</div>
             <div v-if="gitOk" class="detail">
               {{ diag?.git.name }} &lt;{{ diag?.git.email }}&gt;
             </div>
             <div v-else class="detail">
-              Solo necesario para workspaces con control de versiones. Los
-              workspaces solo en disco o con S3 no lo necesitan. Si lo quieres:
+              {{ t('doctor.gitDetailUnconfigured') }}
               <code>git config --global user.name "Tu Nombre"</code>
               <code>git config --global user.email "tu@correo.com"</code>
             </div>
@@ -108,10 +110,10 @@ function statusClass(ok: boolean, optional = false) {
         <div class="check" :class="statusClass(claudeOk)" data-test="doctor-claude">
           <span class="dot" />
           <div class="body">
-            <div class="title">Claude {{ claudeOk ? 'disponible' : 'no encontrado' }}</div>
-            <div v-if="claudeOk" class="detail">El asistente "Hablar con Claude" está listo.</div>
+            <div class="title">{{ claudeOk ? t('doctor.claudeAvailable') : t('doctor.claudeNotFound') }}</div>
+            <div v-if="claudeOk" class="detail">{{ t('doctor.claudeDetailOk') }}</div>
             <div v-else class="detail">
-              Sin el CLI <code>claude</code> el asistente no funciona. Instálalo y vuelve a abrir la app.
+              {{ t('doctor.claudeDetailMissing', { code: 'claude' }) }}
             </div>
           </div>
         </div>
@@ -120,10 +122,10 @@ function statusClass(ok: boolean, optional = false) {
         <div class="check" :class="statusClass(awsOk, true)" data-test="doctor-aws">
           <span class="dot" />
           <div class="body">
-            <div class="title">AWS {{ awsOk ? 'configurado' : 'sin credenciales (opcional)' }}</div>
-            <div v-if="awsOk" class="detail">Credenciales desde {{ diag?.aws.source }}. Podrás publicar a S3.</div>
+            <div class="title">{{ awsOk ? t('doctor.awsConfigured') : t('doctor.awsUnconfigured') }}</div>
+            <div v-if="awsOk" class="detail">{{ t('doctor.awsDetailOk', { source: diag?.aws.source }) }}</div>
             <div v-else class="detail">
-              Solo necesario si vas a <strong>publicar a S3</strong>. Puedes usar el editor sin esto.
+              {{ t('doctor.awsDetailMissing') }} <strong>{{ t('doctor.awsPublishToS3') }}</strong>{{ t('doctor.awsCanUseWithout') }}
             </div>
           </div>
         </div>
@@ -132,21 +134,21 @@ function statusClass(ok: boolean, optional = false) {
       <!-- Auto-inicio (solo en la app de escritorio) -->
       <label v-if="electron.isElectron" class="autostart">
         <input type="checkbox" :checked="autoStart" @change="toggleAutoStart" />
-        Abrir el editor automáticamente al encender la Mac
+        {{ t('doctor.autoStart') }}
       </label>
 
       <!-- Detalles técnicos -->
       <button class="details-toggle" type="button" @click="showDetails = !showDetails">
-        {{ showDetails ? '▾' : '▸' }} Detalles técnicos
+        {{ showDetails ? '▾' : '▸' }} {{ t('doctor.technicalDetails') }}
       </button>
-      <pre v-if="showDetails && diag" class="details">git:    {{ diag.bins.git || '(no encontrado — opcional)' }}
-claude: {{ diag.bins.claude || '(no encontrado en PATH)' }}
-aws:    SDK JS (lee ~/.aws o variables de entorno; no usa CLI)
-runtime: incluido en la app (no necesitas instalar Node)</pre>
+      <pre v-if="showDetails && diag" class="details">git:    {{ diag.bins.git || t('doctor.detailsGitNotFound') }}
+claude: {{ diag.bins.claude || t('doctor.detailsClaudeNotFound') }}
+aws:    {{ t('doctor.detailsAws') }}
+runtime: {{ t('doctor.detailsRuntime') }}</pre>
 
       <footer class="doctor-foot">
         <button type="button" class="btn ghost" :disabled="loading" @click="load" data-test="doctor-retry">
-          {{ loading ? 'Revisando…' : 'Reintentar' }}
+          {{ loading ? t('doctor.retrying') : t('doctor.retry') }}
         </button>
         <button
           type="button"
@@ -154,7 +156,7 @@ runtime: incluido en la app (no necesitas instalar Node)</pre>
           @click="dismiss"
           data-test="doctor-continue"
         >
-          Entendido
+          {{ t('doctor.understood') }}
         </button>
       </footer>
     </div>
