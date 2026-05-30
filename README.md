@@ -118,13 +118,14 @@ refusing an ad-hoc-signed app that the browser tagged with
 opens normally afterwards:
 
 ```bash
-xattr -cr "/Applications/Parallax Editor.app"
+xattr -dr com.apple.quarantine "/Applications/Parallax Editor.app"
 ```
 
-(adjust the path if you moved the `.app` elsewhere). After that,
-double-click as normal. If macOS still asks "are you sure you want
-to open this", right-click the `.app` → **Open** once and it stays
-authorised.
+(adjust the path if you moved the `.app` elsewhere). After clearing
+quarantine, double-click as normal. macOS may still show a less
+alarming "downloaded from Internet — are you sure?" prompt the first
+time — that one is harmless: right-click the `.app` → **Open** once
+to confirm and it won't ask again.
 
 ## Commands
 

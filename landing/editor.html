@@ -46,7 +46,7 @@
     .note { margin-top: 22px; }
     /* Keep "choose Open" / "(confirm Open…)" from breaking mid-phrase. */
     .note .nowrap { white-space: nowrap; }
-    /* Inline `xattr -cr ...` snippet in the first-open note. Matches the
+    /* Inline `xattr -dr com.apple.quarantine` snippet in the first-open note. Matches the
        quiet palette of the surrounding copy; no chrome, just enough contrast
        to read as a code token without screaming "code block". */
     .note .inline-code {
@@ -212,10 +212,14 @@
             — that's Gatekeeper, not the app. Run this once in&nbsp;Terminal
             to clear the quarantine flag:
           </p>
-          <pre class="cmd"><code>xattr -cr "/Applications/Parallax Editor.app"</code></pre>
+          <pre class="cmd"><code>xattr -dr com.apple.quarantine "/Applications/Parallax Editor.app"</code></pre>
           <p class="note">
-            Then double-click as normal. (If macOS still asks "are you sure you
-            want to open this", right-click the app once → <kbd>Open</kbd>.)
+            Then double-click as normal. After clearing quarantine, macOS may
+            still show a less alarming <em>"downloaded from Internet — are you
+            sure?"</em> prompt the first time. That one is harmless: right-click
+            the app once → <kbd>Open</kbd> to confirm, and it won't ask again.
+          </p>
+          <p class="note">
             Compatible with Intel and Apple Silicon Macs.
           </p>
         </div>
