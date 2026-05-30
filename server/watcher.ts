@@ -98,3 +98,37 @@ export function broadcast(data: object) {
     }
   })
 }
+
+
+/**
+ * Limpieza para `app before-quit` (electron/main.cjs) y para los tests:
+ * cierra el WebSocketServer (termina clientes conectados) y await el
+ * chokidar watcher (libera la atadura nativa fsevents en macOS). Sin esto,
+ * al cerrar la app instalada desde el .dmg el proceso muere con fsevents
+ * todavía activo y macOS muestra el modal "Parallax Editor quit unexpectedly".
+ * Idempotente: dos llamadas seguidas son seguras.
+ */
+export async function closeWatcher(): Promise<void> {
+  const tasks: Promise<unknown>[] = []
+  if (wss) {
+    const local = wss
+    wss = null
+    tasks.push(
+      new Promise<void>((r) => {
+        try {
+          for (const client of local.clients) {
+            try { client.terminate() } catch { /* ignore */ }
+          }
+          local.close(() => r())
+        } catch { r() }
+      }),
+    )
+  }
+  if (activeWatcher) {
+    const local = activeWatcher
+    activeWatcher = null
+    watchedRoots.clear()
+    tasks.push(local.close().catch(() => undefined))
+  }
+  await Promise.all(tasks)
+}
