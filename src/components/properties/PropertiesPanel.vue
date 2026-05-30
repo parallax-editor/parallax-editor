@@ -1279,8 +1279,8 @@ function openAnimHelp(section: string | null = null) {
             alt=""
           />
           <div class="img-dz-text">
-            <span v-if="metaUploading['ogImage']">Subiendo…</span>
-            <span v-else>Arrastra una imagen aquí o cárgala desde la PC</span>
+            <span v-if="metaUploading['ogImage']">{{ t('properties.uploading') }}</span>
+            <span v-else>{{ t('properties.dropImage') }}</span>
           </div>
           <button
             class="img-pick-btn"
@@ -1288,7 +1288,7 @@ function openAnimHelp(section: string | null = null) {
             data-test="meta-ogimage-upload-btn"
             :disabled="metaUploading['ogImage']"
             @click="ogImageInput?.click()"
-          >Cargar desde PC</button>
+          >{{ t('properties.loadFromPC') }}</button>
           <input
             ref="ogImageInput"
             class="img-file-input"
@@ -1327,8 +1327,8 @@ function openAnimHelp(section: string | null = null) {
             alt=""
           />
           <div class="img-dz-text">
-            <span v-if="metaUploading['favicon']">Subiendo…</span>
-            <span v-else>Arrastra una imagen aquí o cárgala desde la PC</span>
+            <span v-if="metaUploading['favicon']">{{ t('properties.uploading') }}</span>
+            <span v-else>{{ t('properties.dropImage') }}</span>
           </div>
           <button
             class="img-pick-btn"
@@ -1336,7 +1336,7 @@ function openAnimHelp(section: string | null = null) {
             data-test="meta-favicon-upload-btn"
             :disabled="metaUploading['favicon']"
             @click="faviconInput?.click()"
-          >Cargar desde PC</button>
+          >{{ t('properties.loadFromPC') }}</button>
           <input
             ref="faviconInput"
             class="img-file-input"
@@ -1505,8 +1505,8 @@ function openAnimHelp(section: string | null = null) {
               @drop.prevent="onFontFileDrop($event, fi)"
             >
               <div class="img-dz-text">
-                <span v-if="metaUploading['font-' + fi]">Subiendo…</span>
-                <span v-else>Arrastra el archivo de fuente o cárgalo desde la PC (.ttf, .otf, .woff, .woff2)</span>
+                <span v-if="metaUploading['font-' + fi]">{{ t('properties.uploading') }}</span>
+                <span v-else>{{ t('properties.dropFont') }}</span>
               </div>
               <button
                 class="img-pick-btn"
@@ -1514,7 +1514,7 @@ function openAnimHelp(section: string | null = null) {
                 data-test="meta-font-upload-btn"
                 :disabled="metaUploading['font-' + fi]"
                 @click="fontFileInputs[fi]?.click()"
-              >Cargar desde PC</button>
+              >{{ t('properties.loadFromPC') }}</button>
               <input
                 :ref="(el) => setFontFileInput(fi, el)"
                 class="img-file-input"
@@ -1682,8 +1682,8 @@ function openAnimHelp(section: string | null = null) {
               alt=""
             />
             <div class="img-dz-text">
-              <span v-if="metaUploading['section-bg']">Subiendo…</span>
-              <span v-else>Arrastra una imagen aquí o cárgala desde la PC</span>
+              <span v-if="metaUploading['section-bg']">{{ t('properties.uploading') }}</span>
+              <span v-else>{{ t('properties.dropImage') }}</span>
             </div>
             <button
               class="img-pick-btn"
@@ -1691,7 +1691,7 @@ function openAnimHelp(section: string | null = null) {
               data-test="section-bg-upload-btn"
               :disabled="metaUploading['section-bg']"
               @click="sectionBgInput?.click()"
-            >Cargar desde PC</button>
+            >{{ t('properties.loadFromPC') }}</button>
             <input
               ref="sectionBgInput"
               class="img-file-input"
@@ -1924,8 +1924,8 @@ function openAnimHelp(section: string | null = null) {
               alt=""
             />
             <div class="img-dz-text">
-              <span v-if="uploading">Subiendo…</span>
-              <span v-else>Arrastra una imagen aquí</span>
+              <span v-if="uploading">{{ t('properties.uploading') }}</span>
+              <span v-else>{{ t('properties.dropImageShort') }}</span>
             </div>
             <button
               class="img-pick-btn"
@@ -1984,8 +1984,8 @@ function openAnimHelp(section: string | null = null) {
               alt=""
             />
             <div class="img-dz-text">
-              <span v-if="uploading">Subiendo…</span>
-              <span v-else>Arrastra un GIF aquí</span>
+              <span v-if="uploading">{{ t('properties.uploading') }}</span>
+              <span v-else>{{ t('properties.dropGif') }}</span>
             </div>
             <button
               class="img-pick-btn"
@@ -2153,8 +2153,8 @@ function openAnimHelp(section: string | null = null) {
               playsinline
             />
             <div class="img-dz-text">
-              <span v-if="uploading">Subiendo…</span>
-              <span v-else>Arrastra un video aquí</span>
+              <span v-if="uploading">{{ t('properties.uploading') }}</span>
+              <span v-else>{{ t('properties.dropVideo') }}</span>
             </div>
             <button
               class="img-pick-btn"
@@ -2269,8 +2269,8 @@ function openAnimHelp(section: string | null = null) {
               controls
             />
             <div class="img-dz-text">
-              <span v-if="uploading">Subiendo…</span>
-              <span v-else>Arrastra un audio aquí</span>
+              <span v-if="uploading">{{ t('properties.uploading') }}</span>
+              <span v-else>{{ t('properties.dropAudio') }}</span>
             </div>
             <button
               class="img-pick-btn"
@@ -2610,7 +2610,7 @@ function openAnimHelp(section: string | null = null) {
               <option v-for="slug in otherProjectSlugs" :key="slug" :value="slug">{{ slug }}</option>
             </select>
             <span v-else class="field-control link-site-empty" data-test="link-site-empty">
-              No hay otros proyectos en este espacio de trabajo.
+              {{ t('properties.noOtherSites') }}
             </span>
             <HelpHint :text="HELP.linkSite" :label="t('properties.f.targetSite')" />
           </div>
@@ -2618,13 +2618,13 @@ function openAnimHelp(section: string | null = null) {
 
         <!-- Animations sub-panel -->
         <div class="prop-group-title anim-header">
-          <span>Animaciones ({{ selected.data.animations?.length || 0 }})</span>
+          <span>{{ t('properties.animHeader', { count: selected.data.animations?.length || 0 }) }}</span>
           <span class="anim-header-actions">
             <button
               class="anim-help-btn"
               data-test="anim-help-open"
               @click="openAnimHelp()"
-              title="Guía de animaciones: tipos y disparadores"
+              :title="t('properties.animGuideTitle')"
               :aria-label="t('properties.f.openAnimGuide')"
             >?</button>
             <button class="anim-add" @click="addAnimation()" :title="t('properties.f.addAnim')" :aria-label="t('properties.f.addAnim')">+</button>
@@ -2676,7 +2676,7 @@ function openAnimHelp(section: string | null = null) {
             <ResourceCombobox
               :label="t('properties.f.dependsOn')"
               :help="HELP.animDependsOn"
-              placeholder="ID de otro elemento"
+              :placeholder="t('properties.dependsPlaceholder')"
               :test-id="`anim-depends-on-${i}`"
               :suggestions="allElementOptions"
               :modelValue="anim.dependsOn || ''"
@@ -2690,7 +2690,7 @@ function openAnimHelp(section: string | null = null) {
                 :data-test="`anim-depends-event-${i}`"
                 @change="updateAnim(i, 'dependsEvent', ($event.target as HTMLSelectElement).value || undefined)"
               >
-                <option value="">— Elige —</option>
+                <option value="">{{ t('properties.dependsEventChoose') }}</option>
                 <option v-for="opt in DEPENDS_EVENT_OPTS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
               </select>
               <HelpHint :text="HELP.animDependsEvent" :label="t('properties.f.when')" />
@@ -2753,7 +2753,7 @@ function openAnimHelp(section: string | null = null) {
             class="easing-guide-link"
             data-test="easing-help-open"
             @click="openAnimHelp('easing')"
-          >Ver guía de easing →</button>
+          >{{ t('properties.easingGuideLink') }}</button>
 
           <template v-if="anim.trigger === 'loop'">
             <PropField

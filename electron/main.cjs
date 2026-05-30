@@ -226,8 +226,22 @@ function sendMenu(action) {
 // reporte.
 // Menú nativo bilingüe. El renderer reporta su locale activo por IPC
 // ('app:set-locale') y el menú se reconstruye con `mt(key)` que lee de este
-// dict. Default 'es' para back-compat antes de que el renderer reporte.
-let currentLocale = 'es'
+// dict.
+//
+// Default temprano: derivamos del idioma del SO (`app.getLocale()`, p. ej.
+// 'en-US' / 'es-CO') para que el menú salga acorde durante el medio segundo
+// antes de que el renderer cargue y reporte. El renderer SIEMPRE manda
+// `app:set-locale` al boot (ver src/i18n/index.ts), así que esta heurística
+// solo se ve en el primer arranque y nunca contradice la preferencia guardada
+// del usuario — pero evita que la app salga en español cuando el sistema y
+// el editor están en inglés (o viceversa).
+function osDefaultLocale() {
+  try {
+    const lang = (app.getLocale() || '').toLowerCase()
+    return lang.startsWith('en') ? 'en' : 'es'
+  } catch { return 'es' }
+}
+let currentLocale = osDefaultLocale()
 const MENU_STRINGS = {
   es: {
     about: 'Acerca de Parallax Editor', checkUpdates: 'Buscar actualizaciones…',

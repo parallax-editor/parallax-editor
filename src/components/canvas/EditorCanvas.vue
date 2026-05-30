@@ -444,33 +444,59 @@ watch(fontFaceKey, () => {
     .forEach((n) => n.parentNode?.removeChild(n))
 })
 
-// Zoom is a pure CSS `transform: scale()` — it does NOT fire a window 'resize'.
-// The engine measures section/element geometry via getBoundingClientRect and
-// only re-measures on window 'resize' (ParallaxSite.updateViewport,
-// useScrollProgress). So after an extreme zoom-out → zoom-in (esp. in Vista
-// completa) the engine keeps stale, scale-distorted geometry and the section/
-// layer sizes "se descuadran"; toggling overview only fixed it because the
-// layout change happened to trigger a reflow. After a zoom settles, dispatch a
-// synthetic resize so the engine re-measures at the current scale. Debounced so
-// a zoom gesture doesn't thrash.
-let zoomResizeTimer: ReturnType<typeof setTimeout> | null = null
+// Zoom/pan/overview are pure CSS `transform: scale()/translate()` — they do NOT
+// fire a window 'resize' OR 'scroll' event. The engine measures section/element
+// geometry via getBoundingClientRect, but its `sectionProgress` computed is
+// only re-evaluated when its scroll dependencies (`scrollY`/`scrollNonce`)
+// change. So toggling Vista completa OR opening a project for the first time
+// can leave scroll-trigger fadeIn animations frozen at their `from` opacity
+// (=0, invisible) because the engine's FIRST measurement happened with stale
+// layout — the artboard transforms only settled afterwards, and nothing told
+// the engine to re-measure. Browser refresh works around this by giving the
+// engine a fresh mount AFTER the editor has finished laying out, which is the
+// intermittent "first time / Vista completa toggle / re-enter project" repro
+// the user reported.
+//
+// Fix: whenever the artboard's transform changes — zoom, pan, or overview
+// toggle — dispatch BOTH a synthetic `resize` (so updateViewport refreshes
+// viewportHeight) AND a synthetic `scroll` (so onAnyScroll bumps scrollNonce
+// → sectionProgress recomputes). Same heartbeat is fired ONCE after the
+// initial frame settles in onMounted, so the engine's first sectionProgress
+// reading reflects the FINAL artboard rect, not whatever transient state was
+// in effect when it mounted.
+//
+// Debounced (120ms) so a pan/zoom gesture doesn't thrash the engine.
+let transformTickTimer: ReturnType<typeof setTimeout> | null = null
+function pokeEngineRemeasure(delay = 120) {
+  if (transformTickTimer) clearTimeout(transformTickTimer)
+  transformTickTimer = setTimeout(() => {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(new Event('resize'))
+    window.dispatchEvent(new Event('scroll'))
+  }, delay)
+}
+
 watch(
-  () => state.canvasZoom,
-  () => {
-    if (zoomResizeTimer) clearTimeout(zoomResizeTimer)
-    zoomResizeTimer = setTimeout(() => {
-      if (typeof window !== 'undefined') window.dispatchEvent(new Event('resize'))
-    }, 120)
-  },
+  () => [state.canvasZoom, state.canvasPan.x, state.canvasPan.y, state.overviewMode],
+  () => pokeEngineRemeasure(),
 )
 
 onMounted(() => {
   frameRef.value?.addEventListener('scroll', onFrameScroll, { passive: true })
   nextTick(frameInitial)
+  // After the initial frame fits (frameInitial runs in nextTick → may set
+  // canvasZoom/canvasPan → its own watcher schedules a poke 120ms later), fire
+  // ONE more heartbeat a few frames later in case the artboard settled
+  // without bumping any reactive value the engine listens to (e.g., overview
+  // restore via prefsWantOverview, or a synchronous load where canvasZoom
+  // never actually changed). Without this, opening a project for the FIRST
+  // TIME from a clean session sometimes shows blank text until the user
+  // refreshes / pans.
+  pokeEngineRemeasure(260)
 })
 
 onBeforeUnmount(() => {
-  if (zoomResizeTimer) clearTimeout(zoomResizeTimer)
+  if (transformTickTimer) clearTimeout(transformTickTimer)
   frameRef.value?.removeEventListener('scroll', onFrameScroll)
   setPreviewFrame(null)
 })

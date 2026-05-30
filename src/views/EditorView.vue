@@ -418,7 +418,7 @@ watch(
                  a full loadProject() here was wiping the selection, preview
                  scroll and context every time a reply landed in the chat. -->
             <ClaudePanel v-if="bottomPanel === 'claude'" @reload="applyExternalChange" />
-            <GitPanel v-if="bottomPanel === 'git'" @reload="loadProject" @close="bottomPanel = null" />
+            <GitPanel v-if="bottomPanel === 'git'" @reload="applyExternalChange" @close="bottomPanel = null" />
           </div>
         </template>
       </div>

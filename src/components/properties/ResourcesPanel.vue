@@ -35,12 +35,14 @@ const { t } = useI18n()
 
 const dialog = useDialog()
 
-const GROUPS: { kind: ProjectAssetKind; label: string; accept: string }[] = [
-  { kind: 'image', label: 'Imágenes', accept: 'image/*' },
-  { kind: 'font', label: 'Fuentes', accept: '.ttf,.otf,.woff,.woff2,font/*' },
-  { kind: 'audio', label: 'Audio', accept: 'audio/*' },
-  { kind: 'video', label: 'Video', accept: 'video/*' },
-]
+// `label` is a localized COMPUTED property — see GROUPS below — so toggling
+// language at runtime renames the group headings live without a remount.
+const GROUPS = computed<{ kind: ProjectAssetKind; label: string; accept: string }[]>(() => [
+  { kind: 'image', label: t('resources.groupImages'), accept: 'image/*' },
+  { kind: 'font', label: t('resources.groupFonts'), accept: '.ttf,.otf,.woff,.woff2,font/*' },
+  { kind: 'audio', label: t('resources.groupAudio'), accept: 'audio/*' },
+  { kind: 'video', label: t('resources.groupVideo'), accept: 'video/*' },
+])
 // DOM data-test suffix per kind (images/fonts/audio/video — plural to match
 // the visible labels and the spec's resource-group-<images|fonts|audio|video>).
 const KIND_SLUG: Record<ProjectAssetKind, string> = {
@@ -81,8 +83,8 @@ function showCommitToast(commit: 'ok' | 'skipped' | undefined) {
   // save sweeps the asset in) is unchanged for that case.
   if (commit !== 'ok' && commit !== 'skipped') return
   commitToast.value = commit === 'ok'
-    ? { tone: 'ok', text: '✓ Guardado y versionado' }
-    : { tone: 'skipped', text: '⚠ Guardado, sin versionar' }
+    ? { tone: 'ok', text: t('resources.commitOk') }
+    : { tone: 'skipped', text: t('resources.commitSkipped') }
   if (toastTimer) clearTimeout(toastTimer)
   toastTimer = setTimeout(() => { commitToast.value = null; toastTimer = null }, 1500)
 }
@@ -374,7 +376,7 @@ function loadImageEl(src: string): Promise<HTMLImageElement> {
   return new Promise((res, rej) => {
     const img = new Image()
     img.onload = () => res(img)
-    img.onerror = () => rej(new Error('No se pudo cargar la imagen'))
+    img.onerror = () => rej(new Error(t('resources.errLoadImage')))
     img.src = src
   })
 }
@@ -395,7 +397,7 @@ async function autoTrimTransparent() {
     try {
       data = ctx.getImageData(0, 0, nw, nh).data
     } catch {
-      cropError.value = 'No se pudo leer la imagen para el recorte automático.'
+      cropError.value = t('resources.errReadForCrop')
       return
     }
     const A = 10
@@ -411,7 +413,7 @@ async function autoTrimTransparent() {
       }
     }
     if (maxX < 0) {
-      cropError.value = 'La imagen no tiene zonas transparentes que recortar (es opaca).'
+      cropError.value = t('resources.errImageOpaque')
       return
     }
     crop.value = {
@@ -421,7 +423,7 @@ async function autoTrimTransparent() {
       h: (maxY - minY + 1) / nh,
     }
   } catch (e: any) {
-    cropError.value = e?.message || 'No se pudo procesar la imagen.'
+    cropError.value = e?.message || t('resources.errProcessImage')
   }
 }
 
@@ -441,7 +443,7 @@ async function applyCrop() {
     const cv = document.createElement('canvas')
     cv.width = sw; cv.height = sh
     const ctx = cv.getContext('2d')
-    if (!ctx) { cropError.value = 'No se pudo recortar.'; return }
+    if (!ctx) { cropError.value = t('resources.errCrop'); return }
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
     // Conserva el formato del archivo (jpg sigue jpg; el resto va a PNG con alpha).
     const isJpg = /\.jpe?g$/i.test(f.name)
@@ -454,7 +456,7 @@ async function applyCrop() {
     cropMode.value = false
     crop.value = null
   } catch (e: any) {
-    cropError.value = e?.message || 'No se pudo recortar la imagen.'
+    cropError.value = e?.message || t('resources.errCropImage')
   } finally {
     cropBusy.value = false
   }
@@ -489,16 +491,15 @@ onUnmounted(() => {
         aria-live="polite"
       >{{ commitToast.text }}</div>
     </transition>
-    <div class="prop-section-title">Recursos</div>
+    <div class="prop-section-title">{{ t('resources.panelTitle') }}</div>
     <p class="global-note">
-      Archivos del proyecto (imágenes, fuentes, audio, video). Se comparten en
-      escritorio y móvil. Aquí puedes verlos, eliminarlos o agregar nuevos.
+      {{ t('resources.panelIntro') }}
     </p>
 
-    <div v-if="loading" class="rc-status" data-test="resources-loading">Cargando recursos…</div>
+    <div v-if="loading" class="rc-status" data-test="resources-loading">{{ t('resources.loading') }}</div>
     <div v-else-if="error" class="img-msg img-err" data-test="resources-error">{{ error }}</div>
     <p v-else-if="totalCount === 0" class="fb-empty rc-empty-all" data-test="resources-empty">
-      Aún no hay archivos. Usa “+ Agregar” en cualquier grupo para subir uno.
+      {{ t('resources.emptyAll') }}
     </p>
 
     <div
@@ -520,7 +521,7 @@ onUnmounted(() => {
           :class="{ 'rc-item-clickable': g.kind === 'image', 'rc-item-draggable': g.kind !== 'font' }"
           :data-test="`resource-item-${g.kind}-${f.name}`"
           :draggable="g.kind !== 'font'"
-          :title="g.kind !== 'font' ? `Arrastra a la mesa para agregar ${f.name}` : undefined"
+          :title="g.kind !== 'font' ? t('resources.dragToCanvas', { name: f.name }) : undefined"
           @dragstart="onItemDragStart(g.kind, f, $event)"
         >
           <button
@@ -528,21 +529,21 @@ onUnmounted(() => {
             class="rc-thumb-btn"
             type="button"
             :data-test="`resource-open-${g.kind}-${f.name}`"
-            :title="`Ver ${f.name} en grande`"
-            :aria-label="`Ver ${f.name} en grande`"
+            :title="t('resources.seeLarge', { name: f.name })"
+            :aria-label="t('resources.seeLarge', { name: f.name })"
             @click="openModal(g.kind, f)"
           >
             <img class="rc-item-thumb" :src="previewSrc(f.src)" :alt="f.name" />
           </button>
           <span v-else class="rc-item-icon" aria-hidden="true">
-            {{ g.kind === 'font' ? 'Aa' : g.kind === 'audio' ? '♪' : '▶' }}
+            {{ g.kind === 'font' ? t('resources.iconFont') : g.kind === 'audio' ? t('resources.iconAudio') : t('resources.iconVideo') }}
           </span>
 
           <button
             v-if="g.kind === 'image'"
             class="rc-item-meta rc-item-meta-btn"
             type="button"
-            :title="`Ver ${f.name} en grande`"
+            :title="t('resources.seeLarge', { name: f.name })"
             @click="openModal(g.kind, f)"
           >
             <span class="rc-item-name">{{ f.name }}</span>
@@ -558,8 +559,8 @@ onUnmounted(() => {
             type="button"
             :data-test="`resource-delete-${g.kind}-${f.name}`"
             :disabled="busy[`del-${g.kind}-${f.name}`]"
-            title="Eliminar archivo"
-            aria-label="Eliminar archivo"
+            :title="t('resources.deleteFile')"
+            :aria-label="t('resources.deleteFile')"
             @click="onDelete(g.kind, f)"
           >&times;</button>
         </li>
@@ -577,18 +578,18 @@ onUnmounted(() => {
         @drop.prevent="onDrop(g.kind, $event)"
       >
         <div class="img-dz-text">
-          <span v-if="busy[`add-${g.kind}`]">Subiendo…</span>
-          <span v-else>Arrastra un archivo aquí o cárgalo desde la PC</span>
+          <span v-if="busy[`add-${g.kind}`]">{{ t('resources.uploading') }}</span>
+          <span v-else>{{ t('resources.dropFile') }}</span>
         </div>
         <button
           class="img-pick-btn"
           type="button"
           :data-test="`resource-add-${KIND_SLUG[g.kind]}`"
           :disabled="busy[`add-${g.kind}`]"
-          :title="`Agregar ${g.label.toLowerCase()}`"
-          :aria-label="`Agregar ${g.label.toLowerCase()}`"
+          :title="t('resources.addGroup', { kind: g.label.toLowerCase() })"
+          :aria-label="t('resources.addGroup', { kind: g.label.toLowerCase() })"
           @click="fileInputs[g.kind]?.click()"
-        >+ Agregar</button>
+        >{{ t('resources.addBtn') }}</button>
         <input
           :ref="(el) => setFileInput(g.kind, el)"
           class="img-file-input"
@@ -625,8 +626,8 @@ onUnmounted(() => {
             class="rc-modal-close"
             type="button"
             data-test="resource-modal-close"
-            title="Cerrar (Esc)"
-            aria-label="Cerrar"
+            :title="t('resources.closeEsc')"
+            :aria-label="t('resources.close')"
             @click="closeModal"
           >&times;</button>
           <!-- Barra de recorte (#159): recortar manualmente o quitar el espacio
@@ -638,30 +639,30 @@ onUnmounted(() => {
               type="button"
               data-test="resource-crop-start"
               @click="enterCrop"
-            >✂ Recortar</button>
+            >{{ t('resources.cropStart') }}</button>
             <template v-else>
               <button
                 class="rc-tool-btn"
                 type="button"
                 data-test="resource-crop-autotrim"
                 :disabled="cropBusy"
-                title="Encuadra automáticamente la ilustración quitando los márgenes transparentes"
+                :title="t('resources.cropAutotrimTitle')"
                 @click="autoTrimTransparent"
-              >Quitar espacio vacío</button>
+              >{{ t('resources.cropAutotrim') }}</button>
               <button
                 class="rc-tool-btn rc-tool-primary"
                 type="button"
                 data-test="resource-crop-apply"
                 :disabled="cropBusy"
                 @click="applyCrop"
-              >{{ cropBusy ? 'Recortando…' : 'Aplicar recorte' }}</button>
+              >{{ cropBusy ? t('resources.cropApplying') : t('resources.cropApply') }}</button>
               <button
                 class="rc-tool-btn"
                 type="button"
                 data-test="resource-crop-cancel"
                 :disabled="cropBusy"
                 @click="exitCrop"
-              >Cancelar</button>
+              >{{ t('resources.cropCancel') }}</button>
             </template>
           </div>
 
@@ -693,9 +694,7 @@ onUnmounted(() => {
 
           <div v-if="cropError" class="img-msg img-err" data-test="resource-crop-error">{{ cropError }}</div>
           <div v-if="cropMode" class="rc-crop-hint">
-            Arrastra las esquinas o lados para ajustar, o el centro para mover. «Quitar
-            espacio vacío» encuadra la ilustración. Al aplicar se reemplaza el archivo
-            (y queda con ese tamaño dondequiera que se use).
+            {{ t('resources.cropHint') }}
           </div>
 
           <div class="rc-modal-meta">

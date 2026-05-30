@@ -17,7 +17,7 @@ const { t } = useI18n()
 const { panelScrollRef: gitScrollRef } = usePanelScroll()
 const { panelScrollRef: diffScrollRef } = usePanelScroll()
 
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; reload: [] }>()
 
 const loading = ref(false)
 // Carga inicial del panel (status de git + estado de deploy). El botón Publicar
@@ -213,10 +213,20 @@ async function restoreSnapshot(entry: GitStatusCommit) {
       restored: r.restored ?? 0,
       removed: r.removed ?? 0,
     })
-    // The chokidar watcher broadcasts the file changes on WebSocket; the editor
-    // reloads site.json/assets automatically. Bumping the nonce here is belt
-    // and suspenders for the case the watcher doesn't fire fast enough.
+    // Force the editor to reload from disk NOW. The chokidar watcher would
+    // eventually broadcast `file-changed` for the restored site.json (which
+    // also triggers `applyExternalChange`), but a restore can rewrite many
+    // files in rapid succession and chokidar's `awaitWriteFinish` (500ms
+    // stability + FS event latency) makes that path unreliable — the user
+    // would see "restored OK" on the panel while the canvas kept rendering
+    // the PREVIOUS site state ("el modal dice restaurado pero el editor
+    // sigue igual"). Emitting reload here closes that gap: the parent fetches
+    // site.json synchronously, replaces state.site, and the canvas repaints.
+    // assetsNonce++ busts the URL cache for any images that the restore
+    // brought back to a different version (same name, different bytes).
+    state.assetsNonce++
     state.gitLogNonce++
+    emit('reload')
   } catch (e: any) {
     restoreNote.value = e?.message || t('git.restoreError')
   } finally {

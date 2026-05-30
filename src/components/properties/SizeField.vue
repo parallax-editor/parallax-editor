@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import HelpHint from './HelpHint.vue'
+
+const { t } = useI18n()
 
 /**
  * Friendly size control for element.size.width / .height (item #5).
@@ -30,12 +33,15 @@ const emit = defineEmits<{ 'update:modelValue': [value: string | undefined] }>()
 
 type Mode = 'auto' | 'fixed' | 'percent' | 'adaptive' | 'raw'
 
-const MODE_OPTS: { value: Mode; label: string }[] = [
-  { value: 'auto', label: 'Auto' },
-  { value: 'fixed', label: 'Fijo (px)' },
-  { value: 'percent', label: 'Porcentual (%)' },
-  { value: 'adaptive', label: 'Adaptable' },
-]
+// Labels are computed against the active locale (vue-i18n) — see `t()` below —
+// because users may toggle ES↔EN at runtime; a static array would freeze the
+// mode buttons in whatever language was active at module load.
+const MODE_OPTS = computed<{ value: Mode; label: string }[]>(() => [
+  { value: 'auto', label: t('properties.sizeField.modeAuto') },
+  { value: 'fixed', label: t('properties.sizeField.modeFixed') },
+  { value: 'percent', label: t('properties.sizeField.modePercent') },
+  { value: 'adaptive', label: t('properties.sizeField.modeAdaptive') },
+])
 
 // ── Parse the incoming value into a mode + numeric fields ────────────────────
 function detect(v: string | number | undefined | null): {
@@ -139,11 +145,11 @@ const tid = computed(() => props.testId || props.label.toLowerCase())
 // Helper line per mode.
 const helperText = computed(() => {
   switch (mode.value) {
-    case 'auto': return 'Usa el tamaño natural del elemento (sin forzar medida).'
-    case 'fixed': return 'Tamaño exacto en píxeles. No cambia con el tamaño de la pantalla.'
-    case 'percent': return 'Relativo al ancho disponible: crece y encoge con la pantalla.'
-    case 'adaptive': return `Crece con la pantalla pero nunca pasa de ${round(px.value)} px.`
-    case 'raw': return 'Valor avanzado (CSS) que no encaja en los modos anteriores.'
+    case 'auto': return t('properties.sizeField.helperAuto')
+    case 'fixed': return t('properties.sizeField.helperFixed')
+    case 'percent': return t('properties.sizeField.helperPercent')
+    case 'adaptive': return t('properties.sizeField.helperAdaptive', { px: round(px.value) })
+    case 'raw': return t('properties.sizeField.helperRaw')
   }
 })
 </script>
@@ -152,7 +158,7 @@ const helperText = computed(() => {
   <div class="size-field" :data-test="`size-field-${tid}`">
     <div class="sf-row">
       <label class="field-label">{{ label }}</label>
-      <div class="sf-modes" role="group" :aria-label="`Modo de ${label}`">
+      <div class="sf-modes" role="group" :aria-label="t('properties.sizeField.modeAria', { label })">
         <button
           v-for="m in MODE_OPTS"
           :key="m.value"
@@ -175,7 +181,7 @@ const helperText = computed(() => {
             min="0"
             :value="px"
             :data-test="`size-${tid}-px`"
-            :aria-label="`${label} en píxeles`"
+            :aria-label="t('properties.sizeField.ariaPx', { label })"
             @input="onPx"
           />
           <span class="sf-unit">px</span>
@@ -191,7 +197,7 @@ const helperText = computed(() => {
             max="100"
             :value="pct"
             :data-test="`size-${tid}-pct`"
-            :aria-label="`${label} en porcentaje`"
+            :aria-label="t('properties.sizeField.ariaPct', { label })"
             @input="onPct"
           />
           <span class="sf-unit">%</span>
@@ -207,12 +213,12 @@ const helperText = computed(() => {
             max="100"
             :value="pct"
             :data-test="`size-${tid}-pct`"
-            :aria-label="`${label}: porcentaje`"
+            :aria-label="t('properties.sizeField.ariaAdaptivePct', { label })"
             @input="onPct"
           />
           <span class="sf-unit">%</span>
         </span>
-        <span class="sf-sep">máx.</span>
+        <span class="sf-sep">{{ t('properties.sizeField.separatorMax') }}</span>
         <span class="sf-input-wrap sf-adaptive">
           <input
             class="field-input"
@@ -220,7 +226,7 @@ const helperText = computed(() => {
             min="0"
             :value="px"
             :data-test="`size-${tid}-px`"
-            :aria-label="`${label}: máximo en píxeles`"
+            :aria-label="t('properties.sizeField.ariaAdaptivePx', { label })"
             @input="onPx"
           />
           <span class="sf-unit">px</span>
@@ -233,7 +239,7 @@ const helperText = computed(() => {
           type="text"
           :value="raw"
           :data-test="`size-${tid}-raw`"
-          :aria-label="`${label}: valor avanzado`"
+          :aria-label="t('properties.sizeField.ariaRaw', { label })"
           @input="onRaw"
         />
       </template>

@@ -13,9 +13,19 @@
 //
 // New components SHOULD use $t() from day one.
 //
-// The default locale persists in localStorage under
-// `parallax-editor:locale`. On first load we detect from navigator.language
-// and fall back to 'es' to preserve the current UX.
+// Locale resolution at boot:
+//   1. localStorage `parallax-editor:locale` (user's explicit choice; persists
+//      across restarts). Honored only when 'es' or 'en'.
+//   2. Otherwise OS/browser language (`navigator.language`): anything starting
+//      with 'en' → English, everything else (including Spanish AND unsupported
+//      locales like French/Portuguese) → Spanish, because the project's
+//      content & docs are Spanish-first and an unsupported user is less lost
+//      reading Spanish UI alongside Spanish content.
+// This module is the SINGLE SOURCE OF TRUTH for the boot locale and pushes it
+// to (a) vue-i18n, (b) the engine, (c) the Electron native menu — see the
+// boot-sync block at the bottom of this file. Don't add a second resolver
+// elsewhere (the bug "menu in one language, editor in the other across
+// restarts" was exactly that: the Electron main process had its own default).
 
 import { createI18n } from 'vue-i18n'
 import { setEngineLocale } from '@parallax-editor/parallax-engine'
@@ -77,9 +87,23 @@ if (typeof globalThis !== 'undefined') {
   } catch { /* no-op */ }
 }
 
-// Sync the engine to whatever locale we resolved at boot, before any
-// <ParallaxSite> mounts.
-try { setEngineLocale(detectInitialLocale()) } catch { /* noop */ }
+// Sync the engine + the native menu to whatever locale we resolved at boot,
+// BEFORE any <ParallaxSite> mounts and before the user touches the menu.
+//
+// Pushing to Electron here is load-bearing: the main process holds its OWN
+// `currentLocale` and builds the native menu when the app launches — long
+// before this module ever runs. If we only called `setLocale()` on user
+// changes (the original wiring), the menu stayed in whatever the main process
+// picked while the Vue UI happily used whatever `detectInitialLocale()`
+// resolved (e.g. 'en' from localStorage / navigator.language). That was the
+// "menu in one language, editor in the other across restarts" bug. Pushing on
+// boot forces a single source of truth: this module wins.
+const bootLocale = detectInitialLocale()
+try { setEngineLocale(bootLocale) } catch { /* noop */ }
+try {
+  const el = (globalThis as any).electronAPI
+  if (el && typeof el.setLocale === 'function') el.setLocale(bootLocale)
+} catch { /* no-op */ }
 
 export function currentLocale(): Locale {
   return (i18n.global.locale as unknown as { value: Locale }).value

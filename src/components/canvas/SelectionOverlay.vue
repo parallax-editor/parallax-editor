@@ -124,58 +124,31 @@ function startInlineTextEdit(e: MouseEvent) {
   dom.addEventListener('blur', inlineEditOnBlur)
   dom.addEventListener('keydown', inlineEditOnKeydown)
   // Focus + place caret AT THE DOUBLE-CLICK POINT (Illustrator-style) so
-  // editing starts where the user pointed, not at the end. Crucial detail:
-  // the SelectionOverlay's `.move-area` div sits ON TOP of the text element
-  // (inset:0, pointer-events:auto) and INTERCEPTS the dblclick — so
-  // caretPositionFromPoint(e.clientX, e.clientY) returns the overlay, NOT a
-  // position inside the text. To recover the true under-cursor caret we
-  // temporarily punch `pointer-events: none` on every overlay div whose
-  // box covers the click point, then call the API, then restore. Same for
-  // the cross-browser caretRangeFromPoint (webkit) fallback.
+  // editing starts where the user pointed, not at the end.
+  //
+  // History: the original fix called `document.caretPositionFromPoint(x, y)`
+  // after punching `pointer-events: none` on every overlay layer in the
+  // `elementsFromPoint` stack. That only works if every blocker is in the
+  // stack AND `caretPositionFromPoint` honors pointer-events the way we
+  // assume — neither was reliable here (the engine sometimes paints extra
+  // wrappers, and the API's hit-test behavior varies by browser engine).
+  // The reproducible failure was: caret kept landing at the END regardless
+  // of where the user double-clicked.
+  //
+  // Robust approach: don't ask the browser to hit-test at all. Walk every
+  // Text node inside `dom` and use Range rects to find which character box
+  // the click point falls into. Self-contained, immune to overlay layers,
+  // pointer-events, scale transforms (rects already include the CTM), and
+  // engine-rendered wrappers like split-text span hosts.
   dom.focus()
   try {
     const sel = window.getSelection()
     if (!sel) throw new Error('no selection api')
-
-    // Disable pointer-events on every overlay element under the click so
-    // elementsFromPoint() sees through to the actual text element. We restore
-    // them after the lookup (whether it succeeded or not).
-    const blockers: Array<{ el: HTMLElement; prev: string }> = []
-    const stack = document.elementsFromPoint(e.clientX, e.clientY) as HTMLElement[]
-    for (const el of stack) {
-      if (el === dom) break // reached the text element — stop punching through
-      if (!dom.contains(el) && el !== dom) {
-        blockers.push({ el, prev: el.style.pointerEvents })
-        el.style.pointerEvents = 'none'
-      }
-    }
-
-    let range: Range | null = null
-    try {
-      const cpfp: any = (document as any).caretPositionFromPoint
-      const crfp: any = (document as any).caretRangeFromPoint
-      if (typeof cpfp === 'function') {
-        const pos = cpfp.call(document, e.clientX, e.clientY)
-        if (pos && pos.offsetNode && dom.contains(pos.offsetNode)) {
-          range = document.createRange()
-          range.setStart(pos.offsetNode, pos.offset)
-          range.collapse(true)
-        }
-      } else if (typeof crfp === 'function') {
-        const r = crfp.call(document, e.clientX, e.clientY)
-        if (r && dom.contains(r.startContainer)) {
-          range = r
-          range.collapse(true)
-        }
-      }
-    } finally {
-      for (const b of blockers) b.el.style.pointerEvents = b.prev
-    }
-
+    let range = caretRangeInsideAtPoint(dom, e.clientX, e.clientY)
     // Fallback: caret at end of text content (dblclick on padding / outside
-    // any text node, or API unavailable). Better than collapsing to start
-    // which would land BEFORE all the existing copy.
-    if (!range || !dom.contains(range.startContainer)) {
+    // any text node, or no text nodes at all). Better than collapsing to
+    // start which would land BEFORE all the existing copy.
+    if (!range) {
       range = document.createRange()
       range.selectNodeContents(dom)
       range.collapse(false)
@@ -185,6 +158,84 @@ function startInlineTextEdit(e: MouseEvent) {
   } catch {
     /* selection APIs can fail in odd contexts; non-fatal */
   }
+}
+
+// Returns a collapsed Range at the caret position closest to (x, y) inside
+// `host`. Walks every descendant Text node, scans each character's client
+// rect (built from a transient Range), and returns the closest insertion
+// point. Independent of pointer-events / overlay stacking / browser-specific
+// caretPositionFromPoint hit-testing — the only inputs are character rects
+// the browser already computed for layout. Returns null if `host` has no
+// non-empty text node (caller falls back to "end").
+function caretRangeInsideAtPoint(host: HTMLElement, x: number, y: number): Range | null {
+  const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT)
+  // Best match by (vertical-distance-to-line, horizontal-distance-to-caret).
+  // Vertical wins so multi-line text lands on the right line; horizontal is
+  // the tiebreaker within the line. We also track an "in-rect" exact hit so a
+  // click squarely on a character returns immediately.
+  let bestNode: Text | null = null
+  let bestOffset = 0
+  let bestVert = Infinity
+  let bestHoriz = Infinity
+  const probe = document.createRange()
+  let node = walker.nextNode() as Text | null
+  while (node) {
+    const len = node.length
+    if (len === 0) { node = walker.nextNode() as Text | null; continue }
+    // For each char gap (0..len), measure the rect of the surrounding char so
+    // we can decide which side of the glyph the pointer landed on. Iterate
+    // char-by-char (cheap; text in the editor is bounded).
+    for (let i = 0; i < len; i++) {
+      try {
+        probe.setStart(node, i)
+        probe.setEnd(node, i + 1)
+      } catch { continue }
+      // A char can span multiple rects (line wrap inside one Text node), so
+      // examine each rect — getClientRects(), not getBoundingClientRect().
+      const rects = probe.getClientRects()
+      for (let r = 0; r < rects.length; r++) {
+        const rect = rects[r]
+        if (rect.width === 0 && rect.height === 0) continue
+        const inside = y >= rect.top && y <= rect.bottom && x >= rect.left && x <= rect.right
+        // Vertical distance to the LINE this char lives on (0 when y is
+        // between rect.top and rect.bottom).
+        const vert = y < rect.top ? rect.top - y : y > rect.bottom ? y - rect.bottom : 0
+        // Decide whether the caret should land BEFORE the char (offset i) or
+        // AFTER (offset i+1) based on which side of the char center x is on.
+        const mid = (rect.left + rect.right) / 2
+        const before = x < mid
+        const caretX = before ? rect.left : rect.right
+        const horiz = Math.abs(x - caretX)
+        const offset = before ? i : i + 1
+        if (
+          vert < bestVert
+          || (vert === bestVert && horiz < bestHoriz)
+        ) {
+          bestVert = vert
+          bestHoriz = horiz
+          bestNode = node
+          bestOffset = offset
+          if (inside && vert === 0) {
+            // Exact hit — no closer caret exists. Bail.
+            const out = document.createRange()
+            out.setStart(node, offset)
+            out.collapse(true)
+            return out
+          }
+        }
+      }
+    }
+    node = walker.nextNode() as Text | null
+  }
+  if (!bestNode) return null
+  const out = document.createRange()
+  try {
+    out.setStart(bestNode, bestOffset)
+    out.collapse(true)
+  } catch {
+    return null
+  }
+  return out
 }
 
 function findDomElement(): HTMLElement | null {
