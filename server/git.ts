@@ -1,6 +1,6 @@
 import { execSync, execFileSync } from 'child_process'
-import { existsSync, statSync, accessSync, constants } from 'fs'
-import { dirname, isAbsolute } from 'path'
+import { existsSync, statSync, accessSync, constants, mkdirSync, writeFileSync, readdirSync, unlinkSync, rmdirSync } from 'fs'
+import { dirname, isAbsolute, join, resolve, relative } from 'path'
 
 function git(args: string, cwd: string): string {
   return execSync(`git ${args}`, { cwd, encoding: 'utf-8', timeout: 30000 }).trim()
@@ -432,12 +432,10 @@ export function gitRestoreSnapshot(
   if (!cleanDir || cleanDir.split(/[\\/]/).some((seg) => seg === '..' || seg === '')) {
     return { ok: false, error: 'Ruta de contenido inválida.' }
   }
-  // Eagerly require fs APIs (we're in node — top-level imports in this file
-  // are CommonJS-compatible).
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { mkdirSync, writeFileSync, existsSync, statSync, readdirSync, unlinkSync, rmdirSync } = require('fs') as typeof import('fs')
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { join, dirname, resolve, relative } = require('path') as typeof import('path')
+  // fs/path are imported at the top of the file (was previously a
+  // top-level `require('fs')` here, which exploded under Vite's SSR loader
+  // → "require is not defined" surfaced in the GitPanel restore-note and
+  // the "Restaurar" button looked like it did nothing).
 
   const absRoot = resolve(cwd, cleanDir)
   // Guard: absRoot must stay inside cwd.
