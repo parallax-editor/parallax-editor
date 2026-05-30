@@ -18,6 +18,11 @@ const { t } = useI18n()
 
 const open = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
+// Teleported menu lives on <body>, so .contains(target) against rootRef
+// always says "outside" → click-outside closed it as soon as the user
+// touched any control inside. Track the menu element separately and
+// treat clicks inside EITHER as "still open".
+const menuRef = ref<HTMLElement | null>(null)
 // Teleport menu out of the toolbar's stacking context (z-index:100 there
 // caps any internal child below 10000, so the SelectionOverlay would paint
 // over our popover even with a high z-index inside the toolbar). Track the
@@ -82,7 +87,10 @@ function close() {
 }
 
 function onDocMouseDown(e: MouseEvent) {
-  if (rootRef.value && !rootRef.value.contains(e.target as Node)) close()
+  const target = e.target as Node
+  const insideRoot = !!rootRef.value && rootRef.value.contains(target)
+  const insideMenu = !!menuRef.value && menuRef.value.contains(target)
+  if (!insideRoot && !insideMenu) close()
 }
 
 function pickPreset(id: string) {
@@ -120,6 +128,7 @@ onBeforeUnmount(() => {
     <Teleport to="body">
     <div
       v-if="open"
+      ref="menuRef"
       class="size-menu"
       role="menu"
       data-test="mobile-size-menu"

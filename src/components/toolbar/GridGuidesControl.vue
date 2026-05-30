@@ -30,6 +30,11 @@ const HELP = computed(() => ({
 
 const open = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
+// Teleported popover lives on <body>, so .contains(target) against rootRef
+// will always say "outside" → the click-outside handler closed the popover
+// the instant the user pressed any control inside it. Track the popover
+// element via a ref and check BOTH when deciding "click outside".
+const popoverRef = ref<HTMLElement | null>(null)
 // Teleport the popover to <body> so it escapes the toolbar's stacking
 // context (the toolbar has z-index:100 which makes it a stacking root —
 // any z-index inside it is bounded by 100, so a child at 11000 still
@@ -56,7 +61,11 @@ function close() {
 function onDocPointerDown(e: PointerEvent) {
   if (!open.value) return
   const root = rootRef.value
-  if (root && !root.contains(e.target as Node)) close()
+  const pop = popoverRef.value
+  const target = e.target as Node
+  const insideRoot = !!root && root.contains(target)
+  const insidePop = !!pop && pop.contains(target)
+  if (!insideRoot && !insidePop) close()
 }
 // Cerrar con Escape.
 function onKeydown(e: KeyboardEvent) {
@@ -134,6 +143,7 @@ function onSlideSize(e: Event) {
     <Teleport to="body">
     <div
       v-if="open"
+      ref="popoverRef"
       class="gg-popover"
       role="dialog"
       :aria-label="t('gridGuides.trigger')"
