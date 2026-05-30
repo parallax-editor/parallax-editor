@@ -123,17 +123,37 @@ function startInlineTextEdit(e: MouseEvent) {
   }
   dom.addEventListener('blur', inlineEditOnBlur)
   dom.addEventListener('keydown', inlineEditOnKeydown)
-  // Focus + place caret at end so typing extends the current text.
+  // Focus + place caret AT THE DOUBLE-CLICK POINT (Illustrator-style) so
+  // editing starts where the user pointed, not at the end. Falls back to
+  // end-of-text if the browser doesn't expose a caret-from-point API or it
+  // returns nothing usable (e.g. dblclick on padding outside any text node).
   dom.focus()
   try {
-    const range = document.createRange()
-    range.selectNodeContents(dom)
-    range.collapse(false)
     const sel = window.getSelection()
-    if (sel) {
-      sel.removeAllRanges()
-      sel.addRange(range)
+    if (!sel) throw new Error('no selection api')
+    let range: Range | null = null
+    // Spec name (Firefox + Safari) and webkit name (Chrome/Electron) differ.
+    const cpfp: any = (document as any).caretPositionFromPoint
+    const crfp: any = (document as any).caretRangeFromPoint
+    if (typeof cpfp === 'function') {
+      const pos = cpfp.call(document, e.clientX, e.clientY)
+      if (pos && pos.offsetNode) {
+        range = document.createRange()
+        range.setStart(pos.offsetNode, pos.offset)
+        range.collapse(true)
+      }
+    } else if (typeof crfp === 'function') {
+      range = crfp.call(document, e.clientX, e.clientY)
+      if (range) range.collapse(true)
     }
+    // Fallback: caret at end of text content.
+    if (!range || !dom.contains(range.startContainer)) {
+      range = document.createRange()
+      range.selectNodeContents(dom)
+      range.collapse(false)
+    }
+    sel.removeAllRanges()
+    sel.addRange(range)
   } catch {
     /* selection APIs can fail in odd contexts; non-fatal */
   }
@@ -732,6 +752,10 @@ function startResize(e: MouseEvent, handle: string) {
   dragType.value = 'resize'
   activeHandle.value = handle
   dragStart.value = { x: e.clientX, y: e.clientY }
+  // Single undo snapshot for the whole resize gesture (mousemove uses
+  // setAtPathSilent → no per-pixel undo entries). Without this Cmd+Z had
+  // nothing to revert to (or popped an unrelated older snapshot).
+  pushUndoOnce()
   const el = getAtPath(state.selectedPath!)
   const box = sectionBox()
   const meas = measuredRectInSection()
@@ -793,6 +817,9 @@ function startRotate(e: MouseEvent) {
   dragStart.value = { x: e.clientX, y: e.clientY }
   const el = getAtPath(state.selectedPath!)
   dragOriginal.value = { rotation: el?.rotation || 0 }
+  // Single undo snapshot for the whole rotate gesture; mousemove uses
+  // setAtPathSilent (fixed below) so each frame doesn't push its own entry.
+  pushUndoOnce()
 }
 
 function onMouseMove(e: MouseEvent) {
@@ -985,7 +1012,7 @@ function onMouseMove(e: MouseEvent) {
     const startAngle = Math.atan2(dragStart.value.y - cy, dragStart.value.x - cx)
     const currentAngle = Math.atan2(e.clientY - cy, e.clientX - cx)
     const delta = ((currentAngle - startAngle) * 180) / Math.PI
-    setAtPath(`${state.selectedPath}.rotation`, Math.round(dragOriginal.value.rotation + delta))
+    setAtPathSilent(`${state.selectedPath}.rotation`, Math.round(dragOriginal.value.rotation + delta))
   }
 
   scheduleUpdate()
@@ -1003,8 +1030,10 @@ function onMouseUp(e?: MouseEvent) {
     markDragEnded()
     const wasGroup = pendingKind.value === 'group'
     pendingMove.value = false
-      // Single undo snapshot for the whole gesture.
-      pushUndoOnce()
+    // No pushUndoOnce here: this branch fires for a plain click that never
+    // crossed DRAG_THRESHOLD → nothing changed → stamping a snapshot of the
+    // unchanged state just pollutes the undo stack and forces Cmd+Z to be
+    // pressed extra times to skip past the no-op entries.
     pendingKind.value = null
     clickThroughSelect(e, wasGroup)
     dragType.value = null
@@ -1020,8 +1049,11 @@ function onMouseUp(e?: MouseEvent) {
   groupResizeItems.value = []
   groupResizeOrig.value = null
   pendingMove.value = false
-      // Single undo snapshot for the whole gesture.
-      pushUndoOnce()
+  // No pushUndoOnce here: a real drag already stamped its single snapshot at
+  // drag START (move) or at the handle/rotate press (resize/rotate, fixed
+  // below). Stamping AGAIN at mouseup captures the POST-drag state, which
+  // turns the first Cmd+Z into a no-op (the snapshot equals the current
+  // state) — user had to press Cmd+Z twice per gesture.
   pendingKind.value = null
   groupDragItems.value = []
   dragType.value = null
