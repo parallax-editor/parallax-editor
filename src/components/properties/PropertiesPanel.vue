@@ -1249,7 +1249,7 @@ function openAnimHelp(section: string | null = null) {
 
 <template>
   <div class="properties-panel">
-    <div class="panel-header">Propiedades</div>
+    <div class="panel-header">{{ t('properties.title') }}</div>
 
     <div class="panel-body" :ref="panelScrollRef">
       <div v-if="!selected && !selectedGlobal" class="empty-state">
@@ -1258,17 +1258,17 @@ function openAnimHelp(section: string | null = null) {
 
       <!-- ── Sitio (meta): top-level, shared across desktop/mobile ── -->
       <div v-else-if="selectedGlobal === 'site'" class="props-content" data-test="props-site">
-        <div class="prop-section-title">Sitio</div>
+        <div class="prop-section-title">{{ t('properties.groupSite') }}</div>
         <p class="global-note">
           Propiedades generales del sitio. Se comparten en escritorio y móvil.
         </p>
 
         <div class="prop-group-title">{{ t('properties.groupGeneral') }}</div>
-        <PropField label="Título" :help="HELP.metaTitle" data-test="meta-title-field" :modelValue="meta.title || ''" @update:modelValue="updateMeta('title', $event)" />
-        <PropField label="Descripción" :help="HELP.metaDescription" type="textarea" :modelValue="meta.description || ''" @update:modelValue="updateMeta('description', $event || undefined)" />
-        <PropField label="Idioma" :help="HELP.metaLang" placeholder="es" :modelValue="meta.lang || ''" @update:modelValue="updateMeta('lang', $event || undefined)" />
+        <PropField :label="t('properties.f.title')" :help="HELP.metaTitle" data-test="meta-title-field" :modelValue="meta.title || ''" @update:modelValue="updateMeta('title', $event)" />
+        <PropField :label="t('properties.f.description')" :help="HELP.metaDescription" type="textarea" :modelValue="meta.description || ''" @update:modelValue="updateMeta('description', $event || undefined)" />
+        <PropField :label="t('properties.f.language')" :help="HELP.metaLang" placeholder="es" :modelValue="meta.lang || ''" @update:modelValue="updateMeta('lang', $event || undefined)" />
         <ResourceCombobox
-          label="OG image"
+          :label="t('properties.f.ogImage')"
           :help="HELP.metaOgImage"
           placeholder="og-image.png"
           test-id="meta-ogimage"
@@ -1316,7 +1316,7 @@ function openAnimHelp(section: string | null = null) {
         <div v-if="metaUploadWarning['ogImage']" class="img-msg img-warn" data-test="meta-ogimage-upload-warning">{{ metaUploadWarning['ogImage'] }}</div>
 
         <ResourceCombobox
-          label="Favicon"
+          :label="t('properties.f.favicon')"
           :help="HELP.metaFavicon"
           placeholder="favicon.png"
           test-id="meta-favicon"
@@ -1378,11 +1378,11 @@ function openAnimHelp(section: string | null = null) {
               @change="onCursorEnabledChange"
             />
           </label>
-          <HelpHint :text="HELP.cursorEnabled" label="Cursor que sigue el puntero" />
+          <HelpHint :text="HELP.cursorEnabled" :label="t('properties.f.cursorFollows')" />
         </div>
         <template v-if="cursorOn">
           <div class="prop-field" data-test="site-cursor-color-field">
-            <label class="field-label">Color</label>
+            <label class="field-label">{{ t('properties.f.color') }}</label>
             <span class="field-control color-row">
               <input
                 type="color"
@@ -1400,11 +1400,11 @@ function openAnimHelp(section: string | null = null) {
                 @input="updateCursor('color', ($event.target as any).value)"
               />
             </span>
-            <HelpHint :text="HELP.cursorColor" label="Color del cursor" />
+            <HelpHint :text="HELP.cursorColor" :label="t('properties.f.cursorColorLabel')" />
           </div>
           <NumberSlider
             id="site-cursor-size"
-            label="Tamaño"
+            :label="t('properties.f.size')"
             :help="HELP.cursorSize"
             unit="px"
             :min="1"
@@ -1415,7 +1415,7 @@ function openAnimHelp(section: string | null = null) {
           />
           <NumberSlider
             id="site-cursor-hover-scale"
-            label="Hover scale"
+            :label="t('properties.f.hoverScale')"
             :min="1"
             :max="4"
             :step="0.1"
@@ -1425,7 +1425,7 @@ function openAnimHelp(section: string | null = null) {
           />
           <BlendSelect
             id="site-cursor-blend"
-            label="Mezcla"
+            :label="t('properties.f.blendMode')"
             :help="HELP.cursorBlend"
             :allowEmpty="false"
             :modelValue="cursor?.blendMode || 'difference'"
@@ -1435,7 +1435,7 @@ function openAnimHelp(section: string | null = null) {
 
         <div class="prop-group-title">{{ t('properties.groupWorldTransition') }}</div>
         <div class="prop-field" data-test="meta-transition-in-field">
-          <label class="field-label">Entrada</label>
+          <label class="field-label">{{ t('properties.f.transitionIn') }}</label>
           <select
             class="field-input field-control"
             data-test="meta-transition-in"
@@ -1444,10 +1444,10 @@ function openAnimHelp(section: string | null = null) {
           >
             <option v-for="o in TRANSITION_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
           </select>
-          <HelpHint :text="HELP.metaTransIn" label="Entrada" />
+          <HelpHint :text="HELP.metaTransIn" :label="t('properties.f.transitionIn')" />
         </div>
         <div class="prop-field" data-test="meta-transition-out-field">
-          <label class="field-label">Salida</label>
+          <label class="field-label">{{ t('properties.f.transitionOut') }}</label>
           <select
             class="field-input field-control"
             data-test="meta-transition-out"
@@ -1456,11 +1456,11 @@ function openAnimHelp(section: string | null = null) {
           >
             <option v-for="o in TRANSITION_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
           </select>
-          <HelpHint :text="HELP.metaTransOut" label="Salida" />
+          <HelpHint :text="HELP.metaTransOut" :label="t('properties.f.transitionOut')" />
         </div>
         <NumberSlider
           id="meta-transition-duration"
-          label="Duración"
+          :label="t('properties.f.duration')"
           :help="HELP.metaTransDur"
           unit="ms"
           :min="0"
@@ -1473,7 +1473,7 @@ function openAnimHelp(section: string | null = null) {
 
         <div class="prop-group-title anim-header">
           <span>Fuentes ({{ metaFonts().length }})</span>
-          <button class="anim-add" data-test="meta-add-font" @click="addFont()" title="Agregar fuente" aria-label="Agregar fuente">+</button>
+          <button class="anim-add" data-test="meta-add-font" @click="addFont()" :title="t('properties.f.addFont')" :aria-label="t('properties.f.addFont')">+</button>
         </div>
         <p v-if="!metaFonts().length" class="fb-empty">
           Sin fuentes declaradas. Usa “+” para agregar una (Google Fonts o personalizada).
@@ -1486,10 +1486,10 @@ function openAnimHelp(section: string | null = null) {
         >
           <div class="anim-card-head">
             <span class="anim-card-title">{{ font.family || 'Fuente' }}</span>
-            <button class="anim-remove" data-test="meta-font-remove" @click="removeFont(fi)" title="Eliminar" aria-label="Eliminar fuente">&times;</button>
+            <button class="anim-remove" data-test="meta-font-remove" @click="removeFont(fi)" :title="t('common.delete')" :aria-label="t('properties.f.removeFont')">&times;</button>
           </div>
           <ResourceCombobox
-            label="Familia"
+            :label="t('properties.f.family')"
             :help="HELP.fontFamily"
             placeholder="Playfair Display"
             :test-id="`meta-font-family-${fi}`"
@@ -1497,10 +1497,10 @@ function openAnimHelp(section: string | null = null) {
             :modelValue="font.family || ''"
             @update:modelValue="updateFont(fi, 'family', $event)"
           />
-          <PropField label="Origen" :help="HELP.fontSource" type="select" :options="FONT_SOURCE_OPTS" :modelValue="font.source || 'google'" @update:modelValue="updateFont(fi, 'source', $event)" />
+          <PropField :label="t('properties.f.source')" :help="HELP.fontSource" type="select" :options="FONT_SOURCE_OPTS" :modelValue="font.source || 'google'" @update:modelValue="updateFont(fi, 'source', $event)" />
           <template v-if="font.source === 'custom'">
             <ResourceCombobox
-              label="URL"
+              :label="t('properties.f.url')"
               :help="HELP.fontUrl"
               placeholder="mi-fuente.woff2"
               :test-id="`meta-font-url-${fi}`"
@@ -1546,7 +1546,7 @@ function openAnimHelp(section: string | null = null) {
 
       <!-- ── Tema (theme): colors + typography, shared across views ── -->
       <div v-else-if="selectedGlobal === 'theme'" class="props-content" data-test="props-theme">
-        <div class="prop-section-title">Tema</div>
+        <div class="prop-section-title">{{ t('properties.groupTheme') }}</div>
         <p class="global-note">
           Colores y tipografía del sitio. Se comparten en escritorio y móvil.
           <template v-if="!theme"><br />Aún sin tema: al cambiar un valor se creará uno con valores neutros.</template>
@@ -1559,7 +1559,7 @@ function openAnimHelp(section: string | null = null) {
             <input type="color" class="field-color" data-test="theme-ink-picker" :value="hexOf(theme?.colors?.ink)" @input="updateThemeColor('ink', ($event.target as any).value)" />
             <input type="text" class="field-input ci-text" data-test="theme-ink" placeholder="#1a1a1a" :value="theme?.colors?.ink || ''" @input="updateThemeColor('ink', ($event.target as any).value)" />
           </span>
-          <HelpHint :text="HELP.themeInk" label="Tinta" />
+          <HelpHint :text="HELP.themeInk" :label="t('properties.f.ink')" />
         </div>
         <div class="prop-field" data-test="theme-paper-field">
           <label class="field-label">Papel (fondo)</label>
@@ -1567,20 +1567,20 @@ function openAnimHelp(section: string | null = null) {
             <input type="color" class="field-color" data-test="theme-paper-picker" :value="hexOf(theme?.colors?.paper)" @input="updateThemeColor('paper', ($event.target as any).value)" />
             <input type="text" class="field-input ci-text" data-test="theme-paper" placeholder="#ffffff" :value="theme?.colors?.paper || ''" @input="updateThemeColor('paper', ($event.target as any).value)" />
           </span>
-          <HelpHint :text="HELP.themePaper" label="Papel" />
+          <HelpHint :text="HELP.themePaper" :label="t('properties.f.paper')" />
         </div>
         <div class="prop-field" data-test="theme-accent-field">
-          <label class="field-label">Acento</label>
+          <label class="field-label">{{ t('properties.f.accent') }}</label>
           <span class="field-control color-row">
             <input type="color" class="field-color" data-test="theme-accent-picker" :value="hexOf(theme?.colors?.accent)" @input="updateThemeColor('accent', ($event.target as any).value)" />
             <input type="text" class="field-input ci-text" data-test="theme-accent" placeholder="#c8a04b" :value="theme?.colors?.accent || ''" @input="updateThemeColor('accent', ($event.target as any).value)" />
           </span>
-          <HelpHint :text="HELP.themeAccent" label="Acento" />
+          <HelpHint :text="HELP.themeAccent" :label="t('properties.f.accent')" />
         </div>
 
         <div class="prop-group-title">{{ t('properties.groupTypography') }}</div>
         <ResourceCombobox
-          label="Títulos"
+          :label="t('properties.f.display')"
           :help="HELP.themeDisplay"
           placeholder="Playfair Display, serif"
           test-id="theme-display-field"
@@ -1589,7 +1589,7 @@ function openAnimHelp(section: string | null = null) {
           @update:modelValue="updateThemeType('display', $event)"
         />
         <ResourceCombobox
-          label="Texto"
+          :label="t('properties.f.text')"
           :help="HELP.themeBody"
           placeholder="Lato, sans-serif"
           test-id="theme-body-field"
@@ -1607,17 +1607,17 @@ function openAnimHelp(section: string | null = null) {
 
       <!-- Section props -->
       <template v-if="selected.type === 'section'">
-        <PropField label="ID" :help="HELP.sectionId" :modelValue="selected.data.id" @update:modelValue="updateProp('id', $event)" />
-        <PropField label="Visible" :help="HELP.sectionVisible" :modelValue="selected.data.visible !== false" type="checkbox" @update:modelValue="updateProp('visible', $event)" />
-        <PropField label="Altura" :help="HELP.sectionHeight" :modelValue="selected.data.height" @update:modelValue="updateProp('height', $event)" />
-        <PropField label="Scroll" :help="HELP.sectionScroll" :modelValue="selected.data.scrollBehavior" type="select" :options="[...SCROLL_BEHAVIORS]" @update:modelValue="updateProp('scrollBehavior', $event)" />
+        <PropField :label="t('properties.f.id')" :help="HELP.sectionId" :modelValue="selected.data.id" @update:modelValue="updateProp('id', $event)" />
+        <PropField :label="t('properties.f.visible')" :help="HELP.sectionVisible" :modelValue="selected.data.visible !== false" type="checkbox" @update:modelValue="updateProp('visible', $event)" />
+        <PropField :label="t('properties.f.height')" :help="HELP.sectionHeight" :modelValue="selected.data.height" @update:modelValue="updateProp('height', $event)" />
+        <PropField :label="t('properties.f.scroll')" :help="HELP.sectionScroll" :modelValue="selected.data.scrollBehavior" type="select" :options="[...SCROLL_BEHAVIORS]" @update:modelValue="updateProp('scrollBehavior', $event)" />
 
         <!-- scrollDirection: labelled <select> (PropField select uses the value
              as the label, so a labelled set needs the hand-rolled row — same
              contract/HelpHint as the rest of the panel). Defaults to the
              engine's 'vertical' when absent so it never looks blank. -->
         <div class="prop-field" data-test="section-scroll-direction-field">
-          <label class="field-label">Dirección</label>
+          <label class="field-label">{{ t('properties.f.direction') }}</label>
           <select
             class="field-input field-control"
             data-test="section-scroll-direction"
@@ -1626,7 +1626,7 @@ function openAnimHelp(section: string | null = null) {
           >
             <option v-for="o in SCROLL_DIR_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
           </select>
-          <HelpHint :text="HELP.sectionScrollDir" label="Dirección del scroll" />
+          <HelpHint :text="HELP.sectionScrollDir" :label="t('properties.f.scrollDirection')" />
         </div>
 
         <!-- Background sub-editor: optional {type,value}. "Ninguno" deletes the
@@ -1644,12 +1644,12 @@ function openAnimHelp(section: string | null = null) {
           >
             <option v-for="o in BG_TYPE_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
           </select>
-          <HelpHint :text="HELP.sectionBgType" label="Tipo de fondo" />
+          <HelpHint :text="HELP.sectionBgType" :label="t('properties.f.bgType')" />
         </div>
 
         <template v-if="sectionBg()?.type === 'color'">
           <div class="prop-field" data-test="section-bg-color-field">
-            <label class="field-label">Color</label>
+            <label class="field-label">{{ t('properties.f.color') }}</label>
             <span class="field-control color-row">
               <input
                 type="color"
@@ -1667,7 +1667,7 @@ function openAnimHelp(section: string | null = null) {
                 @input="onBgValueChange(($event.target as any).value)"
               />
             </span>
-            <HelpHint :text="HELP.sectionBgColor" label="Color de fondo" />
+            <HelpHint :text="HELP.sectionBgColor" :label="t('properties.f.bgColor')" />
           </div>
         </template>
 
@@ -1718,7 +1718,7 @@ function openAnimHelp(section: string | null = null) {
           <div v-if="metaUploadError['section-bg']" class="img-msg img-err" data-test="section-bg-upload-error">{{ metaUploadError['section-bg'] }}</div>
           <div v-if="metaUploadWarning['section-bg']" class="img-msg img-warn" data-test="section-bg-upload-warning">{{ metaUploadWarning['section-bg'] }}</div>
           <ResourceCombobox
-            label="Imagen"
+            :label="t('properties.f.image')"
             :help="HELP.sectionBgImage"
             placeholder="fondo.jpg"
             test-id="section-bg-value"
@@ -1734,7 +1734,7 @@ function openAnimHelp(section: string | null = null) {
              only-when-set) but writes <section>.transition. -->
         <div class="prop-group-title">{{ t('properties.groupSectionTransition') }}</div>
         <div class="prop-field" data-test="section-transition-in-field">
-          <label class="field-label">Entrada</label>
+          <label class="field-label">{{ t('properties.f.transitionIn') }}</label>
           <select
             class="field-input field-control"
             data-test="section-transition-in"
@@ -1743,10 +1743,10 @@ function openAnimHelp(section: string | null = null) {
           >
             <option v-for="o in SECTION_TRANSITION_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
           </select>
-          <HelpHint :text="HELP.sectionTransIn" label="Transición de entrada" />
+          <HelpHint :text="HELP.sectionTransIn" :label="t('properties.f.transitionInLabel')" />
         </div>
         <div class="prop-field" data-test="section-transition-out-field">
-          <label class="field-label">Salida</label>
+          <label class="field-label">{{ t('properties.f.transitionOut') }}</label>
           <select
             class="field-input field-control"
             data-test="section-transition-out"
@@ -1755,11 +1755,11 @@ function openAnimHelp(section: string | null = null) {
           >
             <option v-for="o in TRANSITION_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
           </select>
-          <HelpHint :text="HELP.sectionTransOut" label="Transición de salida" />
+          <HelpHint :text="HELP.sectionTransOut" :label="t('properties.f.transitionOutLabel')" />
         </div>
         <NumberSlider
           id="section-transition-duration"
-          label="Duración"
+          :label="t('properties.f.duration')"
           :help="HELP.sectionTransDur"
           unit="ms"
           :min="0"
@@ -1773,11 +1773,11 @@ function openAnimHelp(section: string | null = null) {
 
       <!-- Layer props -->
       <template v-if="selected.type === 'layer'">
-        <PropField label="ID" :help="HELP.layerId" :modelValue="selected.data.id" @update:modelValue="updateProp('id', $event)" />
-        <PropField label="Visible" :help="HELP.layerVisible" :modelValue="selected.data.visible !== false" type="checkbox" @update:modelValue="updateProp('visible', $event)" />
+        <PropField :label="t('properties.f.id')" :help="HELP.layerId" :modelValue="selected.data.id" @update:modelValue="updateProp('id', $event)" />
+        <PropField :label="t('properties.f.visible')" :help="HELP.layerVisible" :modelValue="selected.data.visible !== false" type="checkbox" @update:modelValue="updateProp('visible', $event)" />
         <NumberSlider
           id="layer-depth"
-          label="Depth"
+          :label="t('properties.f.depth')"
           :help="HELP.depth"
           :min="-1"
           :max="1"
@@ -1814,7 +1814,7 @@ function openAnimHelp(section: string | null = null) {
         <div class="prop-group-title">{{ t('properties.groupLayer') }}</div>
         <NumberSlider
           id="layer-blur"
-          label="Blur"
+          :label="t('properties.f.blur')"
           :help="HELP.blur"
           unit="px"
           :min="0"
@@ -1825,7 +1825,7 @@ function openAnimHelp(section: string | null = null) {
         />
         <NumberSlider
           id="layer-opacity"
-          label="Opacidad"
+          :label="t('properties.f.opacity')"
           :help="HELP.layerOpacity"
           unit="%"
           display="percent"
@@ -1836,10 +1836,10 @@ function openAnimHelp(section: string | null = null) {
           :modelValue="selected.data.opacity"
           @update:modelValue="updateProp('opacity', $event)"
         />
-        <PropField label="3D" :help="HELP.perspective3d" :modelValue="selected.data.perspective3d" type="checkbox" @update:modelValue="updateProp('perspective3d', $event)" />
+        <PropField :label="t('properties.f.threeD')" :help="HELP.perspective3d" :modelValue="selected.data.perspective3d" type="checkbox" @update:modelValue="updateProp('perspective3d', $event)" />
         <BlendSelect
           id="layer-blend"
-          label="Blend"
+          :label="t('properties.f.blend')"
           :help="HELP.blend"
           :modelValue="selected.data.blendMode || ''"
           @update:modelValue="updateProp('blendMode', $event)"
@@ -1848,16 +1848,16 @@ function openAnimHelp(section: string | null = null) {
 
       <!-- Element common props -->
       <template v-if="selected.type === 'element'">
-        <PropField label="ID" :help="HELP.elementId" :modelValue="selected.data.id" @update:modelValue="updateProp('id', $event)" />
+        <PropField :label="t('properties.f.id')" :help="HELP.elementId" :modelValue="selected.data.id" @update:modelValue="updateProp('id', $event)" />
         <div class="prop-readonly">
-          <span class="ro-label">Tipo</span>
+          <span class="ro-label">{{ t('properties.f.type') }}</span>
           <span class="ro-value">{{ TYPE_LABELS[selected.data.type] || selected.data.type }}</span>
         </div>
 
         <div class="prop-group-title">{{ t('properties.groupPosition') }}</div>
         <NumberSlider
           id="element-pos-x"
-          label="X"
+          :label="t('properties.f.x')"
           :help="HELP.posX"
           unit="%"
           :min="0"
@@ -1868,7 +1868,7 @@ function openAnimHelp(section: string | null = null) {
         />
         <NumberSlider
           id="element-pos-y"
-          label="Y"
+          :label="t('properties.f.y')"
           :help="HELP.posY"
           unit="%"
           :min="0"
@@ -1879,14 +1879,14 @@ function openAnimHelp(section: string | null = null) {
         />
 
         <div class="prop-group-title">{{ t('properties.groupSize') }}</div>
-        <SizeField label="Ancho" test-id="width" :help="HELP.width" :modelValue="selected.data.size?.width" @update:modelValue="updateNestedProp('size', 'width', $event)" />
-        <SizeField label="Alto" test-id="height" :help="HELP.height" :modelValue="selected.data.size?.height" @update:modelValue="updateNestedProp('size', 'height', $event)" />
+        <SizeField :label="t('properties.f.width')" test-id="width" :help="HELP.width" :modelValue="selected.data.size?.width" @update:modelValue="updateNestedProp('size', 'width', $event)" />
+        <SizeField :label="t('properties.f.heightProp')" test-id="height" :help="HELP.height" :modelValue="selected.data.size?.height" @update:modelValue="updateNestedProp('size', 'height', $event)" />
 
         <div class="prop-group-title">{{ t('properties.groupStyle') }}</div>
-        <PropField label="Anchor" :help="HELP.anchor" :modelValue="selected.data.anchor || 'center'" type="select" :options="[...ANCHOR_TYPES]" @update:modelValue="updateProp('anchor', $event)" />
+        <PropField :label="t('properties.f.anchor')" :help="HELP.anchor" :modelValue="selected.data.anchor || 'center'" type="select" :options="[...ANCHOR_TYPES]" @update:modelValue="updateProp('anchor', $event)" />
         <NumberSlider
           id="element-opacity"
-          label="Opacidad"
+          :label="t('properties.f.opacity')"
           :help="HELP.opacity"
           unit="%"
           display="percent"
@@ -1899,7 +1899,7 @@ function openAnimHelp(section: string | null = null) {
         />
         <NumberSlider
           id="element-rotation"
-          label="Rotación"
+          :label="t('properties.f.rotation')"
           :help="HELP.rotation"
           unit="°"
           :min="-360"
@@ -1909,16 +1909,16 @@ function openAnimHelp(section: string | null = null) {
           :modelValue="selected.data.rotation"
           @update:modelValue="updateProp('rotation', $event)"
         />
-        <PropField label="Visible" :help="HELP.visible" :modelValue="selected.data.visible !== false" type="checkbox" @update:modelValue="updateProp('visible', $event)" />
-        <PropField label="Interactivo" :help="HELP.interactive" :modelValue="selected.data.interactive" type="checkbox" @update:modelValue="updateProp('interactive', $event)" />
+        <PropField :label="t('properties.f.visible')" :help="HELP.visible" :modelValue="selected.data.visible !== false" type="checkbox" @update:modelValue="updateProp('visible', $event)" />
+        <PropField :label="t('properties.f.interactive')" :help="HELP.interactive" :modelValue="selected.data.interactive" type="checkbox" @update:modelValue="updateProp('interactive', $event)" />
 
         <!-- Type-specific -->
         <template v-if="selected.data.type === 'png'">
           <div class="prop-group-title">{{ t('properties.groupPng') }}</div>
 
-          <PropField label="Voltear horizontal" :help="HELP.flipX" type="checkbox" :modelValue="selected.data.flipX || false" @update:modelValue="updateProp('flipX', $event || undefined)" />
-          <PropField label="Voltear vertical" :help="HELP.flipY" type="checkbox" :modelValue="selected.data.flipY || false" @update:modelValue="updateProp('flipY', $event || undefined)" />
-          <PropField label="Relleno" :help="HELP.objectFit" type="select" :options="OBJECT_FIT_OPTS" :modelValue="selected.data.objectFit || 'cover'" @update:modelValue="updateProp('objectFit', $event === 'cover' ? undefined : $event)" />
+          <PropField :label="t('properties.f.flipX')" :help="HELP.flipX" type="checkbox" :modelValue="selected.data.flipX || false" @update:modelValue="updateProp('flipX', $event || undefined)" />
+          <PropField :label="t('properties.f.flipY')" :help="HELP.flipY" type="checkbox" :modelValue="selected.data.flipY || false" @update:modelValue="updateProp('flipY', $event || undefined)" />
+          <PropField :label="t('properties.f.objectFit')" :help="HELP.objectFit" type="select" :options="OBJECT_FIT_OPTS" :modelValue="selected.data.objectFit || 'cover'" @update:modelValue="updateProp('objectFit', $event === 'cover' ? undefined : $event)" />
 
           <div
             class="img-dropzone"
@@ -1961,7 +1961,7 @@ function openAnimHelp(section: string | null = null) {
           <div v-if="uploadWarning" class="img-msg img-warn" data-test="png-upload-warning">{{ uploadWarning }}</div>
 
           <ResourceCombobox
-            label="Src"
+            :label="t('properties.f.src')"
             :help="HELP.src"
             placeholder="foto.png"
             test-id="png-src"
@@ -1970,15 +1970,15 @@ function openAnimHelp(section: string | null = null) {
             :modelValue="selected.data.src || ''"
             @update:modelValue="updateProp('src', $event)"
           />
-          <PropField label="Alt" :help="HELP.alt" :modelValue="selected.data.alt || ''" @update:modelValue="updateProp('alt', $event)" />
+          <PropField :label="t('properties.f.alt')" :help="HELP.alt" :modelValue="selected.data.alt || ''" @update:modelValue="updateProp('alt', $event)" />
         </template>
 
         <template v-if="selected.data.type === 'gif'">
           <div class="prop-group-title">{{ t('properties.groupGif') }}</div>
 
-          <PropField label="Voltear horizontal" :help="HELP.flipX" type="checkbox" :modelValue="selected.data.flipX || false" @update:modelValue="updateProp('flipX', $event || undefined)" />
-          <PropField label="Voltear vertical" :help="HELP.flipY" type="checkbox" :modelValue="selected.data.flipY || false" @update:modelValue="updateProp('flipY', $event || undefined)" />
-          <PropField label="Relleno" :help="HELP.objectFit" type="select" :options="OBJECT_FIT_OPTS" :modelValue="selected.data.objectFit || 'cover'" @update:modelValue="updateProp('objectFit', $event === 'cover' ? undefined : $event)" />
+          <PropField :label="t('properties.f.flipX')" :help="HELP.flipX" type="checkbox" :modelValue="selected.data.flipX || false" @update:modelValue="updateProp('flipX', $event || undefined)" />
+          <PropField :label="t('properties.f.flipY')" :help="HELP.flipY" type="checkbox" :modelValue="selected.data.flipY || false" @update:modelValue="updateProp('flipY', $event || undefined)" />
+          <PropField :label="t('properties.f.objectFit')" :help="HELP.objectFit" type="select" :options="OBJECT_FIT_OPTS" :modelValue="selected.data.objectFit || 'cover'" @update:modelValue="updateProp('objectFit', $event === 'cover' ? undefined : $event)" />
 
           <div
             class="img-dropzone"
@@ -2021,7 +2021,7 @@ function openAnimHelp(section: string | null = null) {
           <div v-if="uploadWarning" class="img-msg img-warn" data-test="gif-upload-warning">{{ uploadWarning }}</div>
 
           <ResourceCombobox
-            label="Src"
+            :label="t('properties.f.src')"
             :help="HELP.src"
             placeholder="animacion.gif"
             test-id="gif-src"
@@ -2030,7 +2030,7 @@ function openAnimHelp(section: string | null = null) {
             :modelValue="selected.data.src || ''"
             @update:modelValue="updateProp('src', $event)"
           />
-          <PropField label="Alt" :help="HELP.alt" :modelValue="selected.data.alt || ''" @update:modelValue="updateProp('alt', $event)" />
+          <PropField :label="t('properties.f.alt')" :help="HELP.alt" :modelValue="selected.data.alt || ''" @update:modelValue="updateProp('alt', $event)" />
 
           <div class="prop-group-title">{{ t('properties.gifPlayback') }}</div>
           <PropField :label="t('properties.gifAutoplay')" :help="HELP.gifAutoplay" type="checkbox" :modelValue="selected.data.autoplay !== false" @update:modelValue="updateProp('autoplay', $event)" />
@@ -2041,9 +2041,9 @@ function openAnimHelp(section: string | null = null) {
 
         <template v-if="selected.data.type === 'text'">
           <div class="prop-group-title">{{ t('properties.groupText') }}</div>
-          <PropField label="Contenido" :help="HELP.content" :modelValue="selected.data.content" type="textarea" @update:modelValue="updateProp('content', $event)" />
+          <PropField :label="t('properties.f.content')" :help="HELP.content" :modelValue="selected.data.content" type="textarea" @update:modelValue="updateProp('content', $event)" />
           <ResourceCombobox
-            label="Fuente"
+            :label="t('properties.f.font')"
             :help="HELP.font"
             placeholder="Tipografía (registrada o Google)"
             test-id="text-font-field"
@@ -2052,7 +2052,7 @@ function openAnimHelp(section: string | null = null) {
             @update:modelValue="onTextFontChange"
           />
           <FontSizeField :help="HELP.fontSize" :modelValue="selected.data.fontSize" @update:modelValue="updateProp('fontSize', $event)" />
-          <PropField label="Peso" :help="HELP.fontWeight" :modelValue="selected.data.fontWeight || 400" type="number" @update:modelValue="updateProp('fontWeight', $event)" />
+          <PropField :label="t('properties.f.weight')" :help="HELP.fontWeight" :modelValue="selected.data.fontWeight || 400" type="number" @update:modelValue="updateProp('fontWeight', $event)" />
 
           <!-- Color: native picker + hex text input — the editor's STANDARD
                color control (identical chrome/markup to the Tema color rows:
@@ -2063,7 +2063,7 @@ function openAnimHelp(section: string | null = null) {
                non-hex value until the picker actually moves). Behaviour/data
                unchanged — still writes `color` via updateProp. -->
           <div class="prop-field" data-test="text-color-field">
-            <label class="field-label">Color</label>
+            <label class="field-label">{{ t('properties.f.color') }}</label>
             <span class="field-control color-row">
               <input
                 type="color"
@@ -2081,7 +2081,7 @@ function openAnimHelp(section: string | null = null) {
                 @input="updateProp('color', ($event.target as any).value)"
               />
             </span>
-            <HelpHint :text="HELP.color" label="Color" />
+            <HelpHint :text="HELP.color" :label="t('properties.f.color')" />
           </div>
 
           <!-- Alineación (textAlign): additive, "(heredado)" when unset.
@@ -2091,7 +2091,7 @@ function openAnimHelp(section: string | null = null) {
                .element-props .field-* rules (style block) give this select the
                exact same chrome as every PropField input/select. -->
           <div class="prop-field" data-test="text-align-field">
-            <label class="field-label">Alineación</label>
+            <label class="field-label">{{ t('properties.f.alignment') }}</label>
             <select
               class="field-input field-control"
               data-test="text-align-select"
@@ -2100,13 +2100,13 @@ function openAnimHelp(section: string | null = null) {
             >
               <option v-for="o in TEXT_ALIGN_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
             </select>
-            <HelpHint :text="HELP.textAlign" label="Alineación" />
+            <HelpHint :text="HELP.textAlign" :label="t('properties.f.alignment')" />
           </div>
 
           <!-- Espacios y saltos (whiteSpace): additive, default 'pre-wrap'
                applied by the engine. Same chrome contract as textAlign. -->
           <div class="prop-field" data-test="white-space-field">
-            <label class="field-label">Espacios</label>
+            <label class="field-label">{{ t('properties.f.whiteSpace') }}</label>
             <select
               class="field-input field-control"
               data-test="white-space-select"
@@ -2115,13 +2115,13 @@ function openAnimHelp(section: string | null = null) {
             >
               <option v-for="o in WHITE_SPACE_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
             </select>
-            <HelpHint :text="HELP.whiteSpace" label="Espacios" />
+            <HelpHint :text="HELP.whiteSpace" :label="t('properties.f.whiteSpace')" />
           </div>
 
           <!-- Interletra (letterSpacing): CSS length string e.g. "0.05em" /
                "1px". Stored verbatim — PropField text type never coerces. -->
           <PropField
-            label="Interletra"
+            :label="t('properties.f.letterSpacing')"
             :help="HELP.letterSpacing"
             unit="em/px"
             placeholder="normal"
@@ -2133,7 +2133,7 @@ function openAnimHelp(section: string | null = null) {
           <!-- Interlínea (lineHeight): unitless number ("1.4") or a length;
                kept as-is, no coercion. -->
           <PropField
-            label="Interlínea"
+            :label="t('properties.f.lineHeight')"
             :help="HELP.lineHeight"
             unit="× / px"
             placeholder="normal"
@@ -2142,9 +2142,9 @@ function openAnimHelp(section: string | null = null) {
             @update:modelValue="updateProp('lineHeight', $event || undefined)"
           />
 
-          <PropField label="Tag" :help="HELP.semanticTag" :modelValue="selected.data.semanticTag" type="select" :options="[...SEMANTIC_TAGS]" @update:modelValue="updateProp('semanticTag', $event)" />
-          <PropField label="Split" :help="HELP.splitMode" :modelValue="selected.data.splitMode || 'none'" type="select" :options="[...SPLIT_MODES]" @update:modelValue="updateProp('splitMode', $event)" />
-          <PropField label="Stagger" :help="HELP.stagger" :modelValue="selected.data.staggerDelay || 0" type="number" :min="0" @update:modelValue="updateProp('staggerDelay', $event)" />
+          <PropField :label="t('properties.f.tag')" :help="HELP.semanticTag" :modelValue="selected.data.semanticTag" type="select" :options="[...SEMANTIC_TAGS]" @update:modelValue="updateProp('semanticTag', $event)" />
+          <PropField :label="t('properties.f.split')" :help="HELP.splitMode" :modelValue="selected.data.splitMode || 'none'" type="select" :options="[...SPLIT_MODES]" @update:modelValue="updateProp('splitMode', $event)" />
+          <PropField :label="t('properties.f.stagger')" :help="HELP.stagger" :modelValue="selected.data.staggerDelay || 0" type="number" :min="0" @update:modelValue="updateProp('staggerDelay', $event)" />
         </template>
 
         <template v-if="selected.data.type === 'video'">
@@ -2190,7 +2190,7 @@ function openAnimHelp(section: string | null = null) {
           <div v-if="uploadWarning" class="img-msg img-warn" data-test="video-upload-warning">{{ uploadWarning }}</div>
 
           <ResourceCombobox
-            label="Fuente"
+            :label="t('properties.f.font')"
             :help="HELP.videoSrc"
             test-id="video-src"
             placeholder="clip.mp4"
@@ -2200,7 +2200,7 @@ function openAnimHelp(section: string | null = null) {
             @update:modelValue="updateProp('src', $event)"
           />
           <ResourceCombobox
-            label="Portada"
+            :label="t('properties.f.poster')"
             :help="HELP.videoPoster"
             test-id="video-poster"
             placeholder="portada.jpg"
@@ -2210,7 +2210,7 @@ function openAnimHelp(section: string | null = null) {
             @update:modelValue="updateProp('poster', $event || undefined)"
           />
           <PropField
-            label="Reproducción automática"
+            :label="t('properties.f.autoplay')"
             :help="HELP.mediaAutoplay"
             :modelValue="selected.data.autoplay ?? false"
             type="checkbox"
@@ -2218,7 +2218,7 @@ function openAnimHelp(section: string | null = null) {
             @update:modelValue="updateProp('autoplay', $event)"
           />
           <PropField
-            label="Silenciado"
+            :label="t('properties.f.muted')"
             :help="HELP.mediaMuted"
             :modelValue="selected.data.muted ?? true"
             type="checkbox"
@@ -2226,7 +2226,7 @@ function openAnimHelp(section: string | null = null) {
             @update:modelValue="updateProp('muted', $event)"
           />
           <PropField
-            label="Repetir"
+            :label="t('properties.f.repeat')"
             :help="HELP.mediaLoop"
             :modelValue="selected.data.loopMedia ?? false"
             type="checkbox"
@@ -2234,7 +2234,7 @@ function openAnimHelp(section: string | null = null) {
             @update:modelValue="updateProp('loopMedia', $event)"
           />
           <PropField
-            label="Mostrar controles"
+            :label="t('properties.f.showControls')"
             :help="HELP.mediaControls"
             :modelValue="selected.data.controls ?? true"
             type="checkbox"
@@ -2242,7 +2242,7 @@ function openAnimHelp(section: string | null = null) {
             @update:modelValue="updateProp('controls', $event)"
           />
           <PropField
-            label="Reproducir embebido (móvil)"
+            :label="t('properties.f.playsinline')"
             :help="HELP.videoPlaysinline"
             :modelValue="selected.data.playsinline ?? true"
             type="checkbox"
@@ -2251,7 +2251,7 @@ function openAnimHelp(section: string | null = null) {
           />
           <NumberSlider
             id="video-volume"
-            label="Volumen"
+            :label="t('properties.f.volume')"
             :help="HELP.mediaVolume"
             unit="%"
             display="percent"
@@ -2306,7 +2306,7 @@ function openAnimHelp(section: string | null = null) {
           <div v-if="uploadWarning" class="img-msg img-warn" data-test="audio-upload-warning">{{ uploadWarning }}</div>
 
           <ResourceCombobox
-            label="Fuente"
+            :label="t('properties.f.font')"
             :help="HELP.audioSrc"
             test-id="audio-src"
             placeholder="musica.mp3"
@@ -2316,7 +2316,7 @@ function openAnimHelp(section: string | null = null) {
             @update:modelValue="updateProp('src', $event)"
           />
           <PropField
-            label="Reproducción automática"
+            :label="t('properties.f.autoplay')"
             :help="HELP.mediaAutoplay"
             :modelValue="selected.data.autoplay ?? false"
             type="checkbox"
@@ -2324,7 +2324,7 @@ function openAnimHelp(section: string | null = null) {
             @update:modelValue="updateProp('autoplay', $event)"
           />
           <PropField
-            label="Silenciado"
+            :label="t('properties.f.muted')"
             :help="HELP.mediaMuted"
             :modelValue="selected.data.muted ?? true"
             type="checkbox"
@@ -2332,7 +2332,7 @@ function openAnimHelp(section: string | null = null) {
             @update:modelValue="updateProp('muted', $event)"
           />
           <PropField
-            label="Repetir"
+            :label="t('properties.f.repeat')"
             :help="HELP.mediaLoop"
             :modelValue="selected.data.loopMedia ?? false"
             type="checkbox"
@@ -2340,7 +2340,7 @@ function openAnimHelp(section: string | null = null) {
             @update:modelValue="updateProp('loopMedia', $event)"
           />
           <PropField
-            label="Mostrar controles"
+            :label="t('properties.f.showControls')"
             :help="HELP.mediaControls"
             :modelValue="selected.data.controls ?? true"
             type="checkbox"
@@ -2349,7 +2349,7 @@ function openAnimHelp(section: string | null = null) {
           />
           <NumberSlider
             id="audio-volume"
-            label="Volumen"
+            :label="t('properties.f.volume')"
             :help="HELP.mediaVolume"
             unit="%"
             display="percent"
@@ -2385,8 +2385,8 @@ function openAnimHelp(section: string | null = null) {
                   class="anim-add"
                   data-test="formblock-add-field"
                   @click.stop="addFormField()"
-                  title="Agregar campo"
-                  aria-label="Agregar campo"
+                  :title="t('properties.f.addField')"
+                  :aria-label="t('properties.f.addField')"
                 >+</button>
               </div>
 
@@ -2404,20 +2404,20 @@ function openAnimHelp(section: string | null = null) {
                   <div class="anim-card-head">
                     <span class="anim-card-title">{{ field.label || field.name || 'Campo' }}</span>
                     <span class="form-field-actions">
-                      <button class="form-field-move" data-test="formblock-field-up" :disabled="fi === 0" @click="moveFormField(fi, -1)" title="Subir" aria-label="Subir campo">&uarr;</button>
-                      <button class="form-field-move" data-test="formblock-field-down" :disabled="fi === (selected.data.props?.fields || []).length - 1" @click="moveFormField(fi, 1)" title="Bajar" aria-label="Bajar campo">&darr;</button>
-                      <button class="anim-remove" data-test="formblock-field-remove" @click="removeFormField(fi)" title="Eliminar" aria-label="Eliminar campo">&times;</button>
+                      <button class="form-field-move" data-test="formblock-field-up" :disabled="fi === 0" @click="moveFormField(fi, -1)" :title="t('properties.f.moveFieldUp')" :aria-label="t('properties.f.moveFieldUp')">&uarr;</button>
+                      <button class="form-field-move" data-test="formblock-field-down" :disabled="fi === (selected.data.props?.fields || []).length - 1" @click="moveFormField(fi, 1)" :title="t('properties.f.moveFieldDown')" :aria-label="t('properties.f.moveFieldDown')">&darr;</button>
+                      <button class="anim-remove" data-test="formblock-field-remove" @click="removeFormField(fi)" :title="t('common.delete')" :aria-label="t('properties.f.removeField')">&times;</button>
                     </span>
                   </div>
 
-                  <PropField label="Nombre" :help="HELP.formFieldName" :modelValue="field.name || ''" @update:modelValue="updateFormField(fi, 'name', $event)" />
-                  <PropField label="Etiqueta" :help="HELP.formFieldLabel" :modelValue="field.label || ''" @update:modelValue="updateFormField(fi, 'label', $event)" />
-                  <PropField label="Tipo" :help="HELP.formFieldType" :modelValue="field.type || 'text'" type="select" :options="FORM_FIELD_TYPE_OPTS" @update:modelValue="updateFormField(fi, 'type', $event)" />
-                  <PropField label="Requerido" :help="HELP.formFieldRequired" :modelValue="!!field.required" type="checkbox" @update:modelValue="updateFormField(fi, 'required', $event)" />
+                  <PropField :label="t('properties.f.name')" :help="HELP.formFieldName" :modelValue="field.name || ''" @update:modelValue="updateFormField(fi, 'name', $event)" />
+                  <PropField :label="t('properties.f.fieldLabel')" :help="HELP.formFieldLabel" :modelValue="field.label || ''" @update:modelValue="updateFormField(fi, 'label', $event)" />
+                  <PropField :label="t('properties.f.type')" :help="HELP.formFieldType" :modelValue="field.type || 'text'" type="select" :options="FORM_FIELD_TYPE_OPTS" @update:modelValue="updateFormField(fi, 'type', $event)" />
+                  <PropField :label="t('properties.f.required')" :help="HELP.formFieldRequired" :modelValue="!!field.required" type="checkbox" @update:modelValue="updateFormField(fi, 'required', $event)" />
 
                   <template v-if="field.type === 'select' || field.type === 'radio' || field.type === 'checkbox'">
                     <div class="prop-field form-options-field">
-                      <label class="field-label">Opciones</label>
+                      <label class="field-label">{{ t('properties.f.options') }}</label>
                       <textarea
                         class="field-input"
                         rows="3"
@@ -2425,13 +2425,13 @@ function openAnimHelp(section: string | null = null) {
                         :value="fieldOptionsText(field)"
                         @input="updateFormFieldOptions(fi, ($event.target as any).value)"
                       />
-                      <HelpHint :text="HELP.formFieldOptions" label="Opciones" />
+                      <HelpHint :text="HELP.formFieldOptions" :label="t('properties.f.options')" />
                     </div>
                   </template>
 
                   <template v-if="field.type === 'number'">
-                    <PropField label="Mínimo" :help="HELP.formFieldMin" :modelValue="field.min ?? 0" type="number" @update:modelValue="updateFormField(fi, 'min', $event)" />
-                    <PropField label="Máximo" :help="HELP.formFieldMax" :modelValue="field.max ?? 0" type="number" @update:modelValue="updateFormField(fi, 'max', $event)" />
+                    <PropField :label="t('properties.f.minValue')" :help="HELP.formFieldMin" :modelValue="field.min ?? 0" type="number" @update:modelValue="updateFormField(fi, 'min', $event)" />
+                    <PropField :label="t('properties.f.maxValue')" :help="HELP.formFieldMax" :modelValue="field.max ?? 0" type="number" @update:modelValue="updateFormField(fi, 'max', $event)" />
                   </template>
                 </div>
               </div>
@@ -2450,13 +2450,13 @@ function openAnimHelp(section: string | null = null) {
                 @keydown.space.prevent="toggleFormGroup('textos')"
               >
                 <span class="fb-group-toggle" data-test="formblock-group-textos-toggle">{{ formGroups.textos ? '▾' : '▸' }}</span>
-                <span class="fb-group-name">Textos</span>
+                <span class="fb-group-name">{{ t('properties.f.texts') }}</span>
               </div>
 
               <div v-show="formGroups.textos" class="fb-group-body" data-test="formblock-group-textos-body">
-                <PropField label="Botón" :help="HELP.formSubmit" :modelValue="selected.data.props?.submitLabel || ''" @update:modelValue="updateFormProp('submitLabel', $event)" />
-                <PropField label="Éxito" :help="HELP.formSuccess" :modelValue="selected.data.props?.successMessage || ''" type="textarea" @update:modelValue="updateFormProp('successMessage', $event)" />
-                <PropField label="Error" :help="HELP.formError" :modelValue="selected.data.props?.errorMessage || ''" type="textarea" @update:modelValue="updateFormProp('errorMessage', $event)" />
+                <PropField :label="t('properties.f.button')" :help="HELP.formSubmit" :modelValue="selected.data.props?.submitLabel || ''" @update:modelValue="updateFormProp('submitLabel', $event)" />
+                <PropField :label="t('properties.f.success')" :help="HELP.formSuccess" :modelValue="selected.data.props?.successMessage || ''" type="textarea" @update:modelValue="updateFormProp('successMessage', $event)" />
+                <PropField :label="t('properties.f.error')" :help="HELP.formError" :modelValue="selected.data.props?.errorMessage || ''" type="textarea" @update:modelValue="updateFormProp('errorMessage', $event)" />
               </div>
             </section>
 
@@ -2473,40 +2473,40 @@ function openAnimHelp(section: string | null = null) {
                 @keydown.space.prevent="toggleFormGroup('estilo')"
               >
                 <span class="fb-group-toggle" data-test="formblock-group-estilo-toggle">{{ formGroups.estilo ? '▾' : '▸' }}</span>
-                <span class="fb-group-name">Estilo</span>
+                <span class="fb-group-name">{{ t('properties.groupStyle') }}</span>
               </div>
 
               <div v-show="formGroups.estilo" class="fb-group-body" data-test="formblock-group-estilo-body">
                 <FormColorField
-                  label="Fondo de las casillas"
+                  :label="t('properties.f.inputBg')"
                   testKey="inputBg"
                   :help="HELP.formInputBg"
                   :modelValue="selected.data.props?.styling?.inputBg || ''"
                   @update:modelValue="updateFormStyling('inputBg', $event)"
                 />
                 <FormColorField
-                  label="Color del texto"
+                  :label="t('properties.f.textColor')"
                   testKey="inputText"
                   :help="HELP.formInputText"
                   :modelValue="selected.data.props?.styling?.inputText || ''"
                   @update:modelValue="updateFormStyling('inputText', $event)"
                 />
                 <FormColorField
-                  label="Borde de las casillas"
+                  :label="t('properties.f.inputBorder')"
                   testKey="inputBorder"
                   :help="HELP.formInputBorder"
                   :modelValue="selected.data.props?.styling?.inputBorder || ''"
                   @update:modelValue="updateFormStyling('inputBorder', $event)"
                 />
                 <FormColorField
-                  label="Fondo del botón"
+                  :label="t('properties.f.buttonBg')"
                   testKey="buttonBg"
                   :help="HELP.formButtonBg"
                   :modelValue="selected.data.props?.styling?.buttonBg || ''"
                   @update:modelValue="updateFormStyling('buttonBg', $event)"
                 />
                 <FormColorField
-                  label="Texto del botón"
+                  :label="t('properties.f.buttonText')"
                   testKey="buttonText"
                   :help="HELP.formButtonText"
                   :modelValue="selected.data.props?.styling?.buttonText || ''"
@@ -2514,7 +2514,7 @@ function openAnimHelp(section: string | null = null) {
                 />
 
                 <div class="prop-field" data-test="formblock-style-fontFamily">
-                  <label class="field-label">Tipografía</label>
+                  <label class="field-label">{{ t('properties.f.typography') }}</label>
                   <select
                     class="field-input field-control"
                     data-test="formblock-style-fontFamily-select"
@@ -2523,13 +2523,13 @@ function openAnimHelp(section: string | null = null) {
                   >
                     <option v-for="o in FORM_FONT_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
                   </select>
-                  <HelpHint :text="HELP.formFont" label="Tipografía" />
+                  <HelpHint :text="HELP.formFont" :label="t('properties.f.typography')" />
                 </div>
                 <div
                   v-if="isCustomFont(selected.data.props?.styling?.fontFamily || '')"
                   class="prop-field"
                 >
-                  <label class="field-label">Personalizada</label>
+                  <label class="field-label">{{ t('properties.f.custom') }}</label>
                   <input
                     type="text"
                     class="field-input field-control"
@@ -2555,12 +2555,12 @@ function openAnimHelp(section: string | null = null) {
                 @keydown.space.prevent="toggleFormGroup('avanzado')"
               >
                 <span class="fb-group-toggle" data-test="formblock-group-avanzado-toggle">{{ formGroups.avanzado ? '▾' : '▸' }}</span>
-                <span class="fb-group-name">Avanzado</span>
+                <span class="fb-group-name">{{ t('properties.f.advanced') }}</span>
               </div>
 
               <div v-show="formGroups.avanzado" class="fb-group-body" data-test="formblock-group-avanzado-body">
-                <PropField label="Webhook" :help="HELP.formWebhook" :modelValue="selected.data.props?.webhookUrl || ''" @update:modelValue="updateFormProp('webhookUrl', $event)" />
-                <PropField label="Honeypot" :help="HELP.formHoneypot" :modelValue="selected.data.props?.honeypotField || ''" @update:modelValue="updateFormProp('honeypotField', $event)" />
+                <PropField :label="t('properties.f.webhook')" :help="HELP.formWebhook" :modelValue="selected.data.props?.webhookUrl || ''" @update:modelValue="updateFormProp('webhookUrl', $event)" />
+                <PropField :label="t('properties.f.honeypot')" :help="HELP.formHoneypot" :modelValue="selected.data.props?.honeypotField || ''" @update:modelValue="updateFormProp('honeypotField', $event)" />
               </div>
             </section>
 
@@ -2594,7 +2594,7 @@ function openAnimHelp(section: string | null = null) {
              Every write goes through setAtPath('<selectedPath>.link', …). -->
         <div class="prop-group-title">{{ t('properties.groupLink') }}</div>
         <div class="prop-field" data-test="link-mode-field">
-          <label class="field-label">Tipo</label>
+          <label class="field-label">{{ t('properties.f.type') }}</label>
           <select
             class="field-input field-control"
             data-test="link-mode"
@@ -2603,17 +2603,17 @@ function openAnimHelp(section: string | null = null) {
           >
             <option v-for="o in LINK_MODE_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
           </select>
-          <HelpHint :text="HELP.linkMode" label="Tipo de link" />
+          <HelpHint :text="HELP.linkMode" :label="t('properties.f.linkType')" />
         </div>
 
         <template v-if="linkMode === 'url'">
-          <PropField label="URL" :help="HELP.linkUrl" :modelValue="selected.data.link?.href || ''" @update:modelValue="updateNestedProp('link', 'href', $event)" />
-          <PropField label="Target" :help="HELP.linkTarget" :modelValue="selected.data.link?.target || '_blank'" type="select" :options="['_blank', '_self']" @update:modelValue="updateNestedProp('link', 'target', $event)" />
+          <PropField :label="t('properties.f.url')" :help="HELP.linkUrl" :modelValue="selected.data.link?.href || ''" @update:modelValue="updateNestedProp('link', 'href', $event)" />
+          <PropField :label="t('properties.f.target')" :help="HELP.linkTarget" :modelValue="selected.data.link?.target || '_blank'" type="select" :options="['_blank', '_self']" @update:modelValue="updateNestedProp('link', 'target', $event)" />
         </template>
 
         <template v-else-if="linkMode === 'site'">
           <div class="prop-field" data-test="link-site-field">
-            <label class="field-label">Sitio</label>
+            <label class="field-label">{{ t('properties.f.site') }}</label>
             <select
               v-if="otherProjectSlugs.length"
               class="field-input field-control"
@@ -2626,7 +2626,7 @@ function openAnimHelp(section: string | null = null) {
             <span v-else class="field-control link-site-empty" data-test="link-site-empty">
               No hay otros proyectos en este espacio de trabajo.
             </span>
-            <HelpHint :text="HELP.linkSite" label="Sitio destino" />
+            <HelpHint :text="HELP.linkSite" :label="t('properties.f.targetSite')" />
           </div>
         </template>
 
@@ -2639,9 +2639,9 @@ function openAnimHelp(section: string | null = null) {
               data-test="anim-help-open"
               @click="openAnimHelp()"
               title="Guía de animaciones: tipos y disparadores"
-              aria-label="Abrir guía de animaciones"
+              :aria-label="t('properties.f.openAnimGuide')"
             >?</button>
-            <button class="anim-add" @click="addAnimation()" title="Agregar animacion" aria-label="Agregar animacion">+</button>
+            <button class="anim-add" @click="addAnimation()" :title="t('properties.f.addAnim')" :aria-label="t('properties.f.addAnim')">+</button>
           </span>
         </div>
 
@@ -2652,11 +2652,11 @@ function openAnimHelp(section: string | null = null) {
         >
           <div class="anim-card-head">
             <span class="anim-card-title">{{ anim.type }} · {{ anim.trigger }}</span>
-            <button class="anim-remove" @click="removeAnimation(i)" title="Eliminar" aria-label="Eliminar animacion">&times;</button>
+            <button class="anim-remove" @click="removeAnimation(i)" :title="t('common.delete')" :aria-label="t('properties.f.removeAnim')">&times;</button>
           </div>
 
           <PropField
-            label="Tipo"
+            :label="t('properties.f.type')"
             :help="HELP.animType"
             :modelValue="anim.type"
             type="select"
@@ -2664,7 +2664,7 @@ function openAnimHelp(section: string | null = null) {
             @update:modelValue="updateAnim(i, 'type', $event)"
           />
           <PropField
-            label="Trigger"
+            :label="t('properties.f.trigger')"
             :help="HELP.animTrigger"
             :modelValue="anim.trigger"
             type="select"
@@ -2672,14 +2672,14 @@ function openAnimHelp(section: string | null = null) {
             @update:modelValue="updateAnim(i, 'trigger', $event)"
           />
           <PropField
-            label="Desde"
+            :label="t('properties.f.fromVal')"
             :help="HELP.animFrom"
             :modelValue="anim.from"
             type="number"
             @update:modelValue="updateAnim(i, 'from', $event)"
           />
           <PropField
-            label="Hasta"
+            :label="t('properties.f.toVal')"
             :help="HELP.animTo"
             :modelValue="anim.to"
             type="number"
@@ -2688,7 +2688,7 @@ function openAnimHelp(section: string | null = null) {
 
           <template v-if="anim.trigger === 'depends'">
             <ResourceCombobox
-              label="Depende de"
+              :label="t('properties.f.dependsOn')"
               :help="HELP.animDependsOn"
               placeholder="ID de otro elemento"
               :test-id="`anim-depends-on-${i}`"
@@ -2697,7 +2697,7 @@ function openAnimHelp(section: string | null = null) {
               @update:modelValue="updateAnim(i, 'dependsOn', $event || undefined)"
             />
             <div class="prop-field" :data-test="`anim-depends-event-row-${i}`">
-              <label class="field-label">Cuando</label>
+              <label class="field-label">{{ t('properties.f.when') }}</label>
               <select
                 class="field-input field-control"
                 :value="anim.dependsEvent || ''"
@@ -2707,7 +2707,7 @@ function openAnimHelp(section: string | null = null) {
                 <option value="">— Elige —</option>
                 <option v-for="opt in DEPENDS_EVENT_OPTS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
               </select>
-              <HelpHint :text="HELP.animDependsEvent" label="Cuando" />
+              <HelpHint :text="HELP.animDependsEvent" :label="t('properties.f.when')" />
             </div>
           </template>
 
@@ -2715,7 +2715,7 @@ function openAnimHelp(section: string | null = null) {
             <div class="anim-range-row" :data-test="`anim-range-row-${i}`">
               <RangeSlider
                 :id="`anim-range-${i}`"
-                label="Tramo del scroll"
+                :label="t('properties.f.scrollRange')"
                 :help="HELP.animRange"
                 :min="0"
                 :max="100"
@@ -2733,7 +2733,7 @@ function openAnimHelp(section: string | null = null) {
 
           <NumberSlider
             :id="`anim-${i}-duration`"
-            label="Duracion"
+            :label="t('properties.f.duration')"
             :help="HELP.animDuration"
             unit="ms"
             :min="0"
@@ -2745,7 +2745,7 @@ function openAnimHelp(section: string | null = null) {
           />
           <NumberSlider
             :id="`anim-${i}-delay`"
-            label="Delay"
+            :label="t('properties.f.delay')"
             :help="HELP.animDelay"
             unit="ms"
             :min="0"
@@ -2756,7 +2756,7 @@ function openAnimHelp(section: string | null = null) {
             @update:modelValue="updateAnim(i, 'delay', $event)"
           />
           <PropField
-            label="Easing"
+            :label="t('properties.f.easing')"
             :help="HELP.animEasingShort"
             :modelValue="anim.easing || 'easeInOut'"
             type="select"
@@ -2771,14 +2771,14 @@ function openAnimHelp(section: string | null = null) {
 
           <template v-if="anim.trigger === 'loop'">
             <PropField
-              label="Loop"
+              :label="t('properties.f.loop')"
               :help="HELP.animLoop"
               :modelValue="anim.loop ?? true"
               type="checkbox"
               @update:modelValue="updateAnim(i, 'loop', $event)"
             />
             <PropField
-              label="Yoyo"
+              :label="t('properties.f.yoyo')"
               :help="HELP.animYoyo"
               :modelValue="anim.yoyo ?? false"
               type="checkbox"

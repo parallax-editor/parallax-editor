@@ -54,6 +54,27 @@ export function setLocale(locale: Locale): void {
   try { localStorage.setItem(STORAGE_KEY, locale) } catch { /* noop */ }
   if (typeof document !== 'undefined') document.documentElement.lang = locale
   try { setEngineLocale(locale) } catch { /* engine may be older — no-op */ }
+  // Tell the native menu (Electron) so the menu bar labels and the
+  // "Window → Language" radio reflect the new choice. Web: no-op.
+  try {
+    const el = (globalThis as any).electronAPI
+    if (el && typeof el.setLocale === 'function') el.setLocale(locale)
+  } catch { /* no-op */ }
+}
+
+// One-time subscription: when the user picks a language from the native
+// "Window → Language" submenu, the main process pushes the new locale here.
+// Apply it via setLocale (which loops back to the bridge — the bridge call is
+// idempotent and the next push is suppressed by the radio's own toggle).
+if (typeof globalThis !== 'undefined') {
+  try {
+    const el = (globalThis as any).electronAPI
+    if (el && typeof el.onLocaleChanged === 'function') {
+      el.onLocaleChanged((next: Locale) => {
+        if (next === 'es' || next === 'en') setLocale(next)
+      })
+    }
+  } catch { /* no-op */ }
 }
 
 // Sync the engine to whatever locale we resolved at boot, before any

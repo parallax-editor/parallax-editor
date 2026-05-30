@@ -171,8 +171,18 @@ const gridStyle = computed(() => {
   // so it never collapses or gets absurdly fat at extreme zooms).
   const line = Math.min(8, Math.max(1, 1 / zoom))
   const color = 'rgba(0,153,255,0.5)'
+  // Center the grid on the artboard. Default background-position (0,0)
+  // anchored the first line at the top-left corner, which made it look like
+  // the grid "started" from there. Offset background-position so a grid line
+  // passes through the artboard's geometric center — visually the cells now
+  // grow outward from the middle. The offset is mod step so the repeating
+  // gradient still tiles seamlessly. Line width is subtracted so the centered
+  // line is the centerline, not its left edge.
+  const offsetX = ((vp.width / 2) % stepX) - line / 2
+  const offsetY = ((vp.height / 2) % stepY) - line / 2
   return {
     backgroundSize: `${stepX}px ${stepY}px`,
+    backgroundPosition: `${offsetX}px ${offsetY}px`,
     backgroundImage:
       `linear-gradient(to right, ${color} 0, ${color} ${line}px, transparent ${line}px),` +
       `linear-gradient(to bottom, ${color} 0, ${color} ${line}px, transparent ${line}px)`,

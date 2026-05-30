@@ -58,7 +58,7 @@ const deployLabel = computed(() => {
 async function loadStatus() {
   if (!state.projectType) return
   try {
-    const s = await gitApi.status(state.projectType)
+    const s = await gitApi.status(state.projectType, state.slug || undefined)
     pending.value = s?.pending || []
     originRecent.value = s?.originRecent || []
   } catch {

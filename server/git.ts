@@ -318,9 +318,15 @@ function parseCommitLines(raw: string): Commit[] {
  * pushed): `git log @{u}..HEAD`. Empty array if there is no upstream or
  * nothing is ahead. Never throws.
  */
-export function gitPendingCommits(cwd: string): Commit[] {
+export function gitPendingCommits(cwd: string, pathspec?: string): Commit[] {
   try {
-    const raw = git('log @{u}..HEAD --format="%H|%s|%ci"', cwd)
+    // Scope by pathspec so the GitPanel only lists commits that ACTUALLY
+    // touched files under the open slug's content folder. Without it the
+    // panel showed every workspace commit, which is confusing when many
+    // sites share the repo. Pathspec is quoted; sanitized at the caller
+    // via getContentRelPath (no shell metacharacters slip through).
+    const scope = pathspec ? ` -- "${pathspec.replace(/"/g, '\\"')}"` : ''
+    const raw = git(`log @{u}..HEAD --format="%H|%s|%ci"${scope}`, cwd)
     return parseCommitLines(raw)
   } catch {
     // No upstream tracking branch (or other git error) → nothing pending.
@@ -334,7 +340,7 @@ export function gitPendingCommits(cwd: string): Commit[] {
  * (offline / no remote) we just read whatever `origin/main` ref we already
  * have locally. Empty array if there is no `origin/main` at all. Never throws.
  */
-export function gitOriginRecent(cwd: string, n = 5): Commit[] {
+export function gitOriginRecent(cwd: string, n = 5, pathspec?: string): Commit[] {
   try {
     // Short timeout so an offline machine doesn't hang the status request.
     execSync('git fetch origin main', { cwd, encoding: 'utf-8', timeout: 5000, stdio: 'pipe' })
@@ -342,8 +348,15 @@ export function gitOriginRecent(cwd: string, n = 5): Commit[] {
     // Offline / no remote / branch missing — fall through to the local ref.
   }
   try {
-    const raw = git(`log origin/main -n ${n} --format="%H|%s|%ci"`, cwd)
-    return parseCommitLines(raw)
+    // Same pathspec-scoping rationale as gitPendingCommits above. When the
+    // user is editing site "foo", only show remote commits that touched
+    // content/foo/* so the history is meaningful to them.
+    const scope = pathspec ? ` -- "${pathspec.replace(/"/g, '\\"')}"` : ''
+    // `-n` after the pathspec filter would limit BEFORE filtering — useless
+    // because we'd often get 0 results. Pull a wider window (3*n) and slice
+    // to n in JS so we end up with n matching commits at most.
+    const raw = git(`log origin/main -n ${n * 3} --format="%H|%s|%ci"${scope}`, cwd)
+    return parseCommitLines(raw).slice(0, n)
   } catch {
     return []
   }

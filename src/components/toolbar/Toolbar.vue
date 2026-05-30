@@ -24,7 +24,6 @@ const dialog = useDialog()
 const { t } = useI18n()
 import MobileSizeControl from './MobileSizeControl.vue'
 import GridGuidesControl from './GridGuidesControl.vue'
-import LanguageSwitcher from '../ui/LanguageSwitcher.vue'
 
 // ── Claude button availability ───────────────────────────────────────────────
 // The "Claude" button is only usable when the `claude` CLI is installed on this
@@ -156,12 +155,8 @@ function onOpenLivePreview() {
 async function onEnableIndependent() {
   if (isIndependent.value) return
   const ok = await dialog.confirm({
-    title: 'Separar escritorio y móvil',
-    message:
-      'Vas a separar escritorio y móvil en dos configuraciones independientes.\n\n' +
-      'Móvil empieza como copia de escritorio (con los ajustes móviles aplicados) ' +
-      'y desde ahora podrás editarlos por separado.\n\n' +
-      'Puedes deshacer con Cmd+Z. ¿Continuar?',
+    title: t('splitDevicesDialog.title'),
+    message: t('splitDevicesDialog.message'),
     confirmText: 'Continuar',
   })
   if (ok) enableIndependentViews()
@@ -213,7 +208,6 @@ async function onEnableIndependent() {
           :title="publishTitle"
         >{{ t('toolbar.publish') }}{{ gitAhead > 0 ? ` (${gitAhead})` : '' }}</button>
         <button class="save-btn" data-test="save" @click="emit('save')" :disabled="!isDirty" :title="t('toolbar.save') + ' (Cmd+S)'">{{ t('toolbar.save') }}</button>
-        <LanguageSwitcher />
       </div>
     </div>
 

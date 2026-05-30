@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { state, getAtPath, setAtPath, isPathLocked, isNodeLockedById, VIEWPORTS, GRID_PERCENT, markDragEnded, setCanvasDragActive, hasMultiSelection, multiSelectedElementPaths, setCanvasSelection, toggleCanvasSelection } from '../../stores/editor'
+import { state, getAtPath, setAtPath, setAtPathSilent, pushUndoOnce, isPathLocked, isNodeLockedById, VIEWPORTS, GRID_PERCENT, markDragEnded, setCanvasDragActive, hasMultiSelection, multiSelectedElementPaths, setCanvasSelection, toggleCanvasSelection } from '../../stores/editor'
 import { elementAtPoint, findElementPath, pointInArtboard } from '../../composables/useSelection'
 
 const props = defineProps<{
@@ -43,6 +43,101 @@ function flashDragHint(msg: string) {
   hintTimer = setTimeout(() => {
     if (dragHint.value === msg) dragHint.value = null
   }, 2600)
+}
+
+// ─── Inline text editing (double-click) ──────────────────────────────────────
+// Illustrator-style: double-clicking a TEXT element on the canvas turns the
+// element's DOM node into a contentEditable surface. Typing edits the live
+// preview AND persists `element.content` to the store. Esc / Enter / blur /
+// click outside commits. Re-entrant safe: we tear down any prior session
+// before starting a new one.
+const inlineEditing = ref(false)
+let inlineEditNode: HTMLElement | null = null
+let inlineEditPath: string | null = null
+let inlineEditOnInput: ((e: Event) => void) | null = null
+let inlineEditOnBlur: ((e: Event) => void) | null = null
+let inlineEditOnKeydown: ((e: KeyboardEvent) => void) | null = null
+
+function stopInlineTextEdit(commit = true) {
+  if (!inlineEditing.value) return
+  const node = inlineEditNode
+  const path = inlineEditPath
+  if (node) {
+    node.removeAttribute('contenteditable')
+    node.style.cursor = ''
+    node.style.outline = ''
+    if (inlineEditOnInput) node.removeEventListener('input', inlineEditOnInput)
+    if (inlineEditOnBlur) node.removeEventListener('blur', inlineEditOnBlur)
+    if (inlineEditOnKeydown) node.removeEventListener('keydown', inlineEditOnKeydown)
+    // Commit final value once more in case the input listener missed the
+    // last keystroke before blur fired.
+    if (commit && path) {
+      const text = node.innerText
+      setAtPath(`${path}.content`, text)
+    }
+  }
+  inlineEditing.value = false
+  inlineEditNode = null
+  inlineEditPath = null
+  inlineEditOnInput = null
+  inlineEditOnBlur = null
+  inlineEditOnKeydown = null
+}
+
+function startInlineTextEdit(e: MouseEvent) {
+  // Only text elements. Other types fall through to the default move-area
+  // behavior (which double-click does not trigger anyway).
+  if (!state.selectedPath) return
+  const node = getAtPath(state.selectedPath)
+  if (!node || node.type !== 'text') return
+  e.preventDefault()
+  e.stopPropagation()
+  const dom = findDomElement()
+  if (!dom) return
+  // Tear down any previous session targeting a different element.
+  stopInlineTextEdit(false)
+  inlineEditing.value = true
+  inlineEditNode = dom
+  inlineEditPath = state.selectedPath
+  dom.setAttribute('contenteditable', 'plaintext-only')
+  dom.style.cursor = 'text'
+  dom.style.outline = '2px solid var(--accent-strong, #b06bff)'
+  // Use the text element's CURRENT rendered content as the starting point;
+  // setting innerText would clobber any inline children (split spans, etc.)
+  // — text elements use plain text content, so this is safe.
+  inlineEditOnInput = () => {
+    if (!inlineEditPath || !inlineEditNode) return
+    setAtPath(`${inlineEditPath}.content`, inlineEditNode.innerText)
+  }
+  inlineEditOnBlur = () => stopInlineTextEdit(true)
+  inlineEditOnKeydown = (ev: KeyboardEvent) => {
+    if (ev.key === 'Escape') {
+      ev.preventDefault()
+      stopInlineTextEdit(true)
+    }
+    // Enter (without shift) commits and exits. Shift+Enter inserts a newline.
+    if (ev.key === 'Enter' && !ev.shiftKey) {
+      ev.preventDefault()
+      stopInlineTextEdit(true)
+    }
+  }
+  dom.addEventListener('input', inlineEditOnInput)
+  dom.addEventListener('blur', inlineEditOnBlur)
+  dom.addEventListener('keydown', inlineEditOnKeydown)
+  // Focus + place caret at end so typing extends the current text.
+  dom.focus()
+  try {
+    const range = document.createRange()
+    range.selectNodeContents(dom)
+    range.collapse(false)
+    const sel = window.getSelection()
+    if (sel) {
+      sel.removeAllRanges()
+      sel.addRange(range)
+    }
+  } catch {
+    /* selection APIs can fail in odd contexts; non-fatal */
+  }
 }
 
 function findDomElement(): HTMLElement | null {
@@ -537,7 +632,7 @@ function applyGroupMove(e: MouseEvent) {
     // by the engine, so elements may be dragged outside their sections freely.
     const ox = emitCell(it.cellX, newX, it.boxW, true)
     const oy = emitCell(it.cellY, newY, it.boxH, true)
-    setAtPath(`${it.path}.position`, { x: ox.value, y: oy.value })
+    setAtPathSilent(`${it.path}.position`, { x: ox.value, y: oy.value })
   }
 }
 
@@ -617,14 +712,14 @@ function applyGroupResize(e: MouseEvent) {
     const ox = emitCell(it.cellX, newX, it.boxW, true)
     const oy = emitCell(it.cellY, newY, it.boxH, true)
     const curPos = getAtPath(`${it.path}.position`) || {}
-    setAtPath(`${it.path}.position`, { ...curPos, x: ox.value, y: oy.value })
+    setAtPathSilent(`${it.path}.position`, { ...curPos, x: ox.value, y: oy.value })
     // Tamaño: solo elementos CON size explícito (los demás solo se reposicionan).
     if (it.hasW || it.hasH) {
       const cur = getAtPath(`${it.path}.size`) || {}
       const patch: any = { ...cur }
       if (it.hasW) patch.width = emitCell(it.cellW, Math.max(1, it.wPct * sx), it.boxW, true).value
       if (it.hasH) patch.height = emitCell(it.cellH, Math.max(1, it.hPct * sy), it.boxH, true).value
-      setAtPath(`${it.path}.size`, patch)
+      setAtPathSilent(`${it.path}.size`, patch)
     }
   }
 }
@@ -713,6 +808,8 @@ function onMouseMove(e: MouseEvent) {
     isDragging.value = true
     if (pendingKind.value === 'group') isGroupDragging.value = true
     pendingMove.value = false
+      // Single undo snapshot for the whole gesture.
+      pushUndoOnce()
     // Item #2: mark a live canvas drag so the overview refit watcher skips
     // re-fitting (which would reset the "Vista completa" zoom/pan mid-drag).
     setCanvasDragActive(true)
@@ -773,7 +870,7 @@ function onMouseMove(e: MouseEvent) {
     const cellY: Cell = dragOriginal.value.cellY
     const ox = emitCell(cellX, newX, boxW, true)
     const oy = emitCell(cellY, newY, boxH, true)
-    setAtPath(`${state.selectedPath}.position`, { x: ox.value, y: oy.value })
+    setAtPathSilent(`${state.selectedPath}.position`, { x: ox.value, y: oy.value })
     if (ox.converted || oy.converted) {
       flashDragHint('Posición responsiva convertida a % para moverla con precisión')
     }
@@ -857,7 +954,7 @@ function onMouseMove(e: MouseEvent) {
       if (newX !== o.xPct) {
         const ox = emitCell(o.cellX, newX, boxW, true)
         const curPos = getAtPath(`${state.selectedPath}.position`) || {}
-        setAtPath(`${state.selectedPath}.position`, { ...curPos, x: ox.value })
+        setAtPathSilent(`${state.selectedPath}.position`, { ...curPos, x: ox.value })
         convertedAny = convertedAny || ox.converted
       }
     }
@@ -868,13 +965,13 @@ function onMouseMove(e: MouseEvent) {
       if (newY !== o.yPct) {
         const oy = emitCell(o.cellY, newY, boxH, true)
         const curPos = getAtPath(`${state.selectedPath}.position`) || {}
-        setAtPath(`${state.selectedPath}.position`, { ...curPos, y: oy.value })
+        setAtPathSilent(`${state.selectedPath}.position`, { ...curPos, y: oy.value })
         convertedAny = convertedAny || oy.converted
       }
     }
 
     const current = getAtPath(`${state.selectedPath}.size`) || {}
-    setAtPath(`${state.selectedPath}.size`, { ...current, ...sizePatch })
+    setAtPathSilent(`${state.selectedPath}.size`, { ...current, ...sizePatch })
     if (convertedAny) {
       flashDragHint('Tamaño responsivo convertido a % para redimensionar con precisión')
     }
@@ -907,6 +1004,8 @@ function onMouseUp(e?: MouseEvent) {
     markDragEnded()
     const wasGroup = pendingKind.value === 'group'
     pendingMove.value = false
+      // Single undo snapshot for the whole gesture.
+      pushUndoOnce()
     pendingKind.value = null
     clickThroughSelect(e, wasGroup)
     dragType.value = null
@@ -922,6 +1021,8 @@ function onMouseUp(e?: MouseEvent) {
   groupResizeItems.value = []
   groupResizeOrig.value = null
   pendingMove.value = false
+      // Single undo snapshot for the whole gesture.
+      pushUndoOnce()
   pendingKind.value = null
   groupDragItems.value = []
   dragType.value = null
@@ -992,7 +1093,7 @@ const boxStyle = computed(() => {
 
     <!-- Move area: disabled (no pointer events) while locked so a drag never
          starts and the canvas hit-test stays clean. -->
-    <div v-if="!isLocked" class="move-area" @mousedown="startMove" />
+    <div v-if="!isLocked" class="move-area" @mousedown="startMove" @dblclick="startInlineTextEdit" />
 
     <!-- Resize + rotate handles only when unlocked. -->
     <template v-if="!isLocked">

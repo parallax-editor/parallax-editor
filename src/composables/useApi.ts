@@ -161,7 +161,7 @@ export const gitApi = {
     ),
   // Publicar status: ahead-count + pending-to-push commits + last 5 on
   // origin/main. Best-effort server-side (no upstream / offline → empty/0).
-  status: (type: string) => api<GitStatus>(`/git/${type}/status`),
+  status: (type: string, slug?: string) => api<GitStatus>(`/git/${type}/status${slug ? `?slug=${encodeURIComponent(slug)}` : ''}`),
   // SECURITY: the save commit MUST be scoped to the active site's content dir.
   // The `slug` is sent so the server stages ONLY content/<slug> (eventos) or
   // content/portafolio/<slug> (site) — never a repo-wide `git add -A`.

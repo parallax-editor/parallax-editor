@@ -224,6 +224,65 @@ function sendMenu(action) {
 // inEditor arranca en false (la app abre en el selector); useGit/hasS3 en true
 // hasta que el renderer reporte (evita parpadeo). El menú se reconstruye en cada
 // reporte.
+// Menú nativo bilingüe. El renderer reporta su locale activo por IPC
+// ('app:set-locale') y el menú se reconstruye con `mt(key)` que lee de este
+// dict. Default 'es' para back-compat antes de que el renderer reporte.
+let currentLocale = 'es'
+const MENU_STRINGS = {
+  es: {
+    about: 'Acerca de Parallax Editor', checkUpdates: 'Buscar actualizaciones…',
+    loginAtStart: 'Iniciar al encender la Mac', quit: 'Salir',
+    file: 'Archivo', fileNew: 'Nuevo proyecto…', fileOpen: 'Abrir / Cambiar de proyecto',
+    fileSave: 'Guardar', fileImport: 'Importar imágenes…', fileClose: 'Cerrar proyecto',
+    edit: 'Edición', undo: 'Deshacer', redo: 'Rehacer', cut: 'Cortar', copy: 'Copiar',
+    paste: 'Pegar', duplicate: 'Duplicar', deleteLbl: 'Eliminar', selectAll: 'Seleccionar todo',
+    element: 'Elemento', addElement: 'Agregar elemento', addSection: 'Agregar sección',
+    toggleLock: 'Bloquear / Desbloquear', toggleVisible: 'Mostrar / Ocultar',
+    git: 'Git', gitPull: 'Traer cambios (pull)', gitHistory: 'Ver historial / commits',
+    gitStatus: 'Estado del repositorio',
+    publish: 'Publicar', publishS3: 'Publicar a S3', livePreview: 'Vista en vivo',
+    openPublished: 'Abrir sitio publicado',
+    view: 'Ver', togglePreview: 'Edición / Vista previa', toggleGrid: 'Cuadrícula y guías',
+    zoomReset: 'Zoom real', zoomIn: 'Acercar', zoomOut: 'Alejar',
+    reload: 'Recargar', forceReload: 'Forzar recarga', devtools: 'Herramientas de desarrollo',
+    fullscreen: 'Pantalla completa',
+    window: 'Ventana', winClaude: 'Asistente Claude', winResources: 'Recursos',
+    winSite: 'Sitio', winTheme: 'Tema',
+    language: 'Idioma', langSpanish: 'Español', langEnglish: 'Inglés',
+    help: 'Ayuda', helpDiag: 'Diagnóstico…', helpGuide: 'Guía de uso',
+    helpDownloads: 'Versión / Descargas',
+    pickFolder: 'Elegir carpeta', pickFolderBtn: 'Elegir',
+  },
+  en: {
+    about: 'About Parallax Editor', checkUpdates: 'Check for updates…',
+    loginAtStart: 'Launch at login', quit: 'Quit',
+    file: 'File', fileNew: 'New project…', fileOpen: 'Open / Switch project',
+    fileSave: 'Save', fileImport: 'Import images…', fileClose: 'Close project',
+    edit: 'Edit', undo: 'Undo', redo: 'Redo', cut: 'Cut', copy: 'Copy',
+    paste: 'Paste', duplicate: 'Duplicate', deleteLbl: 'Delete', selectAll: 'Select all',
+    element: 'Element', addElement: 'Add element', addSection: 'Add section',
+    toggleLock: 'Lock / Unlock', toggleVisible: 'Show / Hide',
+    git: 'Git', gitPull: 'Pull changes', gitHistory: 'History / commits',
+    gitStatus: 'Repository status',
+    publish: 'Publish', publishS3: 'Publish to S3', livePreview: 'Live preview',
+    openPublished: 'Open published site',
+    view: 'View', togglePreview: 'Edit / Preview', toggleGrid: 'Grid and guides',
+    zoomReset: 'Actual size', zoomIn: 'Zoom in', zoomOut: 'Zoom out',
+    reload: 'Reload', forceReload: 'Force reload', devtools: 'Developer tools',
+    fullscreen: 'Full screen',
+    window: 'Window', winClaude: 'Claude assistant', winResources: 'Resources',
+    winSite: 'Site', winTheme: 'Theme',
+    language: 'Language', langSpanish: 'Spanish', langEnglish: 'English',
+    help: 'Help', helpDiag: 'Diagnostics…', helpGuide: 'User guide',
+    helpDownloads: 'Version / Downloads',
+    pickFolder: 'Pick a folder', pickFolderBtn: 'Pick',
+  },
+}
+function mt(k) {
+  const d = MENU_STRINGS[currentLocale] || MENU_STRINGS.es
+  return d[k] || MENU_STRINGS.es[k] || k
+}
+
 let wsCaps = { useGit: true, hasS3: true, inEditor: false }
 
 function buildMenu() {
@@ -235,7 +294,7 @@ function buildMenu() {
   const ed = (label, action, accelerator) => ({ ...mi(label, action, accelerator), enabled: wsCaps.inEditor })
   // Checkbox "Iniciar al encender" (fresco cada vez para no compartir objeto).
   const makeLoginItem = () => ({
-    label: 'Iniciar al encender la Mac',
+    label: mt('loginAtStart'),
     type: 'checkbox',
     checked: (() => { try { return app.getLoginItemSettings().openAtLogin } catch { return false } })(),
     click: (item) => {
@@ -251,117 +310,138 @@ function buildMenu() {
   const appMenu = {
     label: app.name,
     submenu: [
-      { role: 'about', label: 'Acerca de Parallax Editor' },
-      mi('Buscar actualizaciones…', 'app.checkUpdates'),
+      { role: 'about', label: mt('about') },
+      mi(mt('checkUpdates'), 'app.checkUpdates'),
       { type: 'separator' },
       makeLoginItem(),
       { type: 'separator' },
-      { role: 'quit', label: 'Salir' },
+      { role: 'quit', label: mt('quit') },
     ],
   }
 
   const fileMenu = {
-    label: 'Archivo',
+    label: mt('file'),
     submenu: [
-      mi('Nuevo proyecto…', 'file.new', 'CmdOrCtrl+N'),
-      mi('Abrir / Cambiar de proyecto', 'file.open', 'CmdOrCtrl+O'),
+      mi(mt('fileNew'), 'file.new', 'CmdOrCtrl+N'),
+      mi(mt('fileOpen'), 'file.open', 'CmdOrCtrl+O'),
       { type: 'separator' },
-      ed('Guardar', 'file.save', 'CmdOrCtrl+S'),
-      ed('Importar imágenes…', 'file.import'),
+      ed(mt('fileSave'), 'file.save', 'CmdOrCtrl+S'),
+      ed(mt('fileImport'), 'file.import'),
       { type: 'separator' },
-      ed('Cerrar proyecto', 'file.close', 'CmdOrCtrl+W'),
+      ed(mt('fileClose'), 'file.close', 'CmdOrCtrl+W'),
     ],
   }
 
   // Edición: TODO (incluidos los roles nativos undo/cut/copy/paste/selectAll) se
   // deshabilita en el home — solo tiene sentido con un sitio abierto.
   const editMenu = {
-    label: 'Edición',
+    label: mt('edit'),
     submenu: [
-      { role: 'undo', label: 'Deshacer', enabled: wsCaps.inEditor },
-      { role: 'redo', label: 'Rehacer', enabled: wsCaps.inEditor },
+      // Custom undo/redo so Cmd+Z routes through `emitMenu('edit.undo')` →
+      // the Vue store. role:'undo' was firing the browser's native undo on
+      // the focused input only — masking our store undo entirely when an
+      // element was selected (the property panel inputs caught the keystroke).
+      { ...mi(mt('undo'), 'edit.undo', 'CmdOrCtrl+Z'), enabled: wsCaps.inEditor },
+      { ...mi(mt('redo'), 'edit.redo', 'Shift+CmdOrCtrl+Z'), enabled: wsCaps.inEditor },
       { type: 'separator' },
-      { role: 'cut', label: 'Cortar', enabled: wsCaps.inEditor },
-      { role: 'copy', label: 'Copiar', enabled: wsCaps.inEditor },
-      { role: 'paste', label: 'Pegar', enabled: wsCaps.inEditor },
-      ed('Duplicar', 'edit.duplicate', 'CmdOrCtrl+D'),
-      ed('Eliminar', 'edit.delete'),
+      { role: 'cut', label: mt('cut'), enabled: wsCaps.inEditor },
+      { role: 'copy', label: mt('copy'), enabled: wsCaps.inEditor },
+      { role: 'paste', label: mt('paste'), enabled: wsCaps.inEditor },
+      ed(mt('duplicate'), 'edit.duplicate', 'CmdOrCtrl+D'),
+      ed(mt('deleteLbl'), 'edit.delete'),
       { type: 'separator' },
-      { role: 'selectAll', label: 'Seleccionar todo', enabled: wsCaps.inEditor },
+      { role: 'selectAll', label: mt('selectAll'), enabled: wsCaps.inEditor },
     ],
   }
 
   const elementMenu = {
-    label: 'Elemento',
+    label: mt('element'),
     submenu: [
-      ed('Agregar elemento', 'element.add'),
-      ed('Agregar sección', 'element.addSection'),
+      ed(mt('addElement'), 'element.add'),
+      ed(mt('addSection'), 'element.addSection'),
       { type: 'separator' },
-      ed('Bloquear / Desbloquear', 'element.toggleLock'),
-      ed('Mostrar / Ocultar', 'element.toggleVisible'),
+      ed(mt('toggleLock'), 'element.toggleLock'),
+      ed(mt('toggleVisible'), 'element.toggleVisible'),
     ],
   }
 
   // Git: requiere estar en un sitio Y que el workspace use git.
   const gitMenu = {
-    label: 'Git',
+    label: mt('git'),
     submenu: [
-      { ...mi('Traer cambios (pull)', 'git.pull'), enabled: wsCaps.inEditor && wsCaps.useGit },
-      { ...mi('Ver historial / commits', 'git.history'), enabled: wsCaps.inEditor && wsCaps.useGit },
-      { ...mi('Estado del repositorio', 'git.status'), enabled: wsCaps.inEditor && wsCaps.useGit },
+      { ...mi(mt('gitPull'), 'git.pull'), enabled: wsCaps.inEditor && wsCaps.useGit },
+      { ...mi(mt('gitHistory'), 'git.history'), enabled: wsCaps.inEditor && wsCaps.useGit },
+      { ...mi(mt('gitStatus'), 'git.status'), enabled: wsCaps.inEditor && wsCaps.useGit },
     ],
   }
 
   // Publicar: requiere estar en un sitio. "a S3"/"Abrir publicado" además
   // requieren S3 configurado; "Vista en vivo" solo requiere el sitio abierto.
   const deployMenu = {
-    label: 'Publicar',
+    label: mt('publish'),
     submenu: [
-      { ...mi('Publicar a S3', 'deploy.publish'), enabled: wsCaps.inEditor && wsCaps.hasS3 },
-      ed('Vista en vivo', 'deploy.preview'),
-      { ...mi('Abrir sitio publicado', 'deploy.openSite'), enabled: wsCaps.inEditor && wsCaps.hasS3 },
+      { ...mi(mt('publishS3'), 'deploy.publish'), enabled: wsCaps.inEditor && wsCaps.hasS3 },
+      ed(mt('livePreview'), 'deploy.preview'),
+      { ...mi(mt('openPublished'), 'deploy.openSite'), enabled: wsCaps.inEditor && wsCaps.hasS3 },
     ],
   }
 
   const viewMenu = {
-    label: 'Ver',
+    label: mt('view'),
     submenu: [
-      ed('Edición / Vista previa', 'view.togglePreview'),
-      ed('Cuadrícula y guías', 'view.toggleGrid'),
+      ed(mt('togglePreview'), 'view.togglePreview'),
+      ed(mt('toggleGrid'), 'view.toggleGrid'),
       { type: 'separator' },
-      { role: 'resetZoom', label: 'Zoom real' },
-      { role: 'zoomIn', label: 'Acercar' },
-      { role: 'zoomOut', label: 'Alejar' },
+      { role: 'resetZoom', label: mt('zoomReset') },
+      { role: 'zoomIn', label: mt('zoomIn') },
+      { role: 'zoomOut', label: mt('zoomOut') },
       { type: 'separator' },
-      { role: 'reload', label: 'Recargar' },
-      { role: 'forceReload', label: 'Forzar recarga' },
-      { role: 'toggleDevTools', label: 'Herramientas de desarrollo' },
+      { role: 'reload', label: mt('reload') },
+      { role: 'forceReload', label: mt('forceReload') },
+      { role: 'toggleDevTools', label: mt('devtools') },
       { type: 'separator' },
-      { role: 'togglefullscreen', label: 'Pantalla completa' },
+      { role: 'togglefullscreen', label: mt('fullscreen') },
     ],
   }
 
+  // Language submenu — sets the renderer locale and reconstructs the menu in
+  // place. The radio "checked" state reflects currentLocale.
+  const langItem = (code, label) => ({
+    label, type: 'radio', checked: currentLocale === code,
+    click: () => {
+      currentLocale = code
+      buildMenu()
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('app:locale-changed', code)
+      }
+    },
+  })
   const windowMenu = {
-    label: 'Ventana',
+    label: mt('window'),
     submenu: [
-      ed('Asistente Claude', 'window.claude'),
-      ed('Recursos', 'window.resources'),
-      ed('Sitio', 'window.site'),
-      ed('Tema', 'window.theme'),
+      ed(mt('winClaude'), 'window.claude'),
+      ed(mt('winResources'), 'window.resources'),
+      ed(mt('winSite'), 'window.site'),
+      ed(mt('winTheme'), 'window.theme'),
+      { type: 'separator' },
+      { label: mt('language'), submenu: [
+        langItem('es', mt('langSpanish')),
+        langItem('en', mt('langEnglish')),
+      ]},
     ],
   }
 
   // "Ayuda → Diagnóstico" abre la pantalla doctor (canal 'open-doctor' existente).
   const helpMenu = {
-    label: 'Ayuda',
+    label: mt('help'),
     role: 'help',
     submenu: [
       {
-        label: 'Diagnóstico…',
+        label: mt('helpDiag'),
         click: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('open-doctor') },
       },
-      mi('Guía de uso', 'help.guide'),
-      mi('Versión / Descargas', 'help.downloads'),
+      mi(mt('helpGuide'), 'help.guide'),
+      mi(mt('helpDownloads'), 'help.downloads'),
     ],
   }
 
@@ -383,8 +463,8 @@ function registerIpc() {
   // (clave para clonar/abrir workspaces en ~/Documents sin error de permisos).
   ipcMain.handle('dialog:pick-folder', async () => {
     const res = await dialog.showOpenDialog(mainWindow ?? undefined, {
-      title: 'Elegir carpeta',
-      buttonLabel: 'Elegir',
+      title: mt('pickFolder'),
+      buttonLabel: mt('pickFolderBtn'),
       properties: ['openDirectory', 'createDirectory'],
     })
     if (res.canceled || !res.filePaths || res.filePaths.length === 0) {
@@ -420,6 +500,15 @@ function registerIpc() {
       inEditor: !!(caps && caps.inEditor),
     }
     buildMenu()
+  })
+
+  // Renderer → main locale sync. The Vue LanguageSwitcher posts the new
+  // locale here; the menu re-renders with the new labels.
+  ipcMain.on('app:set-locale', (_e, locale) => {
+    if (locale === 'es' || locale === 'en') {
+      currentLocale = locale
+      buildMenu()
+    }
   })
 
   // El renderer reporta cambios sin guardar (para el aviso al cerrar la ventana).

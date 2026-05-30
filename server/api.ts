@@ -411,13 +411,18 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
       // pending commits themselves and the last 5 commits on origin/main. Drives
       // the toolbar "Publicar" enabled state and the GitPanel listings. All
       // best-effort (no upstream / offline are handled inside the helpers).
+      // ?slug= scopes the commit lists to files under that slug's content dir
+      // so the GitPanel doesn't list commits that didn't touch the open site.
       const gsmatch = url.match(/^\/api\/git\/([^/]+)\/status$/)
       if (gsmatch && method === 'GET') {
         const repo = getRepoPath(gsmatch[1])
+        const u = new URL(req.url || '', 'http://x')
+        const slug = (u.searchParams.get('slug') || '').trim()
+        const scope = slug ? getContentRelPath(gsmatch[1], slug) : ''
         return json(res, {
           ahead: gitAheadCount(repo),
-          pending: gitPendingCommits(repo),
-          originRecent: gitOriginRecent(repo, 5),
+          pending: gitPendingCommits(repo, scope || undefined),
+          originRecent: gitOriginRecent(repo, 5, scope || undefined),
         })
       }
 

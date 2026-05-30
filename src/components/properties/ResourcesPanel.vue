@@ -25,11 +25,13 @@
  * a `reload` is exposed so the panel can be refreshed externally.
  */
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { state, getAtPath, setAtPath } from '../../stores/editor'
 import { projectsApi } from '../../composables/useApi'
 import type { ProjectAsset, ProjectAssetKind } from '../../composables/useApi'
 import { useDialog } from '../../composables/useDialog'
 import { fileToFontFamily } from '../../composables/fontName'
+const { t } = useI18n()
 
 const dialog = useDialog()
 
@@ -221,9 +223,9 @@ async function onDelete(kind: ProjectAssetKind, file: ProjectAsset) {
   if (!state.projectType || !state.slug) return
   // Spanish confirm — the user is non-technical.
   const ok = await dialog.confirm({
-    title: 'Eliminar archivo',
-    message: `¿Eliminar "${file.name}"? Esta acción no se puede deshacer y el archivo se borra del proyecto.`,
-    confirmText: 'Eliminar',
+    title: t('resources.deleteTitle'),
+    message: t('resources.deleteMessage', { name: file.name }),
+    confirmText: t('common.delete'),
     danger: true,
   })
   if (!ok) return

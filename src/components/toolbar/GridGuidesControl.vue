@@ -8,7 +8,8 @@
 // Cada cambio se persiste de inmediato y POR PROYECTO (persistGridGuias →
 // clave parallax-editor:grid-guias:<tipo>:<slug>). El popover se cierra al
 // hacer clic fuera o con Esc.
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   state,
   persistGridGuias,
@@ -17,23 +18,35 @@ import {
 } from '../../stores/editor'
 import HelpHint from '../properties/HelpHint.vue'
 
+const { t } = useI18n()
+
 // Ayuda por control (formato seguro que HelpHint renderiza: **negrita**, etc.).
-const HELP = {
-  gridVisible:
-    'Muestra una **cuadrícula** sobre el lienzo para alinear elementos a ojo. Es solo una ayuda de edición — **no se publica** en el sitio.',
-  cellSize:
-    'Qué tan **fina o gruesa** es la cuadrícula. *Fina* = más líneas (más precisión); *Gruesa* = menos líneas. También define el paso del **Ajustar a la grid**.',
-  snap:
-    'Cuando está activo, al mover o redimensionar un elemento **se pega** a las líneas de la grid, para alineaciones exactas.',
-  smartGuides:
-    'Las **guías moradas** que aparecen al mover un elemento: muestran cuándo queda **alineado o centrado** respecto a los demás. Ayudan a ubicar sin usar grid.',
-}
+const HELP = computed(() => ({
+  gridVisible: t('gridGuides.helpVisible'),
+  cellSize: t('gridGuides.helpCellSize'),
+  snap: t('gridGuides.helpSnap'),
+  smartGuides: t('gridGuides.helpSmart'),
+}))
 
 const open = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
+// Teleport the popover to <body> so it escapes the toolbar's stacking
+// context (the toolbar has z-index:100 which makes it a stacking root —
+// any z-index inside it is bounded by 100, so a child at 11000 still
+// loses to siblings like SelectionOverlay at 10000 in another context).
+// Reading the trigger's bounding rect each open lets the popover sit
+// just below the button as before.
+const popoverPos = ref({ top: 0, left: 0 })
+function updatePopoverPos() {
+  const root = rootRef.value
+  if (!root) return
+  const r = root.getBoundingClientRect()
+  popoverPos.value = { top: r.bottom + 6, left: r.left }
+}
 
 function toggle() {
   open.value = !open.value
+  if (open.value) nextTick(updatePopoverPos)
 }
 function close() {
   open.value = false
@@ -56,10 +69,14 @@ function onKeydown(e: KeyboardEvent) {
 onMounted(() => {
   document.addEventListener('pointerdown', onDocPointerDown, true)
   document.addEventListener('keydown', onKeydown)
+  window.addEventListener('resize', updatePopoverPos)
+  window.addEventListener('scroll', updatePopoverPos, true)
 })
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', onDocPointerDown, true)
   document.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('resize', updatePopoverPos)
+  window.removeEventListener('scroll', updatePopoverPos, true)
 })
 
 function onToggleGridVisible(e: Event) {
@@ -77,11 +94,11 @@ function onToggleSmartGuides(e: Event) {
 
 // Tamaño de celda como 3 presets simples mapeados a % del lienzo.
 // Fina = 3%, Media = 5%, Gruesa = 10% (todos dentro del rango permitido).
-const SIZE_PRESETS: { value: number; label: string }[] = [
-  { value: 3, label: 'Fina' },
-  { value: 5, label: 'Media' },
-  { value: 10, label: 'Gruesa' },
-]
+const SIZE_PRESETS = computed<{ value: number; label: string; testKey: string }[]>(() => [
+  { value: 3, label: t('gridGuides.presetFine'), testKey: 'fina' },
+  { value: 5, label: t('gridGuides.presetMedium'), testKey: 'media' },
+  { value: 10, label: t('gridGuides.presetCoarse'), testKey: 'gruesa' },
+])
 function clampPct(n: number): number {
   return Math.min(GRID_PERCENT_MAX, Math.max(GRID_PERCENT_MIN, n))
 }
@@ -107,19 +124,21 @@ function onSlideSize(e: Event) {
       data-test="grid-guides-trigger"
       :aria-expanded="open"
       aria-haspopup="true"
-      title="Grid y guías: cuadrícula, ajuste y guías de alineación"
+      :title="t('gridGuides.triggerTitle')"
       @click="toggle"
     >
-      Grid y guías
+      {{ t('gridGuides.trigger') }}
       <span class="gg-caret" aria-hidden="true">▾</span>
     </button>
 
+    <Teleport to="body">
     <div
       v-if="open"
       class="gg-popover"
       role="dialog"
-      aria-label="Grid y guías"
+      :aria-label="t('gridGuides.trigger')"
       data-test="grid-guides-popover"
+      :style="{ top: popoverPos.top + 'px', left: popoverPos.left + 'px' }"
     >
       <div class="gg-row gg-toggle">
         <label class="gg-toggle-label">
@@ -129,9 +148,9 @@ function onSlideSize(e: Event) {
             data-test="grid-visible-toggle"
             @change="onToggleGridVisible"
           />
-          <span>Mostrar grid</span>
+          <span>{{ t('gridGuides.showGrid') }}</span>
         </label>
-        <HelpHint :text="HELP.gridVisible" label="Mostrar grid" />
+        <HelpHint :text="HELP.gridVisible" :label="t('gridGuides.showGrid')" />
       </div>
 
       <div
@@ -140,10 +159,10 @@ function onSlideSize(e: Event) {
         data-test="grid-cell-size"
       >
         <span class="gg-size-head">
-          <span class="gg-size-label">Tamaño de celda</span>
-          <HelpHint :text="HELP.cellSize" label="Tamaño de celda" />
+          <span class="gg-size-label">{{ t('gridGuides.cellSize') }}</span>
+          <HelpHint :text="HELP.cellSize" :label="t('gridGuides.cellSize')" />
         </span>
-        <div class="gg-presets" role="group" aria-label="Tamaño de celda">
+        <div class="gg-presets" role="group" :aria-label="t('gridGuides.cellSize')">
           <button
             v-for="p in SIZE_PRESETS"
             :key="p.value"
@@ -151,7 +170,7 @@ function onSlideSize(e: Event) {
             class="gg-preset"
             :class="{ active: state.gridPercent === p.value }"
             :disabled="!state.gridVisible"
-            :data-test="`grid-cell-size-${p.label.toLowerCase()}`"
+            :data-test="`grid-cell-size-${p.testKey}`"
             @click="onPickSize(p.value)"
           >{{ p.label }}</button>
         </div>
@@ -164,7 +183,7 @@ function onSlideSize(e: Event) {
           :value="state.gridPercent"
           :disabled="!state.gridVisible"
           data-test="grid-cell-size-slider"
-          aria-label="Tamaño de celda en porcentaje"
+          :aria-label="t('gridGuides.cellSizePct')"
           @input="onSlideSize"
         />
         <span class="gg-pct">{{ state.gridPercent }}%</span>
@@ -180,9 +199,9 @@ function onSlideSize(e: Event) {
             data-test="grid-snap-toggle"
             @change="onToggleSnap"
           />
-          <span>Ajustar a la grid</span>
+          <span>{{ t('gridGuides.snap') }}</span>
         </label>
-        <HelpHint :text="HELP.snap" label="Ajustar a la grid" />
+        <HelpHint :text="HELP.snap" :label="t('gridGuides.snap')" />
       </div>
 
       <div class="gg-row gg-toggle">
@@ -193,11 +212,12 @@ function onSlideSize(e: Event) {
             data-test="smartguides-toggle"
             @change="onToggleSmartGuides"
           />
-          <span>Guías inteligentes</span>
+          <span>{{ t('gridGuides.smart') }}</span>
         </label>
-        <HelpHint :text="HELP.smartGuides" label="Guías inteligentes" />
+        <HelpHint :text="HELP.smartGuides" :label="t('gridGuides.smart')" />
       </div>
     </div>
+    </Teleport>
   </div>
 </template>
 
@@ -216,7 +236,7 @@ function onSlideSize(e: Event) {
 /* Popover painted ABOVE the canvas: the toolbar is position:relative; z-index:100,
    so an absolutely-positioned child sits over the canvas/guides below. */
 .gg-popover {
-  position: absolute; top: calc(100% + 6px); left: 0; z-index: 200;
+  position: fixed; z-index: 100000;
   min-width: 230px; background: #2b2b2b; border: 1px solid #444;
   border-radius: 8px; padding: 10px; box-shadow: 0 8px 28px rgba(0,0,0,0.45);
   display: flex; flex-direction: column; gap: 8px;

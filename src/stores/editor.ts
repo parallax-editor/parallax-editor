@@ -788,6 +788,21 @@ export function resizeSectionWithRecalc(
 export function setAtPath(path: string, value: any) {
   if (!state.site) return
   pushUndo()
+  writeAtPathInternal(path, value)
+}
+
+// Same write semantics as setAtPath but WITHOUT pushUndo. Use during drags
+// (move/resize/rotate/group-move) so the gesture is a SINGLE undo step
+// instead of one per mousemove. The caller should pushUndo() ONCE at the
+// drag's start (after the DRAG_THRESHOLD is crossed) and then use this
+// helper for every mousemove apply.
+export function setAtPathSilent(path: string, value: any) {
+  if (!state.site) return
+  writeAtPathInternal(path, value)
+}
+
+function writeAtPathInternal(path: string, value: any) {
+  if (!state.site) return
   const parts = toCanonicalPath(path).split('.')
   let obj: any = state.site
   for (let i = 0; i < parts.length - 1; i++) {
@@ -801,6 +816,11 @@ export function setAtPath(path: string, value: any) {
   } else {
     obj[last] = value
   }
+}
+
+// Expose pushUndo so canvas overlays can stamp a single snapshot at drag start.
+export function pushUndoOnce() {
+  pushUndo()
 }
 
 // ─── Global (site-level) selection: "Sitio" (meta) + "Tema" (theme) ────────────

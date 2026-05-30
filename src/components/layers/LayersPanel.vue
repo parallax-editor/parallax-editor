@@ -92,6 +92,32 @@ function selectPath(path: string, additive: boolean) {
 function onMove(sourcePath: string, targetArrayPath: string, toIndex: number) {
   moveNode(sourcePath, targetArrayPath, toIndex)
 }
+
+// Empty-layer drop zone: an element dropped into a layer that has no children
+// would otherwise have nothing to hit; this routes the drop to the layer's
+// `elements` array at index 0. We do NOT accept section/layer drops here —
+// the level guard inside `moveNode` rejects mismatched levels anyway, but
+// gating on element-shaped paths gives a cleaner cursor.
+function onEmptyDragOver(e: DragEvent) {
+  if (!e.dataTransfer) return
+  // Best-effort: in dragover the payload isn't readable (security); rely on
+  // moveNode's level guard at drop time. Show the move cursor unconditionally.
+  e.dataTransfer.dropEffect = 'move'
+  ;(e.currentTarget as HTMLElement)?.classList.add('drop-hover')
+}
+function onEmptyDragLeave(e: DragEvent) {
+  ;(e.currentTarget as HTMLElement)?.classList.remove('drop-hover')
+}
+function onEmptyDrop(e: DragEvent, targetArrayPath: string) {
+  ;(e.currentTarget as HTMLElement)?.classList.remove('drop-hover')
+  const src = e.dataTransfer?.getData('text/plain')
+  if (!src) return
+  // Only accept element-level sources (their path has at least 5 parts:
+  // sections.N.layers.M.elements.K). moveNode rejects mismatches anyway,
+  // but bailing here avoids a spurious pushUndo on an obvious no-op.
+  if (src.split('.').length < 6) return
+  moveNode(src, targetArrayPath, 0)
+}
 </script>
 
 <template>
@@ -288,6 +314,19 @@ function onMove(sourcePath: string, targetArrayPath: string, toIndex: number) {
                 :drag-index="ei"
                 @move="onMove"
               />
+              <!-- Drop zone for empty layers: without this, dragging an element
+                   into a layer that has no children had no <LayerTreeItem> to
+                   target and the drop was silently rejected. Stays visible as
+                   a faint placeholder so the affordance reads even at rest. -->
+              <div
+                v-if="(layer.elements || []).length === 0"
+                class="empty-drop"
+                :data-test="`empty-layer-drop-${si}-${li}`"
+                @dragover.prevent="onEmptyDragOver($event)"
+                @dragenter.prevent="onEmptyDragOver($event)"
+                @dragleave="onEmptyDragLeave($event)"
+                @drop.prevent="onEmptyDrop($event, `sections.${si}.layers.${li}.elements`)"
+              >{{ t('layers.empty') }}</div>
             </div>
           </div>
         </div>
@@ -364,4 +403,23 @@ function onMove(sourcePath: string, targetArrayPath: string, toIndex: number) {
 .global-item.selected .item-label { color: var(--accent-strong); }
 .global-item .item-icon { font-size: 13px; width: 16px; text-align: center; opacity: 0.85; flex-shrink: 0; }
 .global-item .item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 12.5px; }
+
+/* Empty-layer drop zone — faint placeholder; brightens on dragover. */
+.empty-drop {
+  margin: 2px 0 2px 32px;
+  padding: 6px 8px;
+  border: 1px dashed #444;
+  border-radius: 4px;
+  background: transparent;
+  color: #6a6a6a;
+  font-size: 11px;
+  font-style: italic;
+  user-select: none;
+  transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+}
+.empty-drop.drop-hover {
+  background: rgba(176, 107, 255, 0.12);
+  border-color: var(--accent-strong, #b06bff);
+  color: #ececec;
+}
 </style>

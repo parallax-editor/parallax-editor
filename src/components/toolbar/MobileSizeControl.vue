@@ -4,6 +4,7 @@
 // Picking a size (preset or custom width/height) updates the matching reactive
 // viewport in the store → live resize of the preview + persisted across reloads.
 import { computed, ref, onBeforeUnmount, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   state,
   VIEWPORTS,
@@ -13,15 +14,28 @@ import {
   setDesktopViewport,
 } from '../../stores/editor'
 
+const { t } = useI18n()
+
 const open = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
+// Teleport menu out of the toolbar's stacking context (z-index:100 there
+// caps any internal child below 10000, so the SelectionOverlay would paint
+// over our popover even with a high z-index inside the toolbar). Track the
+// trigger's rect so the popover sits just below the button.
+const popoverPos = ref({ top: 0, left: 0 })
+function updatePopoverPos() {
+  const root = rootRef.value
+  if (!root) return
+  const r = root.getBoundingClientRect()
+  popoverPos.value = { top: r.bottom + 6, left: r.left }
+}
 
 const isMobile = computed(() => state.deviceMode === 'mobile')
 const presets = computed(() => (isMobile.value ? MOBILE_PRESETS : DESKTOP_PRESETS))
 const vp = computed(() => (isMobile.value ? VIEWPORTS.mobile : VIEWPORTS.desktop))
 const width = computed(() => vp.value.width)
 const height = computed(() => vp.value.height)
-const menuTitle = computed(() => (isMobile.value ? 'Tamaño del móvil' : 'Tamaño de pantalla'))
+const menuTitle = computed(() => (isMobile.value ? t('mobileSize.titleMobile') : t('mobileSize.titleDesktop')))
 
 function applySize(w: number, h: number) {
   if (isMobile.value) setMobileViewport(w, h)
@@ -47,15 +61,24 @@ function toggle() {
   if (open.value) {
     customW.value = width.value
     customH.value = height.value
-    nextTick(() => document.addEventListener('mousedown', onDocMouseDown, true))
+    nextTick(() => {
+      updatePopoverPos()
+      document.addEventListener('mousedown', onDocMouseDown, true)
+      window.addEventListener('resize', updatePopoverPos)
+      window.addEventListener('scroll', updatePopoverPos, true)
+    })
   } else {
     document.removeEventListener('mousedown', onDocMouseDown, true)
+    window.removeEventListener('resize', updatePopoverPos)
+    window.removeEventListener('scroll', updatePopoverPos, true)
   }
 }
 
 function close() {
   open.value = false
   document.removeEventListener('mousedown', onDocMouseDown, true)
+  window.removeEventListener('resize', updatePopoverPos)
+  window.removeEventListener('scroll', updatePopoverPos, true)
 }
 
 function onDocMouseDown(e: MouseEvent) {
@@ -85,7 +108,7 @@ onBeforeUnmount(() => {
       class="size-btn"
       type="button"
       :aria-expanded="open"
-      title="Tamaño del lienzo"
+      :title="t('mobileSize.tooltip')"
       data-test="mobile-size-toggle"
       @click="toggle"
     >
@@ -94,7 +117,14 @@ onBeforeUnmount(() => {
       <span class="caret" aria-hidden="true">▾</span>
     </button>
 
-    <div v-if="open" class="size-menu" role="menu" data-test="mobile-size-menu">
+    <Teleport to="body">
+    <div
+      v-if="open"
+      class="size-menu"
+      role="menu"
+      data-test="mobile-size-menu"
+      :style="{ top: popoverPos.top + 'px', left: popoverPos.left + 'px' }"
+    >
       <div class="menu-title">{{ menuTitle }}</div>
       <button
         v-for="p in presets"
@@ -115,14 +145,14 @@ onBeforeUnmount(() => {
 
       <div :class="['custom-row', { active: isCustom }]">
         <span class="check">{{ isCustom ? '✓' : '' }}</span>
-        <span class="item-label">Personalizado…</span>
+        <span class="item-label">{{ t('mobileSize.custom') }}</span>
         <div class="custom-inputs">
           <input
             type="number"
             v-model.number="customW"
             min="200"
             max="3840"
-            aria-label="Ancho personalizado"
+            :aria-label="t('mobileSize.customWidth')"
             data-test="mobile-custom-width"
             @keydown.enter="applyCustom"
           />
@@ -132,7 +162,7 @@ onBeforeUnmount(() => {
             v-model.number="customH"
             min="200"
             max="3840"
-            aria-label="Alto personalizado"
+            :aria-label="t('mobileSize.customHeight')"
             data-test="mobile-custom-height"
             @keydown.enter="applyCustom"
           />
@@ -141,10 +171,11 @@ onBeforeUnmount(() => {
             class="apply-btn"
             data-test="mobile-custom-apply"
             @click="applyCustom"
-          >Usar</button>
+          >{{ t('mobileSize.apply') }}</button>
         </div>
       </div>
     </div>
+    </Teleport>
   </div>
 </template>
 
@@ -156,7 +187,7 @@ onBeforeUnmount(() => {
 .size-value { font-family: monospace; }
 .caret { font-size: 9px; opacity: 0.8; }
 
-.size-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 50; min-width: 248px; background: #2b2b2b; border: 1px solid #444; border-radius: 6px; padding: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.45); max-height: 60vh; overflow-y: auto; }
+.size-menu { position: fixed; z-index: 100000; min-width: 248px; background: #2b2b2b; border: 1px solid #444; border-radius: 6px; padding: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.45); max-height: 60vh; overflow-y: auto; }
 .menu-title { font-size: 11px; color: #888; padding: 2px 8px 6px; font-weight: 600; }
 .menu-item { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; color: #ccc; padding: 6px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; text-align: left; }
 .menu-item:hover { background: #383838; color: #fff; }

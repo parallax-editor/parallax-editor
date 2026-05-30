@@ -9,7 +9,6 @@ import { APP_VERSION } from '../version'
 import type { ProjectListItem, Workspace } from '../composables/useApi'
 import ProjectCard from '../components/selector/ProjectCard.vue'
 import HelpHint from '../components/properties/HelpHint.vue'
-import LanguageSwitcher from '../components/ui/LanguageSwitcher.vue'
 // The SAME canonical slug transform the server uses to create the folder, so
 // this live preview ALWAYS matches the folder/route that gets created.
 import { slugify } from '../../server/slug'
@@ -387,7 +386,6 @@ async function createWorkspace() {
         <p class="subtitle">{{ t('selector.subtitle') }}</p>
       </div>
       <div class="hero-actions">
-        <LanguageSwitcher />
       </div>
     </header>
 
