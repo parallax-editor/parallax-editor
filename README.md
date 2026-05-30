@@ -104,7 +104,27 @@ yarn dist:dir           # quick validation (no .dmg, ~30s) → dist-electron/mac
 yarn dist:mac           # full build → dist-electron/Parallax-Editor-{x64,arm64}.dmg
 ```
 
-Both .dmg files are unsigned ad-hoc. First open: right-click → **Open**.
+Both `.dmg` files are **ad-hoc unsigned** today. Notarized signing
+(Apple Developer ID + `notarytool`) is on the roadmap — at that point
+the first-open dance below goes away. Until then:
+
+When you open the installed `.app` for the first time, macOS may show:
+
+> **"Parallax Editor" is damaged and can't be opened. You should move it to the Trash.**
+
+That message is misleading — the app isn't damaged. It's Gatekeeper
+refusing an ad-hoc-signed app that the browser tagged with
+`com.apple.quarantine` on download. Clear the flag once and the app
+opens normally afterwards:
+
+```bash
+xattr -cr "/Applications/Parallax Editor.app"
+```
+
+(adjust the path if you moved the `.app` elsewhere). After that,
+double-click as normal. If macOS still asks "are you sure you want
+to open this", right-click the `.app` → **Open** once and it stays
+authorised.
 
 ## Commands
 
