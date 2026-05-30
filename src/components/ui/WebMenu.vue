@@ -138,6 +138,12 @@ const rootRef = ref<HTMLElement | null>(null)
 
 function toggle(id: string) { openId.value = openId.value === id ? null : id }
 function close() { openId.value = null }
+// macOS-style: hovering another trigger WHILE a menu is already open switches
+// to that menu. A plain hover with no menu open does nothing — user has to
+// click to open the first time.
+function onTriggerHover(id: string) {
+  if (openId.value && openId.value !== id) openId.value = id
+}
 
 function pick(item: Item) {
   if (item.disabled) return
@@ -168,39 +174,47 @@ void _Locale
 </script>
 
 <template>
+  <!-- Each menu lives in its OWN column so the popover anchors to its trigger,
+       not to the menu bar's left edge (which made e.g. "Ventana" open at the
+       very start of the page). Hovering a sibling trigger while any menu is
+       open SWITCHES to it, like the native macOS menu bar. -->
   <div class="webmenu" ref="rootRef" data-test="webmenu">
-    <button
-      v-for="m in menus"
-      :key="m.id"
-      type="button"
-      class="webmenu-trigger"
-      :class="{ open: openId === m.id }"
-      :data-test="`webmenu-${m.id}`"
-      @click="toggle(m.id)"
-    >{{ m.label }}</button>
-
     <div
       v-for="m in menus"
-      v-show="openId === m.id"
-      :key="`pop-${m.id}`"
-      class="webmenu-pop"
-      :data-test="`webmenu-pop-${m.id}`"
+      :key="m.id"
+      class="webmenu-col"
+      :class="{ open: openId === m.id }"
     >
-      <template v-for="(it, i) in m.items">
-        <div v-if="it.separator" :key="`s-${m.id}-${i}`" class="webmenu-sep" />
-        <button
-          v-else
-          :key="`i-${m.id}-${i}`"
-          type="button"
-          class="webmenu-item"
-          :class="{ checked: it.checked, disabled: it.disabled }"
-          :disabled="it.disabled"
-          @click="pick(it)"
-        >
-          <span class="webmenu-check">{{ it.checked ? '✓' : '' }}</span>
-          <span class="webmenu-label">{{ it.label }}</span>
-        </button>
-      </template>
+      <button
+        type="button"
+        class="webmenu-trigger"
+        :class="{ open: openId === m.id }"
+        :data-test="`webmenu-${m.id}`"
+        @click="toggle(m.id)"
+        @mouseenter="onTriggerHover(m.id)"
+      >{{ m.label }}</button>
+
+      <div
+        v-show="openId === m.id"
+        class="webmenu-pop"
+        :data-test="`webmenu-pop-${m.id}`"
+      >
+        <template v-for="(it, i) in m.items">
+          <div v-if="it.separator" :key="`s-${m.id}-${i}`" class="webmenu-sep" />
+          <button
+            v-else
+            :key="`i-${m.id}-${i}`"
+            type="button"
+            class="webmenu-item"
+            :class="{ checked: it.checked, disabled: it.disabled }"
+            :disabled="it.disabled"
+            @click="pick(it)"
+          >
+            <span class="webmenu-check">{{ it.checked ? '✓' : '' }}</span>
+            <span class="webmenu-label">{{ it.label }}</span>
+          </button>
+        </template>
+      </div>
     </div>
   </div>
 </template>
@@ -219,6 +233,10 @@ void _Locale
   color: #ddd;
   user-select: none;
 }
+/* Each menu is its own column so the popover anchors to ITS trigger, not to
+   the menu bar's left edge (previously every popover opened at the leftmost
+   point of the bar, so "Ventana" appeared way over by "Archivo"). */
+.webmenu-col { position: relative; display: inline-flex; align-items: stretch; height: 100%; }
 .webmenu-trigger {
   background: transparent;
   border: none;
@@ -234,18 +252,10 @@ void _Locale
   background: #2d2d2d;
   color: #fff;
 }
-/* Popovers anchored to the menubar; absolute positioning relative to
-   .webmenu (the root). Top-aligned to the bottom of the bar (28px). The
-   bar itself sits above the canvas chrome via z-index:100001, so its
-   popovers (z-index inside this stacking context) paint over everything
-   below — SelectionOverlay (10000) included. */
 .webmenu-pop {
   position: absolute;
-  top: 28px;
-  left: 0; /* horizontal alignment is handled by the trigger's flex position;
-              we pick the simplest: each pop starts left-aligned to the bar
-              and items use min-width so the pop reads without flowing too
-              wide. The trigger order is stable so users learn the columns. */
+  top: 100%; /* directly under THIS column's trigger */
+  left: 0;   /* left-aligned with the trigger */
   min-width: 220px;
   background: #2b2b2b;
   border: 1px solid #444;
@@ -254,11 +264,8 @@ void _Locale
   box-shadow: 0 8px 24px rgba(0,0,0,0.45);
   display: flex;
   flex-direction: column;
+  z-index: 1; /* sit above the next column's trigger area */
 }
-/* Anchor each pop under its trigger using a CSS variable per-menu. Since the
-   triggers' x positions vary, we let the pop start at left:0 and the user
-   sees the column open from the leftmost edge of the bar. Acceptable for a
-   web-only utility menu; the columns are not very wide. */
 .webmenu-item {
   background: transparent;
   border: none;
