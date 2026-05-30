@@ -52,11 +52,14 @@ const cleanup = () => { if (SANDBOX_DIR) { try { fs.rmSync(SANDBOX_DIR, { recurs
     await page.goto(EDITOR + '/', { waitUntil: 'load', timeout: 25000 }); await page.waitForTimeout(2000);
     const card = page.locator(`[data-test="project-card-${WS}-${SLUG}"]`).first();
     if (await card.count().catch(() => 0)) { await card.click().catch(() => {}); await page.waitForTimeout(2800); }
-    if (!(await page.evaluate(() => /CAPAS|PROPIEDADES/.test(document.body.innerText)))) {
+    // Detect "we're in the editor" via the stable `.layers-panel`/`.properties-panel`
+    // CSS classes instead of the localized panel titles ("CAPAS"/"PROPIEDADES"),
+    // so the fallback URL nav doesn't fire spuriously under an `en` locale.
+    if (!(await page.evaluate(() => !!document.querySelector('.layers-panel, .properties-panel')))) {
       await page.goto(`${EDITOR}/edit/${WS}/${SLUG}`, { waitUntil: 'load', timeout: 25000 }); await page.waitForTimeout(2800);
     }
 
-    // Seleccionar el texto por el árbol de CAPAS y editar su Contenido.
+    // Seleccionar el texto por el árbol de capas y editar su Contenido.
     await page.locator('.layers-panel').getByText(new RegExp(`^${TARGET_ID}$`)).first().click(); await page.waitForTimeout(700);
     const contenido = page.locator('.prop-field', { hasText: /Contenido/i }).locator('textarea, input').first();
     check('campo Contenido visible para el texto', await contenido.count() > 0);

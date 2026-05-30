@@ -100,8 +100,12 @@ async function selectElementByPoint(page, idx = 0) {
 //   3) clica la card del proyecto, 4) fallback: navega directo a /edit/<ws>/<slug>.
 // Devuelve true si el editor cargó.
 async function openProject(page, wsId, slug) {
+  // Detect editor by stable DOM markers, not localized panel titles:
+  // `.layers-panel` / `.properties-panel` are CSS classes (locale-agnostic),
+  // and `[data-parallax-id]` only appears once the canvas mounted a site.
   const inEditor = () => page.evaluate(() =>
-    !!document.querySelector('[data-parallax-id]') || /CAPAS|PROPIEDADES/.test(document.body.innerText));
+    !!document.querySelector('[data-parallax-id]')
+    || !!document.querySelector('.layers-panel, .properties-panel'));
   try { await page.goto(CFG.editor + '/', { waitUntil: 'load', timeout: 25000 }); } catch {}
   await page.waitForTimeout(1800);
   const chip = page.locator(`[data-test=workspace-chip-${wsId}] .ws-chip-name`).first();
@@ -158,7 +162,9 @@ async function runEditor(page) {
     const txt = document.body.innerText;
     const m = txt.match(/(\d{1,3})\s*%/);
     return {
-      isEditor: !!document.querySelector('[data-parallax-id]') || /CAPAS|PROPIEDADES/.test(txt),
+      // Locale-agnostic: structural panels + canvas marker, no panel-title text.
+      isEditor: !!document.querySelector('[data-parallax-id]')
+        || !!document.querySelector('.layers-panel, .properties-panel'),
       hasSeleccionar: /Seleccionar/i.test(txt),
       hasMano: /Mano/i.test(txt),
       plusBtns: [...document.querySelectorAll('button')].map(b => (b.innerText || b.getAttribute('title') || b.getAttribute('aria-label') || '').trim())
@@ -167,7 +173,7 @@ async function runEditor(page) {
       ids: [...document.querySelectorAll('[data-parallax-id]')].map(e => e.getAttribute('data-parallax-id')),
     };
   });
-  check('editor abrió un proyecto (CAPAS/PROPIEDADES o canvas)', ed.isEditor);
+  check('editor abrió un proyecto (.layers-panel/.properties-panel o canvas)', ed.isEditor);
   check('[#1] hay controles para crear (sección/capa/texto/imagen)', ed.plusBtns.length > 0, JSON.stringify(ed.plusBtns));
   check('[#4] herramientas legibles (Seleccionar + Mano, no V/H pelados)', ed.hasSeleccionar && ed.hasMano);
   check('[#2] hay indicador de zoom', ed.zoom != null, `zoom=${ed.zoom}%`);
@@ -246,7 +252,13 @@ async function runEditor(page) {
       return { hasHeader: spans.some(t => /^Animaciones \(\d+\)$/.test(t)), addBtn: !!document.querySelector('.anim-add'), sample: spans.slice(0, 6) };
     });
     check('[#16] sub-panel de animaciones (Animaciones (N) + add)', anim.hasHeader && anim.addBtn, JSON.stringify(anim.sample));
-    const toggle = await page.evaluate(() => /Edici[oó]n/i.test(document.body.innerText) && /Preview|Previsualiz/i.test(document.body.innerText));
+    // Detect the Edit/Preview toggle by its structural marker (the `.mode-toggle`
+    // group has two `.mode-btn` children) instead of localized button text,
+    // so the assertion survives an `en` locale where the labels are "Edit"/"Preview".
+    const toggle = await page.evaluate(() => {
+      const grp = document.querySelector('.mode-toggle');
+      return !!grp && grp.querySelectorAll('.mode-btn').length >= 2;
+    });
     check('[#16] toggle Edición/Preview presente', toggle);
   } catch (e) { check('[#16] animaciones/preview', false, e.message); }
 
@@ -561,7 +573,9 @@ async function runEditor(page) {
     // interceptaría el clic en Preview).
     const lingering = page.locator('[data-test=dialog-confirm], [data-test=dialog-ok]').first();
     if (await lingering.count().catch(() => 0)) { await lingering.click().catch(() => {}); await page.waitForTimeout(400); }
-    const pv = page.locator('button, [role=tab]', { hasText: /Preview|Previsualiz/i }).first();
+    // Preview button = the second `.mode-btn` inside `.mode-toggle` (locale-agnostic).
+    // Falls back to the text-based locator for safety on either locale.
+    const pv = page.locator('.mode-toggle .mode-btn').nth(1);
     if (await pv.count()) {
       await pv.click(); await page.waitForTimeout(900);
       await page.screenshot({ path: path.join(SHOTS, 'editor-05-preview.png'), fullPage: true });
