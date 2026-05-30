@@ -46,6 +46,34 @@
     .note { margin-top: 22px; }
     /* Keep "choose Open" / "(confirm Open…)" from breaking mid-phrase. */
     .note .nowrap { white-space: nowrap; }
+    /* Inline `xattr -dr com.apple.quarantine` snippet in the first-open note. Matches the
+       quiet palette of the surrounding copy; no chrome, just enough contrast
+       to read as a code token without screaming "code block". */
+    .note .inline-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.92em;
+      background: rgba(214, 199, 166, 0.10);
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    /* The actual command line — copyable block centered under the note. */
+    .cmd {
+      margin: 14px auto 6px;
+      padding: 14px 18px;
+      max-width: 30rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(214, 199, 166, 0.18);
+      border-radius: 8px;
+      text-align: left;
+      overflow-x: auto;
+    }
+    .cmd code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12.5px;
+      line-height: 1.5;
+      color: #e8e3d4;
+      white-space: pre;
+    }
   </style>
 </head>
 <body>
@@ -176,10 +204,22 @@
           </div>
           <p class="dl-hint js-dl-hint"></p>
           <p class="note">
-            <strong>First time (unsigned app):</strong> right-click the app
-            and <span class="nowrap">choose <kbd>Open</kbd></span>
-            <span class="nowrap">(confirm <kbd>Open</kbd> again)</span>.
-            <br>
+            <strong>First time you open it:</strong> the build is ad-hoc unsigned
+            for now (notarized signing <em>coming soon</em>). On recent macOS,
+            opening the&nbsp;<code class="inline-code">.app</code> from the
+            <code class="inline-code">.dmg</code> may pop
+            <em>"Parallax Editor is damaged and can't be opened"</em>
+            — that's Gatekeeper, not the app. Run this once in&nbsp;Terminal
+            to clear the quarantine flag:
+          </p>
+          <pre class="cmd"><code>xattr -dr com.apple.quarantine "/Applications/Parallax Editor.app"</code></pre>
+          <p class="note">
+            Then double-click as normal. After clearing quarantine, macOS may
+            still show a less alarming <em>"downloaded from Internet — are you
+            sure?"</em> prompt the first time. That one is harmless: right-click
+            the app once → <kbd>Open</kbd> to confirm, and it won't ask again.
+          </p>
+          <p class="note">
             Compatible with Intel and Apple Silicon Macs.
           </p>
         </div>
