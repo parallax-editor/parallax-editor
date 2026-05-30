@@ -18,8 +18,10 @@ import {
 import { openLivePreview } from '../../composables/useLivePreview'
 import { claudeApi, gitApi } from '../../composables/useApi'
 import { useDialog } from '../../composables/useDialog'
+import { useI18n } from 'vue-i18n'
 
 const dialog = useDialog()
+const { t } = useI18n()
 import MobileSizeControl from './MobileSizeControl.vue'
 import GridGuidesControl from './GridGuidesControl.vue'
 
@@ -30,9 +32,7 @@ import GridGuidesControl from './GridGuidesControl.vue'
 // the server reports it's missing (with a clear Spanish tooltip).
 const claudeAvailable = ref(true)
 const claudeTitle = computed(() =>
-  claudeAvailable.value
-    ? 'Preguntarle a Claude'
-    : 'Claude no está instalado en este equipo',
+  claudeAvailable.value ? t('toolbar.askClaude') : t('toolbar.claudeUnavailable'),
 )
 
 // ── Publicar (git) button state ──────────────────────────────────────────────
@@ -51,7 +51,9 @@ const publishTitle = computed(() =>
 async function refreshGitStatus() {
   if (!state.projectType) return
   try {
-    const s = await gitApi.status(state.projectType)
+    // Scope by slug so the toolbar "Publicar (N)" badge counts only commits
+    // that touched the open site, matching what the GitPanel lists.
+    const s = await gitApi.status(state.projectType, state.slug || undefined)
     gitAhead.value = s?.ahead || 0
   } catch {
     gitAhead.value = 0
@@ -155,12 +157,8 @@ function onOpenLivePreview() {
 async function onEnableIndependent() {
   if (isIndependent.value) return
   const ok = await dialog.confirm({
-    title: 'Separar escritorio y móvil',
-    message:
-      'Vas a separar escritorio y móvil en dos configuraciones independientes.\n\n' +
-      'Móvil empieza como copia de escritorio (con los ajustes móviles aplicados) ' +
-      'y desde ahora podrás editarlos por separado.\n\n' +
-      'Puedes deshacer con Cmd+Z. ¿Continuar?',
+    title: t('splitDevicesDialog.title'),
+    message: t('splitDevicesDialog.message'),
     confirmText: 'Continuar',
   })
   if (ok) enableIndependentViews()
@@ -172,9 +170,9 @@ async function onEnableIndependent() {
     <!-- Row 1 — identidad + acciones -->
     <div class="toolbar-row toolbar-row-top">
       <div class="row-group identity">
-        <button class="tool-btn" @click="emit('close')" title="Volver a proyectos">&larr;</button>
+        <button class="tool-btn" @click="emit('close')" :title="t('toolbar.backToProjects')">&larr;</button>
         <span class="project-name">{{ state.slug }}</span>
-        <span v-if="isDirty" class="dirty-dot" title="Cambios sin guardar">*</span>
+        <span v-if="isDirty" class="dirty-dot" :title="t('toolbar.unsavedDot')">*</span>
       </div>
 
       <div class="row-group actions">
@@ -183,7 +181,7 @@ async function onEnableIndependent() {
           data-test="live-preview"
           :disabled="!livePreviewEnabled"
           :title="livePreviewTitle"
-          aria-label="Vista en vivo (demo en vivo del proyecto actual, incluye cambios sin guardar, en una pestaña nueva)"
+          :aria-label="t('toolbar.livePreviewAria')"
           @click="onOpenLivePreview"
         >
           <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
@@ -196,7 +194,7 @@ async function onEnableIndependent() {
               stroke-linejoin="round"
             />
           </svg>
-          <span class="live-label">Vista en vivo</span>
+          <span class="live-label">{{ t('toolbar.livePreview') }}</span>
         </button>
         <button
           class="tool-btn"
@@ -210,8 +208,8 @@ async function onEnableIndependent() {
           data-test="toggle-git"
           @click="emit('toggle-git')"
           :title="publishTitle"
-        >Publicar{{ gitAhead > 0 ? ` (${gitAhead})` : '' }}</button>
-        <button class="save-btn" data-test="save" @click="emit('save')" :disabled="!isDirty" title="Guardar (Cmd+S)">Guardar</button>
+        >{{ t('toolbar.publish') }}{{ gitAhead > 0 ? ` (${gitAhead})` : '' }}</button>
+        <button class="save-btn" data-test="save" @click="emit('save')" :disabled="!isDirty" :title="t('toolbar.save') + ' (Cmd+S)'">{{ t('toolbar.save') }}</button>
       </div>
     </div>
 
@@ -221,8 +219,8 @@ async function onEnableIndependent() {
         <button
           :class="['tool-btn', 'icon-btn', { active: state.tool === 'select' }]"
           @click="state.tool = 'select'"
-          title="Seleccionar (V)"
-          aria-label="Seleccionar (V)"
+          :title="t('toolbar.toolSelect')"
+          :aria-label="t('toolbar.toolSelect')"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
             <path
@@ -233,13 +231,13 @@ async function onEnableIndependent() {
               stroke-linejoin="round"
             />
           </svg>
-          <span class="tool-label">Seleccionar</span>
+          <span class="tool-label">{{ t('toolbar.selectLabel') }}</span>
         </button>
         <button
           :class="['tool-btn', 'icon-btn', { active: state.tool === 'hand' }]"
           @click="state.tool = 'hand'"
-          title="Mano (H)"
-          aria-label="Mano (H)"
+          :title="t('toolbar.toolHand')"
+          :aria-label="t('toolbar.toolHand')"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
             <path
@@ -251,7 +249,7 @@ async function onEnableIndependent() {
               stroke-linejoin="round"
             />
           </svg>
-          <span class="tool-label">Mano</span>
+          <span class="tool-label">{{ t('toolbar.handLabel') }}</span>
         </button>
       </div>
 
@@ -261,13 +259,13 @@ async function onEnableIndependent() {
         <button
           :class="['device-btn', { active: state.deviceMode === 'desktop' }]"
           @click="state.deviceMode = 'desktop'"
-          :title="isIndependent ? 'Editar configuración de Escritorio' : 'Escritorio'"
+          :title="isIndependent ? t('toolbar.editDesktopTitle') : t('toolbar.desktop')"
           data-test="device-desktop"
         >&#x1F4BB;</button>
         <button
           :class="['device-btn', { active: state.deviceMode === 'mobile' }]"
           @click="state.deviceMode = 'mobile'"
-          :title="isIndependent ? 'Editar configuración de Móvil' : 'Móvil'"
+          :title="isIndependent ? t('toolbar.editMobileTitle') : t('toolbar.mobile')"
           data-test="device-mobile"
         >&#x1F4F1;</button>
 
@@ -283,48 +281,48 @@ async function onEnableIndependent() {
           class="view-badge view-badge-indep"
           data-test="view-mode-indicator"
           :data-active-view="state.deviceMode"
-          :title="`Configuración independiente — editando ${state.deviceMode === 'mobile' ? 'Móvil' : 'Escritorio'}`"
-        >Independiente · {{ state.deviceMode === 'mobile' ? 'Móvil' : 'Escritorio' }}</span>
+          :title="`${t('toolbar.independentBadge')} — ${state.deviceMode === 'mobile' ? t('toolbar.mobile') : t('toolbar.desktop')}`"
+        >{{ t('toolbar.independentBadge') }} · {{ state.deviceMode === 'mobile' ? t('toolbar.mobile') : t('toolbar.desktop') }}</span>
         <button
           v-else
           class="view-badge view-badge-shared"
           data-test="enable-independent-views"
-          title="Separar escritorio y móvil en configuraciones independientes"
+          :title="t('toolbar.splitDevicesTitle')"
           @click="onEnableIndependent"
-        >Compartido — Separar móvil/escritorio</button>
+        >{{ t('toolbar.sharedBadge') }}</button>
       </div>
 
       <span class="separator" />
 
       <div class="row-group">
         <div class="zoom-control">
-          <button class="zoom-btn" @click="zoomOut" title="Alejar (Cmd -)" aria-label="Alejar">&minus;</button>
-          <button class="zoom-label" @click="fit" title="Ajustar a la pantalla (Cmd 0)" aria-label="Ajustar a la pantalla">{{ zoomPercent }}%</button>
-          <button class="zoom-btn" @click="zoomIn" title="Acercar (Cmd +)" aria-label="Acercar">+</button>
+          <button class="zoom-btn" @click="zoomOut" :title="t('toolbar.zoomOut')" :aria-label="t('toolbar.zoomOutAria')">&minus;</button>
+          <button class="zoom-label" @click="fit" :title="t('toolbar.zoomFit')" :aria-label="t('toolbar.zoomFitAria')">{{ zoomPercent }}%</button>
+          <button class="zoom-btn" @click="zoomIn" :title="t('toolbar.zoomIn')" :aria-label="t('toolbar.zoomInAria')">+</button>
         </div>
       </div>
 
       <span class="separator" />
 
       <div class="row-group">
-        <div class="mode-toggle" role="group" aria-label="Modo de vista">
+        <div class="mode-toggle" role="group" :aria-label="t('toolbar.viewModeAria')">
           <button
             :class="['mode-btn', { active: state.previewMode === 'edit' }]"
             @click="state.previewMode = 'edit'"
-            title="Edicion: mover elementos, animaciones en pausa"
-          >Edicion</button>
+            :title="t('toolbar.editModeTitle')"
+          >{{ t('toolbar.editMode') }}</button>
           <button
             :class="['mode-btn', { active: state.previewMode === 'preview' }]"
             @click="state.previewMode = 'preview'"
-            title="Preview: reproduce animaciones y parallax"
-          >Preview</button>
+            :title="t('toolbar.previewModeTitle')"
+          >{{ t('toolbar.previewMode') }}</button>
         </div>
 
         <button
           class="restart-btn"
           @click="restartPreview"
-          title="Reiniciar animaciones"
-          aria-label="Reiniciar animaciones"
+          :title="t('toolbar.restartAnimations')"
+          :aria-label="t('toolbar.restartAnimations')"
           data-test="preview-restart"
         >
           <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
@@ -345,7 +343,7 @@ async function onEnableIndependent() {
       <div class="row-group">
         <label
           class="snap-toggle"
-          title="Ver toda la composición de una vez, a escala (sin desplazarte por las secciones)"
+          :title="t('toolbar.overviewTitle')"
         >
           <input
             type="checkbox"
@@ -353,13 +351,13 @@ async function onEnableIndependent() {
             @change="onToggleOverview"
             data-test="overview-toggle"
           />
-          Vista completa
+          {{ t('toolbar.overview') }}
         </label>
 
         <label
           v-if="state.previewMode === 'edit'"
           class="snap-toggle"
-          title="Congela las animaciones en Edición (las muestra en su estado base) para posicionar con precisión. En Preview siempre se ven animadas."
+          :title="t('toolbar.freezeAnimsTitle')"
         >
           <input
             type="checkbox"
@@ -367,14 +365,14 @@ async function onEnableIndependent() {
             @change="onToggleFreezeAnims"
             data-test="freeze-anims-toggle"
           />
-          Congelar animaciones
+          {{ t('toolbar.freezeAnims') }}
         </label>
 
         <GridGuidesControl />
 
         <label
           class="snap-toggle"
-          title="Guarda automáticamente los cambios (no necesitas pulsar Guardar)"
+          :title="t('toolbar.autosaveTitle')"
         >
           <input
             type="checkbox"
@@ -382,14 +380,14 @@ async function onEnableIndependent() {
             @change="onToggleAutosave"
             data-test="autosave-toggle"
           />
-          Autosave
+          {{ t('toolbar.autosave') }}
         </label>
         <span
           v-if="state.autosave && state.autosaveStatus !== 'idle'"
           class="autosave-status"
           :data-state="state.autosaveStatus"
           data-test="autosave-status"
-        >{{ state.autosaveStatus === 'saving' ? 'Guardando…' : 'Guardado' }}</span>
+        >{{ state.autosaveStatus === 'saving' ? t('toolbar.saving') : t('toolbar.saved') }}</span>
       </div>
     </div>
   </div>

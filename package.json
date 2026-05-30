@@ -15,7 +15,7 @@
     "prebuild": "node scripts/embed-contract.mjs",
     "build": "vite build",
     "prebuild:server": "node scripts/embed-contract.mjs",
-    "build:server": "esbuild server/standalone.ts --bundle --platform=node --format=cjs --outfile=dist-server/server.cjs --external:esbuild --external:@aws-sdk/client-s3 --external:chokidar --external:ws --external:fsevents",
+    "build:server": "esbuild server/standalone.ts --bundle --platform=node --format=cjs --outfile=dist-server/server.cjs --external:esbuild --external:@aws-sdk/client-s3 --external:chokidar --external:ws --external:fsevents --external:@vue/compiler-sfc",
     "start": "yarn build && yarn build:server && node dist-server/server.cjs",
     "preelectron:dev": "node scripts/embed-contract.mjs",
     "electron:dev": "ELECTRON_DEV=1 electron electron/main.cjs",
@@ -23,7 +23,7 @@
     "dist:dir": "node scripts/ensure-x64-esbuild.mjs && yarn build && yarn build:server && electron-builder --dir --x64",
     "dist:mac": "node scripts/ensure-x64-esbuild.mjs && yarn build && yarn build:server && electron-builder --mac --x64 --arm64",
     "release": "node scripts/release.mjs",
-    "test": "node tests/editor.test.mjs",
+    "test": "node tests/editor.test.mjs && node tests/git-pathspec.test.mjs && node tests/editor-helpers.test.mjs",
     "test:e2e": "node e2e/harness.cjs --suite=editor",
     "test:e2e:save": "node e2e/suites/save-reflect.cjs",
     "test:e2e:matrix": "node e2e/suites/engine-matrix.cjs",
@@ -41,7 +41,7 @@
     "ws": "^8.21.0"
   },
   "devDependencies": {
-    "@parallax-editor/parallax-engine": "^0.1.1",
+    "@parallax-editor/parallax-engine": "^0.1.3",
     "@types/ws": "^8.5.12",
     "@vitejs/plugin-vue": "^6.0.7",
     "electron": "^42.3.0",

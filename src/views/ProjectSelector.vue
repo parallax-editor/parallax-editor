@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { projectsApi, workspaceApi, s3Api } from '../composables/useApi'
+
+const { t } = useI18n()
 import { APP_VERSION } from '../version'
 import type { ProjectListItem, Workspace } from '../composables/useApi'
 import ProjectCard from '../components/selector/ProjectCard.vue'
 import HelpHint from '../components/properties/HelpHint.vue'
-import LanguageSwitcher from '../components/ui/LanguageSwitcher.vue'
 // The SAME canonical slug transform the server uses to create the folder, so
 // this live preview ALWAYS matches the folder/route that gets created.
 import { slugify } from '../../server/slug'
@@ -58,7 +60,7 @@ async function activateAndLoad() {
   }
   const r = await selectWorkspace(ws.id)
   if (!r?.ok) {
-    wsError.value = r?.error || 'No se pudo activar el workspace.'
+    wsError.value = r?.error || t('workspace.activationError')
     projects.value = []
     return
   }
@@ -132,8 +134,8 @@ async function createNew() {
     newName.value = ''
     if (created && expected && created !== expected) {
       await dialog.alert({
-        title: 'Dirección en uso',
-        message: `Ya existía un proyecto con esa dirección.\nSe creó como: "${created}"`,
+        title: t('selector.addressInUseTitle'),
+        message: t('selector.addressInUseMessage', { slug: created }),
       })
     }
     if (created) { openProject(created); return }
@@ -146,24 +148,24 @@ async function duplicate(slug: string) {
   const ws = activeWorkspace.value
   if (!ws) return
   const proposed = await dialog.prompt({
-    title: 'Duplicar proyecto',
-    message: `Nombre para la copia de "${slug}"\n\nDéjalo vacío para usar un nombre automático (por ejemplo "${slug}-copia").`,
+    title: t('selector.duplicateTitle'),
+    message: t('selector.duplicateMessage', { slug }),
     defaultValue: `${slug}-copia`,
-    confirmText: 'Duplicar',
+    confirmText: t('selector.duplicateConfirm'),
   })
   if (proposed === null) return
   const r = await projectsApi.duplicate(ws.id, slug, proposed.trim() || undefined)
   await refreshProjects()
-  if (r?.slug) await dialog.alert({ title: 'Copia creada', message: `Copia creada: "${r.slug}"` })
+  if (r?.slug) await dialog.alert({ title: t('selector.copyCreatedTitle'), message: t('selector.copyCreatedMessage', { slug: r.slug }) })
 }
 
 async function remove(slug: string) {
   const ws = activeWorkspace.value
   if (!ws) return
   const ok = await dialog.confirm({
-    title: 'Eliminar proyecto',
-    message: `Eliminar "${slug}"? Se borrará la carpeta del repositorio y, si está publicado, también de S3. Esta acción no se puede deshacer.`,
-    confirmText: 'Eliminar',
+    title: t('selector.deleteTitle'),
+    message: t('selector.deleteMessage', { slug }),
+    confirmText: t('selector.deleteConfirm'),
     danger: true,
   })
   if (!ok) return
@@ -265,7 +267,7 @@ async function createS3Bucket() {
   wsBusy.value = true
   try {
     const r = await s3Api.createBucket(cfg.value.s3.bucket, cfg.value.s3.region || 'us-east-1')
-    if (!r?.ok) wsModalError.value = r?.error || 'No se pudo crear el bucket.'
+    if (!r?.ok) wsModalError.value = r?.error || t('workspace.s3CreateBucketFailed')
     else await loadBuckets()
   } finally { wsBusy.value = false }
 }
@@ -286,7 +288,7 @@ async function saveConfig() {
     // If we edited the active workspace, re-activate + reload projects.
     if (wsConfigId.value === wsState.activeId) {
       const r = await selectWorkspace(wsConfigId.value)
-      if (!r?.ok) { wsModalError.value = r?.error || 'El host rechazó la configuración.'; return }
+      if (!r?.ok) { wsModalError.value = r?.error || t('workspace.hostRejectedConfig'); return }
       await refreshProjects()
     }
     wsConfigId.value = null
@@ -296,9 +298,9 @@ async function saveConfig() {
 async function deleteWorkspace() {
   if (!wsConfigId.value) return
   const ok = await dialog.confirm({
-    title: 'Quitar workspace',
-    message: '¿Quitar este workspace de la lista? (No borra archivos en disco.)',
-    confirmText: 'Quitar',
+    title: t('workspace.removeConfirmTitle'),
+    message: t('workspace.removeConfirmMessage'),
+    confirmText: t('workspace.removeConfirmCta'),
     danger: true,
   })
   if (!ok) return
@@ -356,10 +358,10 @@ async function createWorkspace() {
     // Clonar solo tiene sentido con git; un workspace sin git es una carpeta.
     if (newWs.value.useGit && newWs.value.mode === 'clone') {
       const r = await workspaceApi.clone(newWs.value.gitUrl.trim(), newWs.value.clonePath.trim())
-      if (!r?.ok || !r.path) { newWsError.value = r?.error || 'No se pudo clonar.'; return }
+      if (!r?.ok || !r.path) { newWsError.value = r?.error || t('workspace.cloneFailed'); return }
       repoPath = r.path
     }
-    if (!repoPath) { newWsError.value = 'Elige una carpeta o clona un repositorio.'; return }
+    if (!repoPath) { newWsError.value = t('workspace.pickFolderOrClone'); return }
     const name = newWs.value.name.trim() || repoPath.split('/').pop() || 'Workspace'
     const id = addWorkspace({
       name,
@@ -370,7 +372,7 @@ async function createWorkspace() {
     })
     showNewWs.value = false
     const r = await selectWorkspace(id)
-    if (!r?.ok) { wsError.value = r?.error || 'El host rechazó el workspace.'; return }
+    if (!r?.ok) { wsError.value = r?.error || t('workspace.hostRejected'); return }
     await refreshProjects()
   } finally { newWsBusy.value = false }
 }
@@ -380,24 +382,22 @@ async function createWorkspace() {
   <div class="selector">
     <header class="hero">
       <div class="hero-text">
-        <h1 class="title">Parallax Editor <span class="app-version" data-test="app-version">v{{ APP_VERSION }}</span></h1>
-        <p class="subtitle">Selecciona un proyecto para editar</p>
+        <h1 class="title">Parallax Editor <span class="app-version" data-test="app-version">{{ t('selector.appVersionLabel', { version: APP_VERSION }) }}</span></h1>
+        <p class="subtitle">{{ t('selector.subtitle') }}</p>
       </div>
       <div class="hero-actions">
-        <LanguageSwitcher />
       </div>
     </header>
 
     <!-- Git setup banner (persistent until git is configured) -->
     <div v-if="wsState.gitConfigured === false" class="git-banner" data-test="git-config-banner">
-      <strong>Falta configurar Git.</strong>
-      Para guardar y publicar necesitas configurar tu usuario de Git en esta computadora
-      (nombre y correo) y tener acceso a GitHub. Pídele ayuda a tu equipo técnico si no sabes cómo.
+      <strong>{{ t('workspace.gitBannerStrong') }}</strong>
+      {{ t('workspace.gitBannerBody') }}
     </div>
 
     <!-- Workspace selector bar -->
     <div class="ws-bar" data-test="workspace-bar">
-      <span class="ws-bar-label">Workspace</span>
+      <span class="ws-bar-label">{{ t('workspace.label') }}</span>
       <div class="ws-chips">
         <div
           v-for="w in wsState.list"
@@ -411,12 +411,12 @@ async function createWorkspace() {
             class="ws-gear"
             type="button"
             :data-test="`workspace-gear-${w.id}`"
-            aria-label="Configurar workspace"
-            title="Configurar"
+            :aria-label="t('workspace.gearAria')"
+            :title="t('workspace.gearTitle')"
             @click="openConfig(w.id)"
           >&#9881;</button>
         </div>
-        <button class="ws-new" type="button" data-test="workspace-new" @click="openNewWs">+ Nuevo workspace</button>
+        <button class="ws-new" type="button" data-test="workspace-new" @click="openNewWs">{{ t('workspace.new') }}</button>
       </div>
     </div>
 
@@ -430,31 +430,31 @@ async function createWorkspace() {
         type="search"
         class="search-input"
         data-test="project-search"
-        placeholder="Buscar por nombre o dirección…"
-        aria-label="Buscar proyectos"
+        :placeholder="t('selector.searchPlaceholder')"
+        :aria-label="t('selector.searchAria')"
         autocomplete="off"
       />
-      <button v-if="search" type="button" class="search-clear" aria-label="Limpiar búsqueda" @click="search = ''">&times;</button>
+      <button v-if="search" type="button" class="search-clear" :aria-label="t('selector.searchClearAria')" @click="search = ''">&times;</button>
     </div>
 
-    <div v-if="loading" class="loading">Cargando proyectos...</div>
+    <div v-if="loading" class="loading">{{ t('selector.loading') }}</div>
 
     <template v-else>
       <section class="project-group">
         <div class="group-header">
-          <h2>{{ activeWorkspace?.name || 'Proyectos' }}</h2>
+          <h2>{{ activeWorkspace?.name || t('selector.defaultGroup') }}</h2>
           <span class="group-count">{{ projects.length }}</span>
-          <button class="btn-new" :disabled="!activeWorkspace" @click="showCreate = true">+ Nuevo proyecto</button>
+          <button class="btn-new" :disabled="!activeWorkspace" @click="showCreate = true">{{ t('selector.newProjectCta') }}</button>
         </div>
 
         <div v-if="!activeWorkspace" class="empty">
-          No hay ningún workspace seleccionado. Crea uno con <strong>+ Nuevo workspace</strong>.
+          {{ t('selector.noWorkspaceSelected') }} <strong>{{ t('selector.noWorkspaceCta') }}</strong>.
         </div>
         <div v-else-if="projects.length === 0" class="empty">
-          Este workspace aún no tiene proyectos. Crea uno con <strong>+ Nuevo proyecto</strong>.
+          {{ t('selector.noProjectsInWs') }} <strong>{{ t('selector.newProjectCta') }}</strong>.
         </div>
         <div v-else-if="visibleProjects.length === 0" class="no-results" data-test="no-results">
-          Sin resultados para “{{ search }}”.
+          {{ t('selector.noResults', { q: search }) }}
         </div>
         <div v-else class="cards">
           <ProjectCard
@@ -474,28 +474,28 @@ async function createWorkspace() {
     <!-- Create project modal -->
     <Teleport to="body">
       <div v-if="showCreate" class="create-backdrop" @click.self="showCreate = false">
-        <div class="create-dialog" role="dialog" aria-label="Nuevo proyecto" data-test="create-dialog">
+        <div class="create-dialog" role="dialog" :aria-label="t('selector.createDialogAria')" data-test="create-dialog">
           <header class="cd-head">
-            <h3>Nuevo proyecto</h3>
-            <button class="cd-close" aria-label="Cerrar" @click="showCreate = false">&times;</button>
+            <h3>{{ t('selector.createDialogTitle') }}</h3>
+            <button class="cd-close" :aria-label="t('selector.closeAria')" @click="showCreate = false">&times;</button>
           </header>
           <div class="cd-body">
-            <label class="field-label" for="new-site-name">Nombre del proyecto</label>
+            <label class="field-label" for="new-site-name">{{ t('selector.nameLabel') }}</label>
             <input
               id="new-site-name"
               ref="nameInput"
               v-model="newName"
               data-test="new-site-name"
-              placeholder="Ej: Sofía &amp; Juan — 15 de marzo"
+              :placeholder="t('selector.namePlaceholder')"
               @keydown.enter="createNew"
             />
-            <div class="slug-caption">Dirección/carpeta: <code data-test="new-site-slug">{{ slugPreview || '—' }}</code></div>
-            <p class="slug-hint">Se genera automático a partir del nombre.</p>
+            <div class="slug-caption">{{ t('selector.slugCaption') }} <code data-test="new-site-slug">{{ slugPreview || '—' }}</code></div>
+            <p class="slug-hint">{{ t('selector.slugHint') }}</p>
           </div>
           <div class="dialog-actions">
-            <button @click="showCreate = false">Cancelar</button>
+            <button @click="showCreate = false">{{ t('common.cancel') }}</button>
             <button class="primary" data-test="new-site-create" :disabled="!slugPreview || creating" @click="createNew">
-              {{ creating ? 'Creando…' : 'Crear' }}
+              {{ creating ? t('selector.creating') : t('selector.create2') }}
             </button>
           </div>
         </div>
@@ -505,52 +505,51 @@ async function createWorkspace() {
     <!-- Workspace config modal -->
     <Teleport to="body">
       <div v-if="wsConfigId" class="create-backdrop" @click.self="wsConfigId = null">
-        <div class="create-dialog wide" role="dialog" aria-label="Configurar workspace" data-test="workspace-config">
+        <div class="create-dialog wide" role="dialog" :aria-label="t('workspace.configureAria')" data-test="workspace-config">
           <header class="cd-head">
-            <h3>Configurar workspace</h3>
-            <button class="cd-close" aria-label="Cerrar" @click="wsConfigId = null">&times;</button>
+            <h3>{{ t('workspace.configureTitle') }}</h3>
+            <button class="cd-close" :aria-label="t('selector.closeAria')" @click="wsConfigId = null">&times;</button>
           </header>
           <div class="cd-body">
-            <label class="field-label">Nombre</label>
-            <input v-model="cfg.name" data-test="ws-cfg-name" placeholder="Eventos" />
+            <label class="field-label">{{ t('workspace.nameField') }}</label>
+            <input v-model="cfg.name" data-test="ws-cfg-name" :placeholder="t('workspace.namePlaceholder')" />
 
-            <label class="field-label">Carpeta del repositorio</label>
+            <label class="field-label">{{ t('workspace.repoField') }}</label>
             <div class="row-with-btn">
-              <input v-model="cfg.repoPath" data-test="ws-cfg-repopath" placeholder="/Users/…/mi-repo" />
-              <button class="aux-btn" type="button" data-test="ws-cfg-pick" @click="pickRepoFolder">Elegir carpeta…</button>
+              <input v-model="cfg.repoPath" data-test="ws-cfg-repopath" :placeholder="t('workspace.repoPlaceholder')" />
+              <button class="aux-btn" type="button" data-test="ws-cfg-pick" @click="pickRepoFolder">{{ t('workspace.pickFolder') }}</button>
             </div>
 
             <label class="check-row" style="margin-top:10px">
               <input type="checkbox" v-model="cfg.useGit" data-test="ws-cfg-usegit" />
-              Usar control de versiones (git)
+              {{ t('workspace.useGit') }}
             </label>
             <p v-if="!cfg.useGit" class="ws-hint" data-test="ws-cfg-nogit-hint">
-              Sin git: la carpeta no necesita ser repositorio, Guardar solo escribe en disco
-              y Publicar sube solo a S3 (o se deshabilita si no hay S3).
+              {{ t('workspace.nogitHintConfig') }}
             </p>
 
             <template v-if="cfg.useGit">
-              <label class="field-label">Remoto de Git (opcional)</label>
-              <input v-model="cfg.gitRemote" placeholder="git@github.com:usuario/repo.git" />
+              <label class="field-label">{{ t('workspace.gitRemoteField') }}</label>
+              <input v-model="cfg.gitRemote" :placeholder="t('workspace.gitRemotePlaceholder')" />
             </template>
 
-            <label class="field-label">Carpeta de contenido (contentRoot)</label>
-            <input v-model="cfg.contentRoot" data-test="ws-cfg-contentroot" placeholder="content o content/portafolio" />
+            <label class="field-label">{{ t('workspace.contentRootField') }}</label>
+            <input v-model="cfg.contentRoot" data-test="ws-cfg-contentroot" :placeholder="t('workspace.contentRootPlaceholder')" />
 
             <div class="s3-section" v-if="cfg.s3">
-              <h4>Publicación en S3</h4>
+              <h4>{{ t('workspace.s3Section') }}</h4>
               <label class="check-row">
                 <input type="checkbox" v-model="cfg.s3.enabled" data-test="ws-cfg-s3-enabled" />
-                Habilitar publicación a S3
+                {{ t('workspace.s3Enable') }}
               </label>
               <template v-if="cfg.s3.enabled">
-                <label class="field-label">Bucket</label>
+                <label class="field-label">{{ t('workspace.s3BucketField') }}</label>
                 <div class="bucket-combo">
                   <input
                     v-model="cfg.s3.bucket"
                     class="bucket-input"
                     data-test="ws-cfg-s3-bucket"
-                    placeholder="mi-bucket"
+                    :placeholder="t('workspace.s3BucketPlaceholder')"
                     autocomplete="off"
                     spellcheck="false"
                     @input="onBucketInput"
@@ -574,25 +573,23 @@ async function createWorkspace() {
                   </ul>
                 </div>
                 <div class="bucket-create-row">
-                  <button class="aux-btn" type="button" :disabled="wsBusy || !cfg.s3.bucket" @click="createS3Bucket">Crear bucket</button>
-                  <span class="bucket-create-hint">Crea el bucket en S3 con el nombre escrito (si aún no existe).</span>
+                  <button class="aux-btn" type="button" :disabled="wsBusy || !cfg.s3.bucket" @click="createS3Bucket">{{ t('workspace.s3CreateBucket') }}</button>
+                  <span class="bucket-create-hint">{{ t('workspace.s3CreateBucketHint') }}</span>
                 </div>
 
-                <label class="field-label">Prefijo (opcional)</label>
+                <label class="field-label">{{ t('workspace.s3PrefixField') }}</label>
                 <input v-model="cfg.s3.prefix" placeholder="" />
 
-                <label class="field-label">Región</label>
-                <input v-model="cfg.s3.region" placeholder="us-east-1" />
+                <label class="field-label">{{ t('workspace.s3RegionField') }}</label>
+                <input v-model="cfg.s3.region" :placeholder="t('workspace.s3RegionPlaceholder')" />
               </template>
 
               <label class="check-row manifest-row">
                 <input type="checkbox" v-model="cfg.s3.publishManifest" data-test="ws-cfg-s3-manifest" />
-                Mantener manifiesto del catálogo (manifest.json)
+                {{ t('workspace.s3Manifest') }}
                 <HelpHint
-                  label="Manifiesto del catálogo"
-                  text="Genera y mantiene **&lt;contentRoot&gt;/manifest.json** con la lista de proyectos del workspace, para catálogos públicos.
-
-» Apágalo en workspaces privados (por ejemplo invitaciones) para no exponer la lista de proyectos."
+                  :label="t('workspace.s3ManifestHelp')"
+                  :text="t('workspace.s3ManifestHelpText')"
                 />
               </label>
             </div>
@@ -600,11 +597,11 @@ async function createWorkspace() {
             <p v-if="wsModalError" class="ws-err">{{ wsModalError }}</p>
           </div>
           <div class="dialog-actions spread">
-            <button class="danger" data-test="ws-cfg-delete" @click="deleteWorkspace">Quitar workspace</button>
+            <button class="danger" data-test="ws-cfg-delete" @click="deleteWorkspace">{{ t('workspace.removeBtn') }}</button>
             <span class="spacer" />
-            <button @click="wsConfigId = null">Cancelar</button>
+            <button @click="wsConfigId = null">{{ t('common.cancel') }}</button>
             <button class="primary" data-test="ws-cfg-save" :disabled="wsBusy" @click="saveConfig">
-              {{ wsBusy ? 'Guardando…' : 'Guardar' }}
+              {{ wsBusy ? t('workspace.saving') : t('workspace.save') }}
             </button>
           </div>
         </div>
@@ -614,14 +611,14 @@ async function createWorkspace() {
     <!-- New workspace modal -->
     <Teleport to="body">
       <div v-if="showNewWs" class="create-backdrop" @click.self="showNewWs = false">
-        <div class="create-dialog wide" role="dialog" aria-label="Nuevo workspace" data-test="new-workspace">
+        <div class="create-dialog wide" role="dialog" :aria-label="t('workspace.newAria')" data-test="new-workspace">
           <header class="cd-head">
-            <h3>Nuevo workspace</h3>
-            <button class="cd-close" aria-label="Cerrar" @click="showNewWs = false">&times;</button>
+            <h3>{{ t('workspace.newTitle') }}</h3>
+            <button class="cd-close" :aria-label="t('selector.closeAria')" @click="showNewWs = false">&times;</button>
           </header>
           <div class="cd-body">
-            <label class="field-label">Nombre del workspace</label>
-            <input v-model="newWs.name" data-test="new-ws-name" placeholder="Ej: Eventos, Portafolio" />
+            <label class="field-label">{{ t('workspace.nameWsField') }}</label>
+            <input v-model="newWs.name" data-test="new-ws-name" :placeholder="t('workspace.nameWsPlaceholder')" />
 
             <label class="check-row" style="margin-top:10px">
               <input
@@ -630,45 +627,45 @@ async function createWorkspace() {
                 data-test="new-ws-usegit"
                 @change="!newWs.useGit && (newWs.mode = 'folder')"
               />
-              Usar control de versiones (git)
+              {{ t('workspace.useGit') }}
             </label>
             <p v-if="!newWs.useGit" class="ws-hint" data-test="new-ws-nogit-hint">
-              Sin git: es solo una carpeta local. Guardar escribe a disco y Publicar sube solo a S3.
+              {{ t('workspace.nogitHintNew') }}
             </p>
 
             <!-- Clonar solo aplica con git; sin git el workspace es una carpeta. -->
             <div class="mode-tabs" v-if="newWs.useGit">
-              <button :class="{ active: newWs.mode === 'folder' }" @click="newWs.mode = 'folder'" data-test="new-ws-mode-folder">Carpeta local</button>
-              <button :class="{ active: newWs.mode === 'clone' }" @click="newWs.mode = 'clone'" data-test="new-ws-mode-clone">Clonar de GitHub</button>
+              <button :class="{ active: newWs.mode === 'folder' }" @click="newWs.mode = 'folder'" data-test="new-ws-mode-folder">{{ t('workspace.modeFolder') }}</button>
+              <button :class="{ active: newWs.mode === 'clone' }" @click="newWs.mode = 'clone'" data-test="new-ws-mode-clone">{{ t('workspace.modeClone') }}</button>
             </div>
 
             <template v-if="newWs.mode === 'folder'">
-              <label class="field-label">Carpeta del repositorio</label>
+              <label class="field-label">{{ t('workspace.repoField') }}</label>
               <div class="row-with-btn">
-                <input v-model="newWs.repoPath" data-test="new-ws-repopath" placeholder="/Users/…/mi-repo" />
-                <button class="aux-btn" type="button" data-test="new-ws-repopath-pick" @click="pickNewWsFolder">Elegir carpeta…</button>
+                <input v-model="newWs.repoPath" data-test="new-ws-repopath" :placeholder="t('workspace.repoPlaceholder')" />
+                <button class="aux-btn" type="button" data-test="new-ws-repopath-pick" @click="pickNewWsFolder">{{ t('workspace.pickFolder') }}</button>
               </div>
             </template>
             <template v-else>
-              <label class="field-label">URL de GitHub</label>
-              <input v-model="newWs.gitUrl" data-test="new-ws-giturl" placeholder="git@github.com:usuario/repo.git" />
-              <label class="field-label">Ruta local destino</label>
+              <label class="field-label">{{ t('workspace.gitUrlField') }}</label>
+              <input v-model="newWs.gitUrl" data-test="new-ws-giturl" :placeholder="t('workspace.gitRemotePlaceholder')" />
+              <label class="field-label">{{ t('workspace.clonePathField') }}</label>
               <div class="row-with-btn">
-                <input v-model="newWs.clonePath" data-test="new-ws-clonepath" placeholder="/Users/…/mi-repo" />
-                <button class="aux-btn" type="button" data-test="new-ws-clonepath-pick" @click="pickNewWsClonePath">Elegir carpeta…</button>
+                <input v-model="newWs.clonePath" data-test="new-ws-clonepath" :placeholder="t('workspace.repoPlaceholder')" />
+                <button class="aux-btn" type="button" data-test="new-ws-clonepath-pick" @click="pickNewWsClonePath">{{ t('workspace.pickFolder') }}</button>
               </div>
-              <p class="slug-hint">Elige la carpeta contenedora; se le agrega el nombre del repo automáticamente (git clone crea la carpeta destino).</p>
+              <p class="slug-hint">{{ t('workspace.cloneHint') }}</p>
             </template>
 
-            <label class="field-label">Carpeta de contenido (contentRoot)</label>
-            <input v-model="newWs.contentRoot" placeholder="content o content/portafolio" />
+            <label class="field-label">{{ t('workspace.contentRootField') }}</label>
+            <input v-model="newWs.contentRoot" :placeholder="t('workspace.contentRootPlaceholder')" />
 
             <p v-if="newWsError" class="ws-err">{{ newWsError }}</p>
           </div>
           <div class="dialog-actions">
-            <button @click="showNewWs = false">Cancelar</button>
+            <button @click="showNewWs = false">{{ t('common.cancel') }}</button>
             <button class="primary" data-test="new-ws-create" :disabled="newWsBusy" @click="createWorkspace">
-              {{ newWsBusy ? 'Creando…' : 'Crear workspace' }}
+              {{ newWsBusy ? t('workspace.creatingWs') : t('workspace.createWs') }}
             </button>
           </div>
         </div>

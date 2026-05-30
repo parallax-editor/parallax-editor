@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRouter, onBeforeRouteLeave } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { projectsApi, gitApi } from '../composables/useApi'
+
+const { t } = useI18n()
 import { useShortcuts } from '../composables/useShortcuts'
 import { useWebSocket } from '../composables/useWebSocket'
 import { usePanelResize } from '../composables/usePanelResize'
@@ -51,10 +54,10 @@ useLiveBroadcast()
 onBeforeRouteLeave(async () => {
   if (!isDirty.value) return true
   return await dialog.confirm({
-    title: 'Cambios sin guardar',
-    message: 'Tienes cambios sin guardar. Si sales del proyecto se perderán. ¿Salir de todos modos?',
-    confirmText: 'Salir sin guardar',
-    cancelText: 'Seguir editando',
+    title: t('editor.unsavedTitle'),
+    message: t('editor.unsavedMessage'),
+    confirmText: t('editor.unsavedConfirm'),
+    cancelText: t('editor.unsavedCancel'),
     danger: true,
   })
 })
@@ -87,7 +90,7 @@ async function loadProject() {
   await selectWorkspace(props.type)
   const data = await projectsApi.get(props.type, props.slug)
   if (!data || data.error) {
-    await dialog.alert({ title: 'Proyecto no encontrado', message: 'Proyecto no encontrado' })
+    await dialog.alert({ title: t('editor.notFoundTitle'), message: t('editor.notFoundMessage') })
     router.push('/')
     return
   }
@@ -297,16 +300,15 @@ async function handleMenu(action: string) {
       if (r?.ok) {
         state.gitLogNonce++
         applyExternalChange()
-        await dialog.alert({ title: 'Cambios traídos', message: r.result || 'Repositorio actualizado.' })
+        await dialog.alert({ title: t('editor.pullSuccessTitle'), message: r.result || t('editor.pullSuccessFallback') })
       } else if (r?.needsForce) {
         // El pull falló por cambios locales sin guardar/commitear. Ofrecemos
         // descartarlos y traer la última versión — con aviso CLARO de pérdida.
         const discard = await dialog.confirm({
-          title: 'Tienes cambios sin guardar',
-          message:
-            'No se puede traer la última versión porque hay cambios locales sin guardar.\n\n¿Descartar esos cambios y traer la versión del servidor? Perderás de forma permanente lo que no hayas guardado/publicado.',
-          confirmText: 'Descartar y traer',
-          cancelText: 'Cancelar',
+          title: t('editor.pullDiscardTitle'),
+          message: t('editor.pullDiscardMessage'),
+          confirmText: t('editor.pullDiscardConfirm'),
+          cancelText: t('editor.pullDiscardCancel'),
           danger: true,
         })
         if (discard) {
@@ -314,13 +316,13 @@ async function handleMenu(action: string) {
           if (f?.ok) {
             state.gitLogNonce++
             applyExternalChange()
-            await dialog.alert({ title: 'Cambios traídos', message: f.result || 'Repositorio actualizado (se descartaron los cambios locales).' })
+            await dialog.alert({ title: t('editor.pullSuccessTitle'), message: f.result || t('editor.pullDiscardFallback') })
           } else {
-            await dialog.alert({ title: 'No se pudo traer cambios', message: f?.error || 'Error de git.' })
+            await dialog.alert({ title: t('editor.pullFailTitle'), message: f?.error || t('editor.pullFailFallback') })
           }
         }
       } else {
-        await dialog.alert({ title: 'No se pudo traer cambios', message: r?.error || 'Error de git.' })
+        await dialog.alert({ title: t('editor.pullFailTitle'), message: r?.error || t('editor.pullFailFallback') })
       }
       break
     }
@@ -371,7 +373,7 @@ watch(
 
 <template>
   <div v-if="loading" class="loading-screen" data-test="editor-loading">
-    <span class="loading-spinner" aria-label="Cargando" role="status" />
+    <span class="loading-spinner" :aria-label="t('editor.loadingAria')" role="status" />
   </div>
   <div v-else class="editor-layout">
     <Toolbar
@@ -390,7 +392,7 @@ watch(
       <div
         class="resize-handle resize-handle-x"
         data-test="resize-handle-capas"
-        title="Arrastra para cambiar el ancho · doble clic para restablecer"
+        :title="t('editor.resizeHandleCapas')"
         @pointerdown="onHandlePointerDown($event, 'capas', 'x', 1)"
         @dblclick="resetPanel('capas')"
       ><span class="grip" /></div>
@@ -404,7 +406,7 @@ watch(
             v-if="bottomPanel === 'claude'"
             class="resize-handle resize-handle-y"
             data-test="resize-handle-claude"
-            title="Arrastra para cambiar la altura · doble clic para restablecer"
+            :title="t('editor.resizeHandleClaude')"
             @pointerdown="onHandlePointerDown($event, 'claude', 'y', -1)"
             @dblclick="resetPanel('claude')"
           ><span class="grip" /></div>
@@ -416,7 +418,7 @@ watch(
                  a full loadProject() here was wiping the selection, preview
                  scroll and context every time a reply landed in the chat. -->
             <ClaudePanel v-if="bottomPanel === 'claude'" @reload="applyExternalChange" />
-            <GitPanel v-if="bottomPanel === 'git'" @reload="loadProject" @close="bottomPanel = null" />
+            <GitPanel v-if="bottomPanel === 'git'" @reload="applyExternalChange" @close="bottomPanel = null" />
           </div>
         </template>
       </div>
@@ -425,7 +427,7 @@ watch(
       <div
         class="resize-handle resize-handle-x"
         data-test="resize-handle-props"
-        title="Arrastra para cambiar el ancho · doble clic para restablecer"
+        :title="t('editor.resizeHandleCapas')"
         @pointerdown="onHandlePointerDown($event, 'props', 'x', -1)"
         @dblclick="resetPanel('props')"
       ><span class="grip" /></div>

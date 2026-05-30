@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { state, getAtPath, setAtPath, isPathLocked, isNodeLockedById, VIEWPORTS, GRID_PERCENT, markDragEnded, setCanvasDragActive, hasMultiSelection, multiSelectedElementPaths, setCanvasSelection, toggleCanvasSelection } from '../../stores/editor'
+import { state, getAtPath, setAtPath, setAtPathSilent, pushUndoOnce, isPathLocked, isNodeLockedById, VIEWPORTS, GRID_PERCENT, markDragEnded, setCanvasDragActive, hasMultiSelection, multiSelectedElementPaths, setCanvasSelection, toggleCanvasSelection } from '../../stores/editor'
 import { elementAtPoint, findElementPath, pointInArtboard } from '../../composables/useSelection'
 
 const props = defineProps<{
@@ -43,6 +43,199 @@ function flashDragHint(msg: string) {
   hintTimer = setTimeout(() => {
     if (dragHint.value === msg) dragHint.value = null
   }, 2600)
+}
+
+// ─── Inline text editing (double-click) ──────────────────────────────────────
+// Illustrator-style: double-clicking a TEXT element on the canvas turns the
+// element's DOM node into a contentEditable surface. Typing edits the live
+// preview AND persists `element.content` to the store. Esc / Enter / blur /
+// click outside commits. Re-entrant safe: we tear down any prior session
+// before starting a new one.
+const inlineEditing = ref(false)
+let inlineEditNode: HTMLElement | null = null
+let inlineEditPath: string | null = null
+let inlineEditOnInput: ((e: Event) => void) | null = null
+let inlineEditOnBlur: ((e: Event) => void) | null = null
+let inlineEditOnKeydown: ((e: KeyboardEvent) => void) | null = null
+
+function stopInlineTextEdit(commit = true) {
+  if (!inlineEditing.value) return
+  const node = inlineEditNode
+  const path = inlineEditPath
+  if (node) {
+    node.removeAttribute('contenteditable')
+    node.style.cursor = ''
+    node.style.outline = ''
+    if (inlineEditOnInput) node.removeEventListener('input', inlineEditOnInput)
+    if (inlineEditOnBlur) node.removeEventListener('blur', inlineEditOnBlur)
+    if (inlineEditOnKeydown) node.removeEventListener('keydown', inlineEditOnKeydown)
+    // Commit final value once more in case the input listener missed the
+    // last keystroke before blur fired.
+    if (commit && path) {
+      const text = node.innerText
+      setAtPath(`${path}.content`, text)
+    }
+  }
+  inlineEditing.value = false
+  inlineEditNode = null
+  inlineEditPath = null
+  inlineEditOnInput = null
+  inlineEditOnBlur = null
+  inlineEditOnKeydown = null
+}
+
+function startInlineTextEdit(e: MouseEvent) {
+  // Only text elements. Other types fall through to the default move-area
+  // behavior (which double-click does not trigger anyway).
+  if (!state.selectedPath) return
+  const node = getAtPath(state.selectedPath)
+  if (!node || node.type !== 'text') return
+  e.preventDefault()
+  e.stopPropagation()
+  const dom = findDomElement()
+  if (!dom) return
+  // Tear down any previous session targeting a different element.
+  stopInlineTextEdit(false)
+  inlineEditing.value = true
+  inlineEditNode = dom
+  inlineEditPath = state.selectedPath
+  dom.setAttribute('contenteditable', 'plaintext-only')
+  dom.style.cursor = 'text'
+  dom.style.outline = '2px solid var(--accent-strong, #b06bff)'
+  // NO live store sync during typing: writing to `content` on every
+  // keystroke makes Vue re-render the engine, which resets innerText on
+  // this same DOM node and clobbers the caret. The user saw their typing
+  // appear backwards because every new char's caret position was reset to 0.
+  // The contentEditable element holds the typed text on its own; we read
+  // innerText and persist on commit (Enter / Esc / blur).
+  inlineEditOnInput = null
+  inlineEditOnBlur = () => stopInlineTextEdit(true)
+  inlineEditOnKeydown = (ev: KeyboardEvent) => {
+    if (ev.key === 'Escape') {
+      ev.preventDefault()
+      stopInlineTextEdit(true)
+    }
+    // Enter (without shift) commits and exits. Shift+Enter inserts a newline.
+    if (ev.key === 'Enter' && !ev.shiftKey) {
+      ev.preventDefault()
+      stopInlineTextEdit(true)
+    }
+  }
+  dom.addEventListener('blur', inlineEditOnBlur)
+  dom.addEventListener('keydown', inlineEditOnKeydown)
+  // Focus + place caret AT THE DOUBLE-CLICK POINT (Illustrator-style) so
+  // editing starts where the user pointed, not at the end.
+  //
+  // History: the original fix called `document.caretPositionFromPoint(x, y)`
+  // after punching `pointer-events: none` on every overlay layer in the
+  // `elementsFromPoint` stack. That only works if every blocker is in the
+  // stack AND `caretPositionFromPoint` honors pointer-events the way we
+  // assume — neither was reliable here (the engine sometimes paints extra
+  // wrappers, and the API's hit-test behavior varies by browser engine).
+  // The reproducible failure was: caret kept landing at the END regardless
+  // of where the user double-clicked.
+  //
+  // Robust approach: don't ask the browser to hit-test at all. Walk every
+  // Text node inside `dom` and use Range rects to find which character box
+  // the click point falls into. Self-contained, immune to overlay layers,
+  // pointer-events, scale transforms (rects already include the CTM), and
+  // engine-rendered wrappers like split-text span hosts.
+  dom.focus()
+  try {
+    const sel = window.getSelection()
+    if (!sel) throw new Error('no selection api')
+    let range = caretRangeInsideAtPoint(dom, e.clientX, e.clientY)
+    // Fallback: caret at end of text content (dblclick on padding / outside
+    // any text node, or no text nodes at all). Better than collapsing to
+    // start which would land BEFORE all the existing copy.
+    if (!range) {
+      range = document.createRange()
+      range.selectNodeContents(dom)
+      range.collapse(false)
+    }
+    sel.removeAllRanges()
+    sel.addRange(range)
+  } catch {
+    /* selection APIs can fail in odd contexts; non-fatal */
+  }
+}
+
+// Returns a collapsed Range at the caret position closest to (x, y) inside
+// `host`. Walks every descendant Text node, scans each character's client
+// rect (built from a transient Range), and returns the closest insertion
+// point. Independent of pointer-events / overlay stacking / browser-specific
+// caretPositionFromPoint hit-testing — the only inputs are character rects
+// the browser already computed for layout. Returns null if `host` has no
+// non-empty text node (caller falls back to "end").
+function caretRangeInsideAtPoint(host: HTMLElement, x: number, y: number): Range | null {
+  const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT)
+  // Best match by (vertical-distance-to-line, horizontal-distance-to-caret).
+  // Vertical wins so multi-line text lands on the right line; horizontal is
+  // the tiebreaker within the line. We also track an "in-rect" exact hit so a
+  // click squarely on a character returns immediately.
+  let bestNode: Text | null = null
+  let bestOffset = 0
+  let bestVert = Infinity
+  let bestHoriz = Infinity
+  const probe = document.createRange()
+  let node = walker.nextNode() as Text | null
+  while (node) {
+    const len = node.length
+    if (len === 0) { node = walker.nextNode() as Text | null; continue }
+    // For each char gap (0..len), measure the rect of the surrounding char so
+    // we can decide which side of the glyph the pointer landed on. Iterate
+    // char-by-char (cheap; text in the editor is bounded).
+    for (let i = 0; i < len; i++) {
+      try {
+        probe.setStart(node, i)
+        probe.setEnd(node, i + 1)
+      } catch { continue }
+      // A char can span multiple rects (line wrap inside one Text node), so
+      // examine each rect — getClientRects(), not getBoundingClientRect().
+      const rects = probe.getClientRects()
+      for (let r = 0; r < rects.length; r++) {
+        const rect = rects[r]
+        if (rect.width === 0 && rect.height === 0) continue
+        const inside = y >= rect.top && y <= rect.bottom && x >= rect.left && x <= rect.right
+        // Vertical distance to the LINE this char lives on (0 when y is
+        // between rect.top and rect.bottom).
+        const vert = y < rect.top ? rect.top - y : y > rect.bottom ? y - rect.bottom : 0
+        // Decide whether the caret should land BEFORE the char (offset i) or
+        // AFTER (offset i+1) based on which side of the char center x is on.
+        const mid = (rect.left + rect.right) / 2
+        const before = x < mid
+        const caretX = before ? rect.left : rect.right
+        const horiz = Math.abs(x - caretX)
+        const offset = before ? i : i + 1
+        if (
+          vert < bestVert
+          || (vert === bestVert && horiz < bestHoriz)
+        ) {
+          bestVert = vert
+          bestHoriz = horiz
+          bestNode = node
+          bestOffset = offset
+          if (inside && vert === 0) {
+            // Exact hit — no closer caret exists. Bail.
+            const out = document.createRange()
+            out.setStart(node, offset)
+            out.collapse(true)
+            return out
+          }
+        }
+      }
+    }
+    node = walker.nextNode() as Text | null
+  }
+  if (!bestNode) return null
+  const out = document.createRange()
+  try {
+    out.setStart(bestNode, bestOffset)
+    out.collapse(true)
+  } catch {
+    return null
+  }
+  return out
 }
 
 function findDomElement(): HTMLElement | null {
@@ -537,7 +730,7 @@ function applyGroupMove(e: MouseEvent) {
     // by the engine, so elements may be dragged outside their sections freely.
     const ox = emitCell(it.cellX, newX, it.boxW, true)
     const oy = emitCell(it.cellY, newY, it.boxH, true)
-    setAtPath(`${it.path}.position`, { x: ox.value, y: oy.value })
+    setAtPathSilent(`${it.path}.position`, { x: ox.value, y: oy.value })
   }
 }
 
@@ -617,14 +810,14 @@ function applyGroupResize(e: MouseEvent) {
     const ox = emitCell(it.cellX, newX, it.boxW, true)
     const oy = emitCell(it.cellY, newY, it.boxH, true)
     const curPos = getAtPath(`${it.path}.position`) || {}
-    setAtPath(`${it.path}.position`, { ...curPos, x: ox.value, y: oy.value })
+    setAtPathSilent(`${it.path}.position`, { ...curPos, x: ox.value, y: oy.value })
     // Tamaño: solo elementos CON size explícito (los demás solo se reposicionan).
     if (it.hasW || it.hasH) {
       const cur = getAtPath(`${it.path}.size`) || {}
       const patch: any = { ...cur }
       if (it.hasW) patch.width = emitCell(it.cellW, Math.max(1, it.wPct * sx), it.boxW, true).value
       if (it.hasH) patch.height = emitCell(it.cellH, Math.max(1, it.hPct * sy), it.boxH, true).value
-      setAtPath(`${it.path}.size`, patch)
+      setAtPathSilent(`${it.path}.size`, patch)
     }
   }
 }
@@ -638,6 +831,10 @@ function startResize(e: MouseEvent, handle: string) {
   dragType.value = 'resize'
   activeHandle.value = handle
   dragStart.value = { x: e.clientX, y: e.clientY }
+  // Single undo snapshot for the whole resize gesture (mousemove uses
+  // setAtPathSilent → no per-pixel undo entries). Without this Cmd+Z had
+  // nothing to revert to (or popped an unrelated older snapshot).
+  pushUndoOnce()
   const el = getAtPath(state.selectedPath!)
   const box = sectionBox()
   const meas = measuredRectInSection()
@@ -699,6 +896,9 @@ function startRotate(e: MouseEvent) {
   dragStart.value = { x: e.clientX, y: e.clientY }
   const el = getAtPath(state.selectedPath!)
   dragOriginal.value = { rotation: el?.rotation || 0 }
+  // Single undo snapshot for the whole rotate gesture; mousemove uses
+  // setAtPathSilent (fixed below) so each frame doesn't push its own entry.
+  pushUndoOnce()
 }
 
 function onMouseMove(e: MouseEvent) {
@@ -713,6 +913,8 @@ function onMouseMove(e: MouseEvent) {
     isDragging.value = true
     if (pendingKind.value === 'group') isGroupDragging.value = true
     pendingMove.value = false
+      // Single undo snapshot for the whole gesture.
+      pushUndoOnce()
     // Item #2: mark a live canvas drag so the overview refit watcher skips
     // re-fitting (which would reset the "Vista completa" zoom/pan mid-drag).
     setCanvasDragActive(true)
@@ -773,7 +975,7 @@ function onMouseMove(e: MouseEvent) {
     const cellY: Cell = dragOriginal.value.cellY
     const ox = emitCell(cellX, newX, boxW, true)
     const oy = emitCell(cellY, newY, boxH, true)
-    setAtPath(`${state.selectedPath}.position`, { x: ox.value, y: oy.value })
+    setAtPathSilent(`${state.selectedPath}.position`, { x: ox.value, y: oy.value })
     if (ox.converted || oy.converted) {
       flashDragHint('Posición responsiva convertida a % para moverla con precisión')
     }
@@ -857,7 +1059,7 @@ function onMouseMove(e: MouseEvent) {
       if (newX !== o.xPct) {
         const ox = emitCell(o.cellX, newX, boxW, true)
         const curPos = getAtPath(`${state.selectedPath}.position`) || {}
-        setAtPath(`${state.selectedPath}.position`, { ...curPos, x: ox.value })
+        setAtPathSilent(`${state.selectedPath}.position`, { ...curPos, x: ox.value })
         convertedAny = convertedAny || ox.converted
       }
     }
@@ -868,13 +1070,13 @@ function onMouseMove(e: MouseEvent) {
       if (newY !== o.yPct) {
         const oy = emitCell(o.cellY, newY, boxH, true)
         const curPos = getAtPath(`${state.selectedPath}.position`) || {}
-        setAtPath(`${state.selectedPath}.position`, { ...curPos, y: oy.value })
+        setAtPathSilent(`${state.selectedPath}.position`, { ...curPos, y: oy.value })
         convertedAny = convertedAny || oy.converted
       }
     }
 
     const current = getAtPath(`${state.selectedPath}.size`) || {}
-    setAtPath(`${state.selectedPath}.size`, { ...current, ...sizePatch })
+    setAtPathSilent(`${state.selectedPath}.size`, { ...current, ...sizePatch })
     if (convertedAny) {
       flashDragHint('Tamaño responsivo convertido a % para redimensionar con precisión')
     }
@@ -889,7 +1091,7 @@ function onMouseMove(e: MouseEvent) {
     const startAngle = Math.atan2(dragStart.value.y - cy, dragStart.value.x - cx)
     const currentAngle = Math.atan2(e.clientY - cy, e.clientX - cx)
     const delta = ((currentAngle - startAngle) * 180) / Math.PI
-    setAtPath(`${state.selectedPath}.rotation`, Math.round(dragOriginal.value.rotation + delta))
+    setAtPathSilent(`${state.selectedPath}.rotation`, Math.round(dragOriginal.value.rotation + delta))
   }
 
   scheduleUpdate()
@@ -907,6 +1109,10 @@ function onMouseUp(e?: MouseEvent) {
     markDragEnded()
     const wasGroup = pendingKind.value === 'group'
     pendingMove.value = false
+    // No pushUndoOnce here: this branch fires for a plain click that never
+    // crossed DRAG_THRESHOLD → nothing changed → stamping a snapshot of the
+    // unchanged state just pollutes the undo stack and forces Cmd+Z to be
+    // pressed extra times to skip past the no-op entries.
     pendingKind.value = null
     clickThroughSelect(e, wasGroup)
     dragType.value = null
@@ -922,6 +1128,11 @@ function onMouseUp(e?: MouseEvent) {
   groupResizeItems.value = []
   groupResizeOrig.value = null
   pendingMove.value = false
+  // No pushUndoOnce here: a real drag already stamped its single snapshot at
+  // drag START (move) or at the handle/rotate press (resize/rotate, fixed
+  // below). Stamping AGAIN at mouseup captures the POST-drag state, which
+  // turns the first Cmd+Z into a no-op (the snapshot equals the current
+  // state) — user had to press Cmd+Z twice per gesture.
   pendingKind.value = null
   groupDragItems.value = []
   dragType.value = null
@@ -992,7 +1203,7 @@ const boxStyle = computed(() => {
 
     <!-- Move area: disabled (no pointer events) while locked so a drag never
          starts and the canvas hit-test stays clean. -->
-    <div v-if="!isLocked" class="move-area" @mousedown="startMove" />
+    <div v-if="!isLocked" class="move-area" @mousedown="startMove" @dblclick="startInlineTextEdit" />
 
     <!-- Resize + rotate handles only when unlocked. -->
     <template v-if="!isLocked">

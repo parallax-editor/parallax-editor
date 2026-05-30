@@ -1,17 +1,21 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import DialogHost from './components/ui/DialogHost.vue'
 import DoctorHost from './components/doctor/DoctorHost.vue'
+import WebMenu from './components/ui/WebMenu.vue'
 import { useElectron } from './composables/useElectron'
 import { emitMenu, onMenu } from './composables/useMenu'
 import { useDialog } from './composables/useDialog'
 import { activeWorkspace } from './stores/workspaces'
+import { undo as storeUndo, redo as storeRedo } from './stores/editor'
 import { APP_VERSION } from './version'
 
 const router = useRouter()
 const electron = useElectron()
 const dialog = useDialog()
+const { t } = useI18n()
 const LANDING = 'http://parallax-engine.s3-website-us-east-1.amazonaws.com'
 
 let disposeIpc: (() => void) | null = null
@@ -23,6 +27,8 @@ onMounted(() => {
 
   // Acciones GLOBALES (válidas en cualquier vista): navegación + ayuda + update.
   disposeBus = onMenu(async (action) => {
+    if (action === 'edit.undo') { storeUndo(); return }
+    if (action === 'edit.redo') { storeRedo(); return }
     if (action === 'file.new' || action === 'file.open') {
       router.push('/')
     } else if (action === 'help.downloads') {
@@ -35,19 +41,19 @@ onMounted(() => {
         const latest = Array.isArray(list) && list[0]?.version
         if (latest && latest !== APP_VERSION) {
           await dialog.alert({
-            title: 'Actualización disponible',
-            message: `Hay una versión nueva (v${latest}). Tienes la v${APP_VERSION}. Descárgala en:\n${LANDING}`,
+            title: t('updates.availableTitle'),
+            message: t('updates.availableMsg', { latest, current: APP_VERSION, url: LANDING }),
           })
         } else {
           await dialog.alert({
-            title: 'Estás al día',
-            message: `Tienes la última versión (v${APP_VERSION}).`,
+            title: t('updates.upToDateTitle'),
+            message: t('updates.upToDateMsg', { current: APP_VERSION }),
           })
         }
       } catch {
         await dialog.alert({
-          title: 'Sin conexión',
-          message: 'No se pudo verificar la versión más reciente.',
+          title: t('updates.offlineTitle'),
+          message: t('updates.offlineMsg'),
         })
       }
     }
@@ -88,6 +94,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <!-- Web-only top menu: replaces the native Electron menu bar on the
+       browser version. Hidden inside the Electron app, which has its own. -->
+  <WebMenu v-if="!electron.isElectron" />
   <router-view />
   <!-- Host global de diálogos (confirm/alert/prompt propios). Montado una vez. -->
   <DialogHost />

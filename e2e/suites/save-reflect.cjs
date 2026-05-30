@@ -62,8 +62,10 @@ const cleanup = () => { if (SANDBOX_DIR) { try { fs.rmSync(SANDBOX_DIR, { recurs
     check('campo Contenido visible para el texto', await contenido.count() > 0);
     await contenido.fill(SENTINEL); await contenido.blur(); await page.waitForTimeout(400);
 
-    // Guardar
-    const saveBtn = page.locator('button', { hasText: /^Guardar$/i }).first();
+    // Guardar — selector by data-test attribute so the test survives i18n
+    // (the button text is `t('toolbar.save')` and varies with the active
+    // locale; the data-test attribute stays byte-identical regardless).
+    const saveBtn = page.locator('[data-test="save"]').first();
     if (await saveBtn.count()) await saveBtn.click();
     else await page.keyboard.press('Meta+s');
     await page.waitForTimeout(2500);

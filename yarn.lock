@@ -815,13 +815,13 @@
   resolved "https://registry.yarnpkg.com/@oxc-project/types/-/types-0.132.0.tgz#d77243df4fe1a0a1e60e12ac6240fa898d2363ff"
   integrity sha512-FESMOxil5Se014ui/Eq8fT5uHJo6nIRwH0PfJrZJXs6Gek3ZVFOrpUv3YIZT20m+extU98Hg1Ym72U58rlsxUQ==
 
-"@parallax-editor/parallax-engine@^0.1.1":
-  version "0.1.1"
-  resolved "https://registry.yarnpkg.com/@parallax-editor/parallax-engine/-/parallax-engine-0.1.1.tgz#687dd506b9b8ea621ce23041d272795e634d8493"
-  integrity sha512-kQo9SQhD2mkWlUVLrAvbe23WHeEo+RYjRepUUZ87CbaI4g2YclReRBKpS+0Ck/Nw+gH3WJabecGPq5pmJ/wE3w==
+"@parallax-editor/parallax-engine@^0.1.3":
+  version "0.1.3"
+  resolved "https://registry.yarnpkg.com/@parallax-editor/parallax-engine/-/parallax-engine-0.1.3.tgz#8ce9ece1b2c53f64675e76246112a9a0c7bc6b75"
+  integrity sha512-jqpoW828Pu064eq3PPFwfl4dYOLoVW0i8mBvExEY76sDzUvNhtlKuEVqe+VV5pFxQg4HM6JkZSouU3z4bem6EQ==
   dependencies:
     lenis "^1.1.13"
-    zod "^3.23.8"
+    zod "^4.4.3"
 
 "@rolldown/binding-android-arm64@1.0.2":
   version "1.0.2"
@@ -3397,7 +3397,7 @@ yocto-queue@^0.1.0:
   resolved "https://registry.yarnpkg.com/yocto-queue/-/yocto-queue-0.1.0.tgz#0294eb3dee05028d31ee1a5fa2c556a6aaf10a1b"
   integrity sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==
 
-zod@^3.23.8:
-  version "3.25.76"
-  resolved "https://registry.yarnpkg.com/zod/-/zod-3.25.76.tgz#26841c3f6fd22a6a2760e7ccb719179768471e34"
-  integrity sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==
+zod@^4.4.3:
+  version "4.4.3"
+  resolved "https://registry.yarnpkg.com/zod/-/zod-4.4.3.tgz#b680f172885d18bbebf21a834ea25e55a1bbf356"
+  integrity sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==

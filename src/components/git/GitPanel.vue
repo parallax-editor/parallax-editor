@@ -6,8 +6,10 @@ import { activeWorkspace } from '../../stores/workspaces'
 import { validateSite } from '@parallax-editor/parallax-engine/schema'
 import { useDialog } from '../../composables/useDialog'
 import { usePanelScroll } from '../../composables/usePanelScroll'
+import { useI18n } from 'vue-i18n'
 
 const dialog = useDialog()
+const { t } = useI18n()
 // Lenis (engine) registra un wheel NO-pasivo en window y preventDefault'ea TODO,
 // así que el overflow nativo no scrollea con la rueda. usePanelScroll detiene el
 // wheel en captura (sin preventDefault) para que el elemento sí scrollee. Una
@@ -15,7 +17,7 @@ const dialog = useDialog()
 const { panelScrollRef: gitScrollRef } = usePanelScroll()
 const { panelScrollRef: diffScrollRef } = usePanelScroll()
 
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; reload: [] }>()
 
 const loading = ref(false)
 // Carga inicial del panel (status de git + estado de deploy). El botón Publicar
@@ -56,7 +58,7 @@ const deployLabel = computed(() => {
 async function loadStatus() {
   if (!state.projectType) return
   try {
-    const s = await gitApi.status(state.projectType)
+    const s = await gitApi.status(state.projectType, state.slug || undefined)
     pending.value = s?.pending || []
     originRecent.value = s?.originRecent || []
   } catch {
@@ -179,6 +181,59 @@ async function openDiff(entry: GitStatusCommit) {
 }
 function closeDiff() { diffOpen.value = false }
 
+// Snapshot revert (Phase 6). Brings the entire content/<slug>/ folder to the
+// state it had at <hash>. NOT a git revert — files end up in the working tree
+// and the user reviews + commits with Cmd+S. Confirms before applying because
+// it overwrites images/site.json/etc. for the active site (other slugs and the
+// rest of the repo are untouched).
+const restoring = ref(false)
+const restoreNote = ref('')
+async function restoreSnapshot(entry: GitStatusCommit) {
+  if (!state.projectType || !state.slug || !entry?.hash) return
+  if (restoring.value) return
+  const short = entry.hash.slice(0, 7)
+  const ok = await dialog.confirm({
+    title: t('git.restoreTitle'),
+    message:
+      `${t('git.restoreConfirm')} (${state.slug} · ${short} · "${entry.message}")`,
+    confirmText: t('git.restoreTitle'),
+    cancelText: t('common.cancel'),
+    danger: true,
+  })
+  if (!ok) return
+  restoring.value = true
+  restoreNote.value = ''
+  try {
+    const r = await gitApi.restoreSnapshot(state.projectType, entry.hash, state.slug)
+    if (!r.ok) {
+      restoreNote.value = r.error || t('git.restoreError')
+      return
+    }
+    restoreNote.value = t('git.restoreSuccess', {
+      restored: r.restored ?? 0,
+      removed: r.removed ?? 0,
+    })
+    // Force the editor to reload from disk NOW. The chokidar watcher would
+    // eventually broadcast `file-changed` for the restored site.json (which
+    // also triggers `applyExternalChange`), but a restore can rewrite many
+    // files in rapid succession and chokidar's `awaitWriteFinish` (500ms
+    // stability + FS event latency) makes that path unreliable — the user
+    // would see "restored OK" on the panel while the canvas kept rendering
+    // the PREVIOUS site state ("el modal dice restaurado pero el editor
+    // sigue igual"). Emitting reload here closes that gap: the parent fetches
+    // site.json synchronously, replaces state.site, and the canvas repaints.
+    // assetsNonce++ busts the URL cache for any images that the restore
+    // brought back to a different version (same name, different bytes).
+    state.assetsNonce++
+    state.gitLogNonce++
+    emit('reload')
+  } catch (e: any) {
+    restoreNote.value = e?.message || t('git.restoreError')
+  } finally {
+    restoring.value = false
+  }
+}
+
 // Clasifica cada línea del `git show` para colorear el diff (+/-/hunk/meta).
 const diffLines = computed(() =>
   diffText.value.split('\n').map((text) => {
@@ -200,19 +255,17 @@ onMounted(loadStatus)
 <template>
   <div class="git-panel" data-test="git-panel" :ref="gitScrollRef">
     <div class="git-header">
-      <span class="git-title">Publicar</span>
+      <span class="git-title">{{ t('git.panelTitle') }}</span>
       <div class="git-header-actions">
-        <span v-if="!ready" class="git-loading" data-test="git-loading">Cargando…</span>
+        <span v-if="!ready" class="git-loading" data-test="git-loading">{{ t('common.loading') }}</span>
         <button v-else class="publish-btn" data-test="git-publish" @click="publish" :disabled="!canPublish">
-          {{ loading ? 'Publicando...' : 'Publicar' }}
+          {{ loading ? t('git.publishing') : t('git.panelTitle') }}
         </button>
-        <!-- Close X: the toolbar "Publicar" button disables itself once there's
-             nothing pending, so it can't toggle the panel shut — this X always can. -->
         <button
           class="git-close"
           data-test="git-close"
-          title="Cerrar"
-          aria-label="Cerrar"
+          :title="t('common.close')"
+          :aria-label="t('common.close')"
           @click="emit('close')"
         >&times;</button>
       </div>
@@ -233,25 +286,24 @@ onMounted(loadStatus)
       class="validation-block"
       data-test="git-validation-errors"
     >
-      <div class="vb-title">No se puede publicar: hay errores en el proyecto</div>
+      <div class="vb-title">{{ t('git.validationTitle') }}</div>
       <ul class="vb-list">
         <li v-for="(e, i) in validationErrors" :key="i">{{ e }}</li>
       </ul>
-      <div class="vb-hint">Corrige estos errores y vuelve a intentar.</div>
+      <div class="vb-hint">{{ t('git.validationHint') }}</div>
     </div>
 
     <div v-if="pushResult" class="push-result" data-test="git-result">{{ pushResult }}</div>
 
     <!-- Workspace sin git: no hay historial de commits; Publicar solo sube a S3. -->
     <div v-if="noGit" class="nogit-note" data-test="git-nogit-note">
-      Este workspace no usa git. Guardar escribe en disco;
-      {{ hasS3 ? 'Publicar sube los cambios a S3.' : 'activa S3 en la configuración para poder publicar.' }}
+      {{ hasS3 ? t('git.nogitNoteWithS3') : t('git.nogitNoteWithoutS3') }}
     </div>
 
     <template v-if="!noGit">
     <!-- (a) Cambios locales que aún no están en el sitio publicado -->
     <div class="git-section">
-      <div class="section-title">Pendientes por publicar</div>
+      <div class="section-title">{{ t('git.pending') }}</div>
       <div class="git-log">
         <div
           v-for="entry in pending"
@@ -260,22 +312,29 @@ onMounted(loadStatus)
           data-test="git-pending-entry"
           role="button"
           tabindex="0"
-          title="Ver los cambios de este commit"
+          :title="t('git.seeChanges')"
           @click="openDiff(entry)"
           @keydown.enter="openDiff(entry)"
         >
           <span class="log-hash">{{ entry.hash?.slice(0, 7) }}</span>
           <span class="log-msg" :title="entry.message">{{ entry.message }}</span>
           <span class="log-date">{{ relativeDate(entry.date) }}</span>
+          <button
+            class="restore-btn"
+            data-test="git-restore-pending"
+            :disabled="restoring || !state.slug"
+            :title="t('git.restoreTooltip')"
+            @click.stop="restoreSnapshot(entry)"
+          >&#x21BA;</button>
         </div>
-        <div v-if="!ready" class="empty loading-row"><span class="mini-spinner" /> Cargando commits…</div>
-        <div v-else-if="pending.length === 0" class="empty">No hay cambios pendientes</div>
+        <div v-if="!ready" class="empty loading-row"><span class="mini-spinner" /> {{ t('git.loading') }}</div>
+        <div v-else-if="pending.length === 0" class="empty">{{ t('git.noPending') }}</div>
       </div>
     </div>
 
     <!-- (b) Lo último que ya está en el remoto -->
     <div class="git-section">
-      <div class="section-title">En el remoto (origin/main)</div>
+      <div class="section-title">{{ t('git.remote') }}</div>
       <div class="git-log">
         <div
           v-for="entry in originRecent"
@@ -284,16 +343,24 @@ onMounted(loadStatus)
           data-test="git-origin-entry"
           role="button"
           tabindex="0"
-          title="Ver los cambios de este commit"
+          :title="t('git.seeChanges')"
           @click="openDiff(entry)"
           @keydown.enter="openDiff(entry)"
         >
           <span class="log-hash">{{ entry.hash?.slice(0, 7) }}</span>
           <span class="log-msg" :title="entry.message">{{ entry.message }}</span>
           <span class="log-date">{{ relativeDate(entry.date) }}</span>
+          <button
+            class="restore-btn"
+            data-test="git-restore-origin"
+            :disabled="restoring || !state.slug"
+            :title="t('git.restoreTooltip')"
+            @click.stop="restoreSnapshot(entry)"
+          >&#x21BA;</button>
         </div>
-        <div v-if="!ready" class="empty loading-row"><span class="mini-spinner" /> Cargando…</div>
-        <div v-else-if="originRecent.length === 0" class="empty">Sin información del remoto</div>
+        <div v-if="!ready" class="empty loading-row"><span class="mini-spinner" /> {{ t('common.loading') }}</div>
+        <div v-else-if="originRecent.length === 0" class="empty">{{ t('git.noRemote') }}</div>
+        <div v-if="restoreNote" class="restore-note" data-test="git-restore-note">{{ restoreNote }}</div>
       </div>
     </div>
     </template>
@@ -308,16 +375,16 @@ onMounted(loadStatus)
       data-test="git-diff-modal"
       @click.self="closeDiff"
     >
-      <div class="diff-modal" role="dialog" aria-modal="true" aria-label="Cambios del commit">
+      <div class="diff-modal" role="dialog" aria-modal="true" :aria-label="t('git.diffModalAria')">
         <div class="diff-head">
           <div class="diff-titlewrap">
             <code class="diff-hash">{{ diffEntry?.hash?.slice(0, 7) }}</code>
             <span class="diff-msg" :title="diffEntry?.message">{{ diffEntry?.message }}</span>
           </div>
-          <button class="diff-close" title="Cerrar" aria-label="Cerrar" @click="closeDiff">&times;</button>
+          <button class="diff-close" :title="t('common.close')" :aria-label="t('common.close')" @click="closeDiff">&times;</button>
         </div>
         <div class="diff-body" :ref="diffScrollRef">
-          <div v-if="diffLoading" class="diff-state">Cargando cambios…</div>
+          <div v-if="diffLoading" class="diff-state">{{ t('git.diffLoading') }}</div>
           <div v-else-if="diffError" class="diff-state error">{{ diffError }}</div>
           <div v-else class="diff-pre" data-test="git-diff-content">
             <div
@@ -378,6 +445,33 @@ onMounted(loadStatus)
 .log-entry.clickable { cursor: pointer; border-radius: 4px; padding-left: 4px; padding-right: 4px; }
 .log-entry.clickable:hover { background: #2a2a2a; }
 .log-entry.clickable:focus-visible { outline: 1px solid var(--accent-strong); }
+/* Restaurar (snapshot revert) — tiny icon at the row's right edge, becomes
+   visible on hover so it doesn't compete with the date for attention. */
+.restore-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  width: 22px; height: 22px;
+  color: #aaa;
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+.log-entry.clickable:hover .restore-btn,
+.restore-btn:focus-visible { opacity: 1; }
+.restore-btn:hover { background: #2f2f2f; color: #fff; border-color: var(--accent-strong); }
+.restore-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.restore-note {
+  margin-top: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: #d6d6d6;
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+}
 
 .empty.loading-row { display: flex; align-items: center; gap: 8px; }
 .mini-spinner {

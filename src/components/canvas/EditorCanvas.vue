@@ -171,8 +171,18 @@ const gridStyle = computed(() => {
   // so it never collapses or gets absurdly fat at extreme zooms).
   const line = Math.min(8, Math.max(1, 1 / zoom))
   const color = 'rgba(0,153,255,0.5)'
+  // Center the grid on the artboard. Default background-position (0,0)
+  // anchored the first line at the top-left corner, which made it look like
+  // the grid "started" from there. Offset background-position so a grid line
+  // passes through the artboard's geometric center — visually the cells now
+  // grow outward from the middle. The offset is mod step so the repeating
+  // gradient still tiles seamlessly. Line width is subtracted so the centered
+  // line is the centerline, not its left edge.
+  const offsetX = ((vp.width / 2) % stepX) - line / 2
+  const offsetY = ((vp.height / 2) % stepY) - line / 2
   return {
     backgroundSize: `${stepX}px ${stepY}px`,
+    backgroundPosition: `${offsetX}px ${offsetY}px`,
     backgroundImage:
       `linear-gradient(to right, ${color} 0, ${color} ${line}px, transparent ${line}px),` +
       `linear-gradient(to bottom, ${color} 0, ${color} ${line}px, transparent ${line}px)`,
@@ -210,11 +220,10 @@ const previewSite = computed(() => {
   // <PreviewCursor> instead (Preview mode only). state.site stays canonical —
   // the real eventos/site keep their engine cursor untouched.
   delete copy.cursor
-  // Per-node visibility. The engine honors element.visible (v-if), but has NO
-  // visible field for layers/sections. We mirror the eye toggle by dropping
-  // hidden layers/sections from this THROWAWAY render copy so the canvas
-  // preview reflects the toggle. state.site stays canonical (the extra
-  // visible:false key is additive and ignored by the sites/engine).
+  // Per-node visibility. The engine honors `.visible` at section, layer AND
+  // element level as of v1.1, so this filter is technically redundant —
+  // kept as a cheap pre-pass so the overview-height math (which iterates
+  // copy.sections downstream) does not waste work on hidden sections.
   copy.sections = (copy.sections || []).filter((sec: any) => sec.visible !== false)
   for (const section of copy.sections) {
     section.layers = (section.layers || []).filter((l: any) => l.visible !== false)
@@ -435,33 +444,59 @@ watch(fontFaceKey, () => {
     .forEach((n) => n.parentNode?.removeChild(n))
 })
 
-// Zoom is a pure CSS `transform: scale()` — it does NOT fire a window 'resize'.
-// The engine measures section/element geometry via getBoundingClientRect and
-// only re-measures on window 'resize' (ParallaxSite.updateViewport,
-// useScrollProgress). So after an extreme zoom-out → zoom-in (esp. in Vista
-// completa) the engine keeps stale, scale-distorted geometry and the section/
-// layer sizes "se descuadran"; toggling overview only fixed it because the
-// layout change happened to trigger a reflow. After a zoom settles, dispatch a
-// synthetic resize so the engine re-measures at the current scale. Debounced so
-// a zoom gesture doesn't thrash.
-let zoomResizeTimer: ReturnType<typeof setTimeout> | null = null
+// Zoom/pan/overview are pure CSS `transform: scale()/translate()` — they do NOT
+// fire a window 'resize' OR 'scroll' event. The engine measures section/element
+// geometry via getBoundingClientRect, but its `sectionProgress` computed is
+// only re-evaluated when its scroll dependencies (`scrollY`/`scrollNonce`)
+// change. So toggling Vista completa OR opening a project for the first time
+// can leave scroll-trigger fadeIn animations frozen at their `from` opacity
+// (=0, invisible) because the engine's FIRST measurement happened with stale
+// layout — the artboard transforms only settled afterwards, and nothing told
+// the engine to re-measure. Browser refresh works around this by giving the
+// engine a fresh mount AFTER the editor has finished laying out, which is the
+// intermittent "first time / Vista completa toggle / re-enter project" repro
+// the user reported.
+//
+// Fix: whenever the artboard's transform changes — zoom, pan, or overview
+// toggle — dispatch BOTH a synthetic `resize` (so updateViewport refreshes
+// viewportHeight) AND a synthetic `scroll` (so onAnyScroll bumps scrollNonce
+// → sectionProgress recomputes). Same heartbeat is fired ONCE after the
+// initial frame settles in onMounted, so the engine's first sectionProgress
+// reading reflects the FINAL artboard rect, not whatever transient state was
+// in effect when it mounted.
+//
+// Debounced (120ms) so a pan/zoom gesture doesn't thrash the engine.
+let transformTickTimer: ReturnType<typeof setTimeout> | null = null
+function pokeEngineRemeasure(delay = 120) {
+  if (transformTickTimer) clearTimeout(transformTickTimer)
+  transformTickTimer = setTimeout(() => {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(new Event('resize'))
+    window.dispatchEvent(new Event('scroll'))
+  }, delay)
+}
+
 watch(
-  () => state.canvasZoom,
-  () => {
-    if (zoomResizeTimer) clearTimeout(zoomResizeTimer)
-    zoomResizeTimer = setTimeout(() => {
-      if (typeof window !== 'undefined') window.dispatchEvent(new Event('resize'))
-    }, 120)
-  },
+  () => [state.canvasZoom, state.canvasPan.x, state.canvasPan.y, state.overviewMode],
+  () => pokeEngineRemeasure(),
 )
 
 onMounted(() => {
   frameRef.value?.addEventListener('scroll', onFrameScroll, { passive: true })
   nextTick(frameInitial)
+  // After the initial frame fits (frameInitial runs in nextTick → may set
+  // canvasZoom/canvasPan → its own watcher schedules a poke 120ms later), fire
+  // ONE more heartbeat a few frames later in case the artboard settled
+  // without bumping any reactive value the engine listens to (e.g., overview
+  // restore via prefsWantOverview, or a synchronous load where canvasZoom
+  // never actually changed). Without this, opening a project for the FIRST
+  // TIME from a clean session sometimes shows blank text until the user
+  // refreshes / pans.
+  pokeEngineRemeasure(260)
 })
 
 onBeforeUnmount(() => {
-  if (zoomResizeTimer) clearTimeout(zoomResizeTimer)
+  if (transformTickTimer) clearTimeout(transformTickTimer)
   frameRef.value?.removeEventListener('scroll', onFrameScroll)
   setPreviewFrame(null)
 })
@@ -716,12 +751,21 @@ function onCanvasDrop(e: DragEvent) {
   background-position: 0 0, 0 10px, 10px -10px, -10px 0;
   opacity: 0.3;
 }
-.pan-wrapper { position: relative; }
+.pan-wrapper {
+  position: relative;
+  /* Stable GPU layer: avoid the Chrome compositor dropping the cached text
+     raster when pan + zoom land on certain fractional combos (texts vanish
+     until you re-zoom or hit "Reiniciar mesa"). */
+  will-change: transform;
+}
 .preview-frame {
   background: white;
   box-shadow: 0 4px 40px rgba(0,0,0,0.4);
   overflow: hidden;
   position: relative;
+  /* Same reason as .pan-wrapper above — preview-frame is the scaled box; if
+     its layer is reclaimed, text inside the engine preview disappears. */
+  will-change: transform;
 }
 /* The actual scroller: same box as the artboard, scrolls the tall engine
    content so every section (100vh/150vh/…) is reachable. overflow:auto on

@@ -131,7 +131,10 @@ async function runEditor(page) {
 
   // [#64] panel de creación: nombre libre → slug kebab read-only en vivo (no crea nada)
   try {
-    const nuevo = page.locator('button', { hasText: /Nuevo proyecto/i }).first();
+    // Scope to the project selector's "New" CTA (.btn-new). `hasText` would
+    // also match the WebMenu's hidden "Nuevo proyecto" menu item — that's in
+    // the DOM but invisible, so `.first()` resolved to it and clicks timed out.
+    const nuevo = page.locator('button.btn-new').first();
     if (await nuevo.count()) { await nuevo.click().catch(() => {}); await page.waitForTimeout(500); }
     const nameInput = page.locator('[data-test=new-site-name]').first();
     if (await nameInput.count()) {
@@ -219,7 +222,7 @@ async function runEditor(page) {
 
   // [#14] botón "+ Elemento" abre menú con 4 tipos; tipo read-only en propiedades
   try {
-    const addBtn = page.locator('button', { hasText: /\+ ?Elemento|Agregar elemento/i }).first();
+    const addBtn = page.locator('button:not(.webmenu-item)', { hasText: /\+ ?Elemento|Agregar elemento/i }).first();
     if (await addBtn.count()) {
       await addBtn.click(); await page.waitForTimeout(500);
       await page.screenshot({ path: path.join(SHOTS, 'editor-04-addmenu.png'), fullPage: true });
@@ -255,7 +258,7 @@ async function runEditor(page) {
     await openProject(page, WS, SLUG_MUNDO);
     let menuOpen = await page.evaluate(() => !!document.querySelector('.add-element-menu'));
     if (!menuOpen) {
-      const addBtn = page.locator('button', { hasText: /\+ ?Elemento|Agregar elemento/i }).first();
+      const addBtn = page.locator('button:not(.webmenu-item)', { hasText: /\+ ?Elemento|Agregar elemento/i }).first();
       if (await addBtn.count()) { await addBtn.click(); await page.waitForTimeout(400); menuOpen = true; }
     }
     if (menuOpen) {
@@ -348,7 +351,7 @@ async function runEditor(page) {
     // #27 FormBlock: menú -> Formulario -> editor de FormBlock
     let menuOpen = await page.evaluate(() => !!document.querySelector('.add-element-menu'));
     if (!menuOpen) {
-      const ab = page.locator('button', { hasText: /\+ ?Elemento|Agregar elemento/i }).first();
+      const ab = page.locator('button:not(.webmenu-item)', { hasText: /\+ ?Elemento|Agregar elemento/i }).first();
       if (await ab.count()) { await ab.click(); await page.waitForTimeout(400); }
     }
     const formOpt = page.locator('[data-test=add-element-form]').first();
@@ -555,6 +558,125 @@ async function runEditor(page) {
     check('[#39] pegar en vista mobile (cross-view)', /pegad/i.test(clip2) || afterPaste > beforePaste, `hint=${JSON.stringify(clip2.slice(0,40))} ${beforePaste}->${afterPaste}`);
   } catch (e) { check('[#38/#39/#40 vistas+clipboard]', false, e.message); }
 
+  // ── REGRESSIONS (this session) ────────────────────────────────────────────
+  // The tests below guard fixes landed in the multi-phase tweaks branch and
+  // are intentionally placed BEFORE the destructive Preview toggle.
+
+  // (A) Inline-edit caret lands AT THE DOUBLE-CLICK POINT, not at the end.
+  // The original bug was that `caretPositionFromPoint` saw the overlay's
+  // `.move-area` covering the text and returned a position outside the text
+  // node — code fell through to "caret at end" so every dblclick started
+  // editing at the LAST character. After the fix (text-node walk in
+  // SelectionOverlay.vue → caretRangeInsideAtPoint), the caret lands at the
+  // closest character to the click. Verifies caret offset is well below the
+  // text length when the user clicks near the LEFT of the text.
+  try {
+    await openProject(page, WS, SLUG_MUNDO)
+    // Pick the first text element via the layers panel (deterministic) — the
+    // canvas-point selection in [#5/#6] above could land on a non-text element.
+    const treeText = page.locator('.layers-panel').getByText(/^demo-titulo$|^demo-subtitulo$/).first()
+    if (await treeText.count()) { await treeText.click().catch(() => {}); await page.waitForTimeout(500) }
+    const probe = await page.evaluate(() => {
+      // Find any selected text element by data-parallax-id (the inline editor
+      // turns the host into contenteditable — pick the host that the overlay
+      // is sitting on).
+      const sb = document.querySelector('.editor-canvas .selection-box')
+      if (!sb) return null
+      const sbr = sb.getBoundingClientRect()
+      // Find a text-element host underneath the overlay.
+      const host = [...document.querySelectorAll('[data-parallax-id]')]
+        .find((n) => {
+          const r = n.getBoundingClientRect()
+          return Math.abs(r.x - sbr.x) < 10 && Math.abs(r.y - sbr.y) < 10 && (n.innerText || '').trim().length > 6
+        })
+      if (!host) return null
+      const r = host.getBoundingClientRect()
+      const text = (host.innerText || '').trim()
+      return {
+        id: host.getAttribute('data-parallax-id'),
+        textLen: text.length,
+        // Click ~15% from the left edge of the text — well before the end.
+        clickX: Math.round(r.left + r.width * 0.15),
+        clickY: Math.round(r.top + r.height * 0.5),
+      }
+    })
+    if (!probe) {
+      check('[regression caret] text element under overlay encontrado', false)
+    } else {
+      await page.mouse.dblclick(probe.clickX, probe.clickY)
+      await page.waitForTimeout(400)
+      const caret = await page.evaluate(() => {
+        const sel = window.getSelection()
+        if (!sel || sel.rangeCount === 0) return null
+        const r = sel.getRangeAt(0)
+        // Find the host with data-parallax-id this caret is inside, so we can
+        // measure the offset as a fraction of the text length.
+        let n = r.startContainer
+        while (n && n.nodeType === 3) n = n.parentNode
+        let host = n
+        while (host && !(host.getAttribute && host.getAttribute('data-parallax-id'))) host = host.parentElement
+        const text = host ? (host.innerText || '') : ''
+        return {
+          offset: r.startOffset,
+          collapsed: r.collapsed,
+          textLen: text.length,
+          // Caret rect — proxies the on-screen position of the inserted cursor.
+          caretRect: (() => { const rr = r.getBoundingClientRect(); return { x: rr.left, y: rr.top } })(),
+        }
+      })
+      // Two complementary signals: (1) caret is collapsed (a real insertion
+      // point, not a selection of "all content"), (2) caret rect's x is in
+      // the LEFT THIRD of the text element's box (proxy for "near the click,
+      // not at the end"). The old broken behavior landed the caret at the
+      // FAR RIGHT of the box every time.
+      const fracX = caret && probe.textLen ? (caret.caretRect.x - probe.clickX) : null
+      check(
+        '[regression caret] dblclick coloca caret CERCA del punto de click (no al final)',
+        !!caret && caret.collapsed && fracX !== null && Math.abs(fracX) < 40,
+        `offset=${caret && caret.offset} textLen=${caret && caret.textLen} click.x=${probe.clickX} caret.x=${caret && Math.round(caret.caretRect.x)} dx=${fracX !== null && Math.round(fracX)}`,
+      )
+      // Exit inline editing so subsequent tests are not in contenteditable.
+      await page.keyboard.press('Escape').catch(() => {})
+      await page.waitForTimeout(200)
+    }
+  } catch (e) { check('[regression caret] inline-edit caret position', false, e.message) }
+
+  // (B) Locale toggle: switching language in the web menu re-renders UI text.
+  // Guards: the new keys (properties.animHeader / loadFromPC / dropImage /
+  // sizeField.* etc.) actually wire to the live locale dictionary. The
+  // smoke probe just checks the localized webmenu trigger label flips
+  // between "Idioma" and "Language" — that is enough to prove the boot-time
+  // sync + reactivity round-trip end-to-end without depending on any one
+  // panel being open.
+  try {
+    const lang = page.locator('[data-test=webmenu-language]').first()
+    if (await lang.count()) {
+      // Boot locale is pinned to ES by the init script — start in Spanish.
+      const labelEs = (await lang.innerText().catch(() => '')).trim()
+      await lang.click(); await page.waitForTimeout(300)
+      const enRow = page.locator('[data-test=webmenu-pop-language] .webmenu-item', { hasText: /English|Inglés/i }).first()
+      if (await enRow.count()) { await enRow.click(); await page.waitForTimeout(400) }
+      const labelEn = (await lang.innerText().catch(() => '')).trim()
+      check(
+        '[regression i18n] cambiar a EN re-renderiza el label del menú',
+        /^Language$/i.test(labelEn) && labelEn !== labelEs,
+        `ES=${JSON.stringify(labelEs)} → EN=${JSON.stringify(labelEn)}`,
+      )
+      // Revert to ES so the rest of the session sees the same defaults.
+      await lang.click(); await page.waitForTimeout(300)
+      const esRow = page.locator('[data-test=webmenu-pop-language] .webmenu-item', { hasText: /Español|Spanish/i }).first()
+      if (await esRow.count()) { await esRow.click(); await page.waitForTimeout(400) }
+      const labelEs2 = (await lang.innerText().catch(() => '')).trim()
+      check(
+        '[regression i18n] volver a ES restaura el label localizado',
+        /^Idioma$/i.test(labelEs2) && labelEs2 === labelEs,
+        `${JSON.stringify(labelEs2)} ?= ${JSON.stringify(labelEs)}`,
+      )
+    } else {
+      check('[regression i18n] WebMenu trigger de idioma encontrado', false)
+    }
+  } catch (e) { check('[regression i18n] locale toggle', false, e.message) }
+
   // [#16b] toggle a Preview al final (cambia el modo de forma destructiva)
   try {
     // Cerrar cualquier modal propio que haya quedado abierto (su backdrop
@@ -601,6 +723,12 @@ async function runEditor(page) {
       // Saltar la pantalla "doctor" de primer arranque (su backdrop intercepta
       // los clics y haría timeout toda la suite).
       localStorage.setItem('parallax-editor:onboarded', '1');
+      // Pin the locale to ES so the existing tests (which match literal Spanish
+      // strings like "+ Elemento" / "Animaciones (N)" / "Formulario") are
+      // deterministic regardless of the navigator.language or whatever the
+      // tester's local browser profile happens to have. The new i18n
+      // regression tests further down toggle locale explicitly and revert.
+      localStorage.setItem('parallax-editor:locale', 'es');
     } catch {}
   }, sandboxWs);
   try {

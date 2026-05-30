@@ -1,6 +1,6 @@
 import { execSync, execFileSync } from 'child_process'
-import { existsSync, statSync, accessSync, constants } from 'fs'
-import { dirname, isAbsolute } from 'path'
+import { existsSync, statSync, accessSync, constants, mkdirSync, writeFileSync, readdirSync, unlinkSync, rmdirSync } from 'fs'
+import { dirname, isAbsolute, join, resolve, relative } from 'path'
 
 function git(args: string, cwd: string): string {
   return execSync(`git ${args}`, { cwd, encoding: 'utf-8', timeout: 30000 }).trim()
@@ -318,9 +318,15 @@ function parseCommitLines(raw: string): Commit[] {
  * pushed): `git log @{u}..HEAD`. Empty array if there is no upstream or
  * nothing is ahead. Never throws.
  */
-export function gitPendingCommits(cwd: string): Commit[] {
+export function gitPendingCommits(cwd: string, pathspec?: string): Commit[] {
   try {
-    const raw = git('log @{u}..HEAD --format="%H|%s|%ci"', cwd)
+    // Scope by pathspec so the GitPanel only lists commits that ACTUALLY
+    // touched files under the open slug's content folder. Without it the
+    // panel showed every workspace commit, which is confusing when many
+    // sites share the repo. Pathspec is quoted; sanitized at the caller
+    // via getContentRelPath (no shell metacharacters slip through).
+    const scope = pathspec ? ` -- "${pathspec.replace(/"/g, '\\"')}"` : ''
+    const raw = git(`log @{u}..HEAD --format="%H|%s|%ci"${scope}`, cwd)
     return parseCommitLines(raw)
   } catch {
     // No upstream tracking branch (or other git error) → nothing pending.
@@ -334,7 +340,7 @@ export function gitPendingCommits(cwd: string): Commit[] {
  * (offline / no remote) we just read whatever `origin/main` ref we already
  * have locally. Empty array if there is no `origin/main` at all. Never throws.
  */
-export function gitOriginRecent(cwd: string, n = 5): Commit[] {
+export function gitOriginRecent(cwd: string, n = 5, pathspec?: string): Commit[] {
   try {
     // Short timeout so an offline machine doesn't hang the status request.
     execSync('git fetch origin main', { cwd, encoding: 'utf-8', timeout: 5000, stdio: 'pipe' })
@@ -342,8 +348,15 @@ export function gitOriginRecent(cwd: string, n = 5): Commit[] {
     // Offline / no remote / branch missing — fall through to the local ref.
   }
   try {
-    const raw = git(`log origin/main -n ${n} --format="%H|%s|%ci"`, cwd)
-    return parseCommitLines(raw)
+    // Same pathspec-scoping rationale as gitPendingCommits above. When the
+    // user is editing site "foo", only show remote commits that touched
+    // content/foo/* so the history is meaningful to them.
+    const scope = pathspec ? ` -- "${pathspec.replace(/"/g, '\\"')}"` : ''
+    // `-n` after the pathspec filter would limit BEFORE filtering — useless
+    // because we'd often get 0 results. Pull a wider window (3*n) and slice
+    // to n in JS so we end up with n matching commits at most.
+    const raw = git(`log origin/main -n ${n * 3} --format="%H|%s|%ci"${scope}`, cwd)
+    return parseCommitLines(raw).slice(0, n)
   } catch {
     return []
   }
@@ -354,12 +367,181 @@ export function gitOriginRecent(cwd: string, n = 5): Commit[] {
  * Drives the "Publicar" button's enabled state. 0 if no upstream / on error.
  * Never throws.
  */
-export function gitAheadCount(cwd: string): number {
+export function gitAheadCount(cwd: string, pathspec?: string): number {
   try {
-    const raw = git('rev-list --count @{u}..HEAD', cwd)
+    // Scope by pathspec so the toolbar's "Publicar (N)" badge counts only
+    // commits that touched the open slug — matches the GitPanel filter so
+    // the badge and the listed commits agree. Same quoting/sanitization as
+    // gitPendingCommits (pathspec arrives from getContentRelPath upstream).
+    const scope = pathspec ? ` -- "${pathspec.replace(/"/g, '\\"')}"` : ''
+    const raw = git(`rev-list --count @{u}..HEAD${scope}`, cwd)
     const n = parseInt(raw, 10)
     return Number.isFinite(n) ? n : 0
   } catch {
     return 0
   }
+}
+
+// ── Snapshot revert (Phase 6) ────────────────────────────────────────────────
+//
+// "Restaurar a este punto" — bring the ENTIRE workspace folder of ONE site
+// (every file under `content/<slug>/`) to the state it had at <hash>, leaving
+// the changes in the working tree (NOT committed). The user reviews + commits
+// with their own message via the normal save flow.
+//
+// Implementation:
+//   1. Hash is validated as hex (same guard gitShow uses) so it can never carry
+//      shell metacharacters or flags.
+//   2. `git ls-tree -r --name-only <hash> -- <contentDir>` lists every file
+//      that existed under that subtree at the commit.
+//   3. For each listed path: `git show <hash>:<path>` streams the file's
+//      contents (text or binary, via Buffer) and we write it to disk in the
+//      working tree (creating parent dirs as needed).
+//   4. Files currently present under <contentDir> in the working tree that do
+//      NOT appear in the snapshot's tree are deleted, so the result is the
+//      EXACT set of files from the commit — additions made since are removed,
+//      not left behind.
+//   5. Nothing is committed. The user sees the diff in the editor / their
+//      next Cmd+S commits the snapshot with whatever message they choose.
+//
+// SECURITY:
+//   - Hash validated as hex.
+//   - `contentDir` must be a clean relative path (no leading `/`, no `..`).
+//   - All git invocations use execFileSync (no shell). Paths from `git ls-tree`
+//     are git's canonical normalized POSIX paths, but we still re-check they
+//     start with the contentDir prefix and reject `..` segments before writing.
+//   - File deletions are scoped to under <cwd>/<contentDir>.
+export interface RestoreSnapshotResult {
+  ok: boolean
+  error?: string
+  /** Total file count that ended up reflecting the commit's state. */
+  restored?: number
+  /** How many working-tree-only files were removed to match the snapshot. */
+  removed?: number
+}
+
+export function gitRestoreSnapshot(
+  cwd: string,
+  hash: string,
+  contentDir: string,
+): RestoreSnapshotResult {
+  if (!/^[0-9a-fA-F]{4,40}$/.test(hash)) {
+    return { ok: false, error: 'Hash de commit inválido.' }
+  }
+  const cleanDir = (contentDir || '').replace(/^\/+|\/+$/g, '')
+  if (!cleanDir || cleanDir.split(/[\\/]/).some((seg) => seg === '..' || seg === '')) {
+    return { ok: false, error: 'Ruta de contenido inválida.' }
+  }
+  // fs/path are imported at the top of the file (was previously a
+  // top-level `require('fs')` here, which exploded under Vite's SSR loader
+  // → "require is not defined" surfaced in the GitPanel restore-note and
+  // the "Restaurar" button looked like it did nothing).
+
+  const absRoot = resolve(cwd, cleanDir)
+  // Guard: absRoot must stay inside cwd.
+  const rel = relative(resolve(cwd), absRoot)
+  if (rel.startsWith('..') || resolve(absRoot) !== absRoot.replace(/\/+$/, '')) {
+    // The startsWith('..') check handles a contentDir that escapes cwd.
+    return { ok: false, error: 'Ruta de contenido fuera del workspace.' }
+  }
+
+  // If the slug folder didn't exist at <hash> (project added after that commit),
+  // ls-tree returns empty. Without this guard the subsequent walkAndRemove
+  // would delete the entire current `content/<slug>/` folder, leaving the user
+  // with an empty project they can't recover from the UI. Bail out early so
+  // the workspace is never destructively touched on a no-op snapshot.
+  let listed: string[]
+  try {
+    const out = execFileSync(
+      'git',
+      ['ls-tree', '-r', '--name-only', '-z', hash, '--', cleanDir],
+      { cwd, encoding: 'utf-8', timeout: 30000, maxBuffer: 16 * 1024 * 1024 },
+    )
+    listed = out.split(' ').filter(Boolean)
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'No se pudo leer el árbol del commit.' }
+  }
+
+  // Defensive: reject any returned path that escapes cleanDir or contains '..'.
+  // Git itself won't emit '..' segments, but treating this as a hard rule keeps
+  // every write/delete bounded to the workspace.
+  const safe = (p: string) =>
+    p.startsWith(cleanDir + '/') &&
+    !p.split('/').some((seg) => seg === '..' || seg === '')
+  const snapshotFiles = new Set(listed.filter(safe))
+
+  // Missing-at-commit guard: if the commit had ZERO files under <cleanDir>,
+  // either the slug never existed at that point in time or all files were
+  // (re)moved. Either way restoring would just delete everything currently in
+  // the working tree — refuse, with a clear error.
+  if (snapshotFiles.size === 0) {
+    return {
+      ok: false,
+      error: `Este sitio no existía en el commit ${hash.slice(0, 7)} (ningún archivo bajo ${cleanDir}). No se restauró nada.`,
+    }
+  }
+
+  // 1) Restore each file in the snapshot.
+  let restored = 0
+  for (const repoPath of snapshotFiles) {
+    let buf: Buffer
+    try {
+      buf = execFileSync('git', ['show', `${hash}:${repoPath}`], {
+        cwd,
+        timeout: 30000,
+        maxBuffer: 64 * 1024 * 1024,
+      })
+    } catch {
+      // If a single file fails (e.g. a path with submodule mode), skip it.
+      continue
+    }
+    const absTarget = join(cwd, repoPath)
+    try {
+      mkdirSync(dirname(absTarget), { recursive: true })
+      writeFileSync(absTarget, buf)
+      restored++
+    } catch {
+      /* swallow per-file errors so one bad file doesn't abort the whole restore */
+    }
+  }
+
+  // 2) Delete files in working tree under <cleanDir> that are NOT in the
+  //    snapshot (we're targeting an EXACT mirror of the commit's tree).
+  let removed = 0
+  function walkAndRemove(absDir: string) {
+    if (!existsSync(absDir)) return
+    const entries = readdirSync(absDir, { withFileTypes: true })
+    for (const entry of entries) {
+      const abs = join(absDir, entry.name)
+      const repoPath = relative(resolve(cwd), abs).split(/[\\/]/).join('/')
+      if (entry.isDirectory()) {
+        walkAndRemove(abs)
+        // Clean up empty dirs.
+        try {
+          const rest = readdirSync(abs)
+          if (rest.length === 0) rmdirSync(abs)
+        } catch {
+          /* ignore */
+        }
+        continue
+      }
+      if (!snapshotFiles.has(repoPath)) {
+        try {
+          unlinkSync(abs)
+          removed++
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }
+  try {
+    if (existsSync(absRoot) && statSync(absRoot).isDirectory()) {
+      walkAndRemove(absRoot)
+    }
+  } catch {
+    /* keep going — restore counts are already populated */
+  }
+
+  return { ok: true, restored, removed }
 }

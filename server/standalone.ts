@@ -22,6 +22,7 @@ import { createServer, IncomingMessage, ServerResponse, Server as HttpServer } f
 import { createReadStream, existsSync, statSync } from 'fs'
 import { resolve, extname, normalize, join } from 'path'
 import { createHandler } from './api'
+import { closeWatcher } from './watcher'
 
 const DEFAULT_PORT = Number(process.env.EDITOR_PORT) || 4317
 
@@ -119,9 +120,25 @@ export function start(port: number = DEFAULT_PORT): Promise<{
 
   const close = () =>
     new Promise<void>((resolveClose) => {
-      httpServer.close(() => resolveClose())
-      // Failsafe: si algún socket queda colgado, no esperar para siempre.
-      setTimeout(() => resolveClose(), 2000).unref()
+      // 1) Cerrar el WS server + chokidar watcher PRIMERO. Sin esto, fsevents
+      //    (la atadura nativa de chokidar en macOS) sigue viva cuando el
+      //    proceso de Electron muere → macOS reporta "se cerró inesperadamente".
+      // 2) Forzar drop de conexiones HTTP abiertas (Node 18.2+) para que el
+      //    .close() del server no se quede esperando keep-alives o WS sockets
+      //    que ya no nos importan en quit time.
+      // 3) Failsafe de 2s por si algo aún se cuelga (mejor cerrar parcialmente
+      //    que dejar la app bloqueada en quit).
+      closeWatcher()
+        .catch(() => undefined)
+        .finally(() => {
+          try {
+            if (typeof (httpServer as any).closeAllConnections === 'function') {
+              ;(httpServer as any).closeAllConnections()
+            }
+          } catch { /* older node, ignore */ }
+          httpServer.close(() => resolveClose())
+          setTimeout(() => resolveClose(), 2000).unref()
+        })
     })
 
   return new Promise((resolveStart, rejectStart) => {

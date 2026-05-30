@@ -41,4 +41,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // El renderer reporta si hay cambios SIN GUARDAR. El main lo usa para avisar
   // al cerrar la ventana (X / Cmd+Q) y no perder trabajo.
   setDirty: (dirty) => ipcRenderer.send('editor:dirty', !!dirty),
+
+  // Renderer → main: el switcher / el setLocale de Vue le avisa al menú nativo
+  // qué locale activo está usando, para reconstruir labels en el mismo idioma.
+  setLocale: (locale) => ipcRenderer.send('app:set-locale', locale),
+
+  // Main → renderer: cuando el usuario elige "Ventana → Idioma / Window →
+  // Language" en el menú nativo, main empuja `app:locale-changed` con el
+  // nuevo código. El renderer aplica via i18n.setLocale (que también
+  // bumpea engine + localStorage). Sin este bridge el menú cambiaba sus
+  // propios labels pero la UI Vue quedaba pegada al locale de boot.
+  onLocaleChanged: (cb) => {
+    const handler = (_e, locale) => cb(locale)
+    ipcRenderer.on('app:locale-changed', handler)
+    return () => ipcRenderer.removeListener('app:locale-changed', handler)
+  },
 })

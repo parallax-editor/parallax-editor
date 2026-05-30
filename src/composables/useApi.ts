@@ -161,7 +161,7 @@ export const gitApi = {
     ),
   // Publicar status: ahead-count + pending-to-push commits + last 5 on
   // origin/main. Best-effort server-side (no upstream / offline → empty/0).
-  status: (type: string) => api<GitStatus>(`/git/${type}/status`),
+  status: (type: string, slug?: string) => api<GitStatus>(`/git/${type}/status${slug ? `?slug=${encodeURIComponent(slug)}` : ''}`),
   // SECURITY: the save commit MUST be scoped to the active site's content dir.
   // The `slug` is sent so the server stages ONLY content/<slug> (eventos) or
   // content/portafolio/<slug> (site) — never a repo-wide `git add -A`.
@@ -175,6 +175,15 @@ export const gitApi = {
     api<{ ok: boolean; result?: string; error?: string; needsForce?: boolean }>(
       `/git/${type}/pull`,
       { method: 'POST', body: JSON.stringify({ force }) },
+    ),
+  // Snapshot revert (Phase 6): bring the workspace's content for ONE slug to
+  // the state it had at <hash>. NOT a git revert: the files end up in the
+  // working tree; the user reviews and commits with their own message via the
+  // normal save flow. Safe by design — no commit, no push.
+  restoreSnapshot: (type: string, hash: string, slug: string) =>
+    api<{ ok: boolean; error?: string; restored?: number; removed?: number }>(
+      `/git/${type}/restore-snapshot`,
+      { method: 'POST', body: JSON.stringify({ hash, slug }) },
     ),
 }
 

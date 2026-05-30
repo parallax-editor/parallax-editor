@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   getAtPath,
   isNodeVisible,
@@ -11,6 +12,8 @@ import {
   toggleCollapsed,
   state,
 } from '../../stores/editor'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   label: string
@@ -242,7 +245,7 @@ function onRowClick(e: MouseEvent) {
         class="collapse-btn"
         :data-test="`tree-collapse-${nodeId}`"
         :aria-expanded="!collapsed"
-        :title="collapsed ? 'Expandir' : 'Colapsar'"
+        :title="collapsed ? t('layers.expand') : t('layers.collapse')"
         @click="onToggleCollapse"
       ><span class="chev" :class="{ open: !collapsed }">▸</span></button>
       <span v-else class="collapse-spacer" />
@@ -279,16 +282,16 @@ function onRowClick(e: MouseEvent) {
           class="node-btn vis-btn"
           :class="{ off: !visible }"
           :data-test="`layer-visibility-${nodeId}`"
-          :title="visible ? 'Ocultar' : 'Mostrar'"
-          :aria-label="visible ? 'Ocultar' : 'Mostrar'"
+          :title="visible ? t('layers.hide') : t('layers.show')"
+          :aria-label="visible ? t('layers.hide') : t('layers.show')"
           @click="onToggleVisible"
         >{{ visible ? '👁' : '🚫' }}</button>
         <button
           class="node-btn lock-btn"
           :class="{ on: locked }"
           :data-test="`layer-lock-${nodeId}`"
-          :title="locked ? 'Desbloquear' : 'Bloquear'"
-          :aria-label="locked ? 'Desbloquear' : 'Bloquear'"
+          :title="locked ? t('common.unlock') : t('common.lock')"
+          :aria-label="locked ? t('common.unlock') : t('common.lock')"
           @click="onToggleLock"
         >{{ locked ? '🔒' : '🔓' }}</button>
 

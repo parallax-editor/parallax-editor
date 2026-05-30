@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { usePanelScroll } from '../../composables/usePanelScroll'
 
 // Detailed, plain-Spanish guide to ANIMATION TYPES, TRIGGERS and EASING.
@@ -10,6 +11,8 @@ import { usePanelScroll } from '../../composables/usePanelScroll'
 const props = defineProps<{ focusSection?: string | null }>()
 const emit = defineEmits<{ close: [] }>()
 
+const { t } = useI18n()
+
 // The modal floats over the live engine preview, whose Lenis instance registers
 // a non-passive wheel listener on window and preventDefaults it — so the body's
 // overflow-y:auto never scrolls with the wheel. Same fix as the side panels:
@@ -18,77 +21,42 @@ const emit = defineEmits<{ close: [] }>()
 const { panelScrollRef } = usePanelScroll()
 const easingRef = ref<HTMLElement | null>(null)
 
-interface Entry { name: string; desc: string; when: string }
-
-// Animation TYPES grouped by family so the list is scannable.
-const TYPE_GROUPS: { group: string; items: Entry[] }[] = [
-  {
-    group: 'Aparición',
-    items: [
-      { name: 'fadeIn', desc: 'El elemento aparece pasando de invisible a visible (sube la opacidad).', when: 'Para que un texto o imagen surja con elegancia al entrar en pantalla.' },
-      { name: 'fadeOut', desc: 'El elemento se desvanece de visible a invisible.', when: 'Para que algo desaparezca poco a poco al salir o al hacer scroll.' },
-    ],
-  },
-  {
-    group: 'Movimiento',
-    items: [
-      { name: 'translateX', desc: 'Desliza el elemento de lado, en PÍXELES medidos DESDE su posición actual. 0 = en su sitio; positivo = a la derecha, negativo = a la izquierda.', when: 'Para que algo entre deslizándose: ej. Desde −40 Hasta 0 = entra desde la izquierda hasta quedar en su sitio.' },
-      { name: 'translateY', desc: 'Desliza el elemento arriba/abajo, en PÍXELES medidos DESDE su posición actual. 0 = en su sitio; positivo = hacia abajo, negativo = hacia arriba.', when: 'Para que un título suba al aparecer: ej. Desde 30 Hasta 0. (No es relativo al anchor: mueve toda la caja.)' },
-    ],
-  },
-  {
-    group: 'Giro',
-    items: [
-      { name: 'rotate', desc: 'Gira el elemento sobre el plano (en grados).', when: 'Para un sello, una flecha o un detalle que rota al aparecer.' },
-      { name: 'rotateX', desc: 'Gira en 3D sobre el eje horizontal (se inclina hacia adelante/atrás).', when: 'Para un efecto de tarjeta que se voltea hacia el lector.' },
-      { name: 'rotateY', desc: 'Gira en 3D sobre el eje vertical (se inclina a izquierda/derecha).', when: 'Para que algo "abra" como una puerta o se voltee de lado.' },
-    ],
-  },
-  {
-    group: 'Tamaño y deformación',
-    items: [
-      { name: 'scale', desc: 'Agranda o achica el elemento. Es un MULTIPLICADOR de su tamaño (su caja): 1 = tamaño normal, 0,5 = la mitad, 2 = el doble, 0 = desaparece. Crece/encoge tomando como punto fijo el anchor.', when: 'Para que una imagen crezca suavemente al entrar: ej. Desde 0,8 Hasta 1. Evita Desde 0 o Hasta 2: son saltos enormes (de invisible al doble).' },
-      { name: 'skew', desc: 'Inclina/sesga el elemento (en grados), como un paralelogramo.', when: 'Para un toque dinámico o de movimiento en textos y formas.' },
-    ],
-  },
-  {
-    group: 'Efectos',
-    items: [
-      { name: 'blur', desc: 'Pasa de borroso a nítido (o al revés). "Desde/Hasta" en píxeles.', when: 'Para que una imagen entre enfocándose, como una cámara que ajusta el foco.' },
-      { name: 'clipPath', desc: 'Revela el elemento descubriéndolo progresivamente (de 0 a 100).', when: 'Para que un texto o imagen se "destape" como una cortina al aparecer.' },
-    ],
-  },
+// Animation TYPES grouped by family so the list is scannable. `name` strings
+// stay untranslated (they are the technical engine identifiers). `groupKey`
+// resolves to `animHelp.groups.<key>` and each item resolves to
+// `animHelp.types.<name>.{desc,when}`.
+const TYPE_GROUPS: { groupKey: string; items: string[] }[] = [
+  { groupKey: 'aparicion', items: ['fadeIn', 'fadeOut'] },
+  { groupKey: 'movimiento', items: ['translateX', 'translateY'] },
+  { groupKey: 'giro', items: ['rotate', 'rotateX', 'rotateY'] },
+  { groupKey: 'tamanio', items: ['scale', 'skew'] },
+  { groupKey: 'efectos', items: ['blur', 'clipPath'] },
 ]
 
-// TRIGGERS — what makes the animation play.
-const TRIGGERS: Entry[] = [
-  { name: 'enter', desc: 'Va por TIEMPO: cuando el elemento entra en pantalla reproduce la animación completa de "Desde" a "Hasta" UNA vez (durante "Duración"). SIEMPRE arranca en el valor "Desde".', when: 'Lo más común y predecible. Si quieres que algo "nazca" desde un valor (ej. scale 0,8→1, o translateY 30→0), usa enter.' },
-  { name: 'scroll', desc: 'Va por POSICIÓN DE SCROLL, no por tiempo: el valor va de "Desde" a "Hasta" según cuánto avanzaste por la sección (0% cuando entra, 100% cuando sale). ⚠️ Si la sección ya está en pantalla al cargar (p. ej. la PRIMERA, muy alta), el scroll arranca a MITAD → puede que NUNCA veas el valor "Desde" (por eso un scale 0→2 se ve grande de entrada y no "nace" desde 0).', when: 'Para efectos atados al scroll (algo que se mueve mientras bajas). Si necesitas que siempre arranque en "Desde", usa enter.' },
-  { name: 'loop', desc: 'Se repite en bucle sin parar. Puedes activar "Yoyo" para que vaya y vuelva.', when: 'Para una pulsación, un flotar suave o un brillo que late de forma continua.' },
-  { name: 'mouse', desc: 'Reacciona al movimiento del mouse.', when: 'Para un detalle interactivo en pantallas grandes (un elemento que sigue o reacciona al cursor).' },
-  { name: 'gyroscope', desc: 'En el celular, reacciona al inclinar el teléfono (sensores de movimiento).', when: 'Para que la experiencia en móvil se sienta viva al mover el dispositivo.' },
-  { name: 'hover', desc: 'Se reproduce al pasar el mouse por encima del elemento.', when: 'Para resaltar un botón, una imagen o una tarjeta cuando la persona la apunta.' },
-  { name: 'click', desc: 'Se reproduce al hacer click sobre el elemento.', when: 'Para dar respuesta visual a un toque o click (un botón que reacciona).' },
-  { name: 'depends', desc: 'Se dispara por una interacción sobre OTRO elemento (eliges cuál y qué evento: hover, click o enter).', when: 'Para encadenar: por ejemplo, una imagen se anima cuando pasas el mouse sobre un título.' },
-]
+// TRIGGERS — what makes the animation play. Resolves to
+// `animHelp.triggers.<name>.{desc,when}`.
+const TRIGGERS: string[] = ['enter', 'scroll', 'loop', 'mouse', 'gyroscope', 'hover', 'click', 'depends']
 
 // EASING — la "sensación" del movimiento (cómo arranca y frena), agrupado.
-const EASING_GROUPS: { group: string; items: Entry[] }[] = [
+// Each item has a visible NAME (which differs from the locale key — the easing
+// "name" is a display label like "easeOutCubic / Quart / Quint" — and a key
+// pointing to the locale's desc/when copy).
+const EASING_GROUPS: { groupKey: string; items: { name: string; key: string }[] }[] = [
   {
-    group: 'Básicas',
+    groupKey: 'basicas',
     items: [
-      { name: 'linear', desc: 'Velocidad constante, sin acelerar ni frenar. Se siente mecánico.', when: 'Para bucles continuos (un giro o flotar que no debe "respirar").' },
-      { name: 'easeIn', desc: 'Arranca lento y acelera. Como si tomara impulso.', when: 'Para salidas: algo que se va ganando velocidad al desaparecer.' },
-      { name: 'easeOut', desc: 'Arranca rápido y frena suave. La más natural.', when: 'Para entradas de elementos (lo que aparece en pantalla).' },
-      { name: 'easeInOut', desc: 'Suave al inicio y al final. La más equilibrada.', when: 'Lo más seguro para casi todo, sobre todo movimientos continuos.' },
+      { name: 'linear', key: 'linear' },
+      { name: 'easeIn', key: 'easeIn' },
+      { name: 'easeOut', key: 'easeOut' },
+      { name: 'easeInOut', key: 'easeInOut' },
     ],
   },
   {
-    group: 'Más marcadas (frenado fuerte)',
+    groupKey: 'marcadas',
     items: [
-      { name: 'easeOutCubic / Quart / Quint', desc: 'Variantes de easeOut cada vez más pronunciadas: frenan más fuerte al final (Quint es la más dramática).', when: 'Para entradas con más carácter; Quart/Quint para efectos llamativos.' },
-      { name: 'easeInCubic / Quart / Quint', desc: 'Igual pero acelerando al arrancar, cada vez más marcado.', when: 'Para salidas con énfasis.' },
-      { name: 'easeInOutCubic / Quart / Quint', desc: 'Suaves a ambos lados pero más pronunciadas que easeInOut.', when: 'Para movimientos elegantes con un punto extra de dramatismo.' },
+      { name: 'easeOutCubic / Quart / Quint', key: 'easeOutCubic' },
+      { name: 'easeInCubic / Quart / Quint', key: 'easeInCubic' },
+      { name: 'easeInOutCubic / Quart / Quint', key: 'easeInOutCubic' },
     ],
   },
 ]
@@ -116,103 +84,74 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey, true))
       data-test="anim-help-modal"
       @click.self="emit('close')"
     >
-      <div class="anim-help-modal" role="dialog" aria-label="Guía de animaciones">
+      <div class="anim-help-modal" role="dialog" :aria-label="t('animHelp.title')">
         <header class="ahm-head">
-          <h2 class="ahm-title">Guía de animaciones</h2>
+          <h2 class="ahm-title">{{ t('animHelp.title') }}</h2>
           <button
             class="ahm-close"
             data-test="anim-help-close"
-            aria-label="Cerrar"
+            :aria-label="t('animHelp.closeAria')"
             @click="emit('close')"
           >&times;</button>
         </header>
 
         <div class="ahm-body" data-test="anim-help-body" :ref="panelScrollRef">
-          <p class="ahm-intro">
-            Una animación tiene dos partes: <strong>el tipo</strong> (qué efecto se
-            ve) y <strong>el disparador</strong> (cuándo se reproduce). Elige uno
-            de cada uno.
-          </p>
+          <p class="ahm-intro" v-html="t('animHelp.intro')"></p>
 
-          <p class="ahm-note" data-test="ahm-edit-vs-preview">
-            <strong>Edición vs. Preview:</strong> en <strong>Edición</strong> la
-            mesa muestra cada elemento en su <strong>tamaño y posición reales</strong>
-            (sin movimiento) para que puedas ubicarlo bien — solo
-            <em>aparecer/opacidad</em> se ve ya resuelto. Los movimientos (escalar,
-            deslizar, girar…) <strong>se ven recién en Preview</strong> o publicado.
-            Por eso una imagen con <code class="ahm-name">scale</code> «Hasta 2» se
-            ve normal en Edición y al <strong>doble</strong> en Preview: no es un error.
-          </p>
+          <p class="ahm-note" data-test="ahm-edit-vs-preview" v-html="t('animHelp.editVsPreview')"></p>
 
-          <p class="ahm-note" data-test="ahm-anchor">
-            <strong>El anchor (punto de anclaje):</strong> es el punto del elemento
-            que se coloca en su <strong>posición</strong> y, además, el
-            <strong>punto fijo</strong> alrededor del cual <strong>gira y escala</strong>.
-            Con anchor <em>centro</em>, al escalar crece desde el centro (hacia todos
-            lados); con <em>arriba-izquierda</em>, crece hacia abajo-derecha. El
-            <code class="ahm-name">translate</code> NO depende del anchor (mueve toda
-            la caja). El anchor se elige en las <strong>propiedades del elemento</strong>,
-            no aquí.
-          </p>
+          <p class="ahm-note" data-test="ahm-anchor" v-html="t('animHelp.anchor')"></p>
 
-          <h3 class="ahm-section">Tipos de animación</h3>
-          <p class="ahm-section-sub">Qué efecto visual se aplica.</p>
+          <h3 class="ahm-section">{{ t('animHelp.sectionTypes') }}</h3>
+          <p class="ahm-section-sub">{{ t('animHelp.sectionTypesSub') }}</p>
           <div
             v-for="g in TYPE_GROUPS"
-            :key="g.group"
+            :key="g.groupKey"
             class="ahm-group"
           >
-            <div class="ahm-group-name">{{ g.group }}</div>
+            <div class="ahm-group-name">{{ t(`animHelp.groups.${g.groupKey}`) }}</div>
             <div
-              v-for="it in g.items"
-              :key="it.name"
+              v-for="name in g.items"
+              :key="name"
               class="ahm-card"
             >
-              <code class="ahm-name">{{ it.name }}</code>
-              <p class="ahm-desc">{{ it.desc }}</p>
-              <p class="ahm-when"><span class="ahm-when-tag">cuándo usarlo</span>{{ it.when }}</p>
+              <code class="ahm-name">{{ name }}</code>
+              <p class="ahm-desc">{{ t(`animHelp.types.${name}.desc`) }}</p>
+              <p class="ahm-when"><span class="ahm-when-tag">{{ t('animHelp.whenTag') }}</span>{{ t(`animHelp.types.${name}.when`) }}</p>
             </div>
           </div>
 
-          <h3 class="ahm-section">Disparadores</h3>
-          <p class="ahm-section-sub">Qué hace que la animación se reproduzca.</p>
+          <h3 class="ahm-section">{{ t('animHelp.sectionTriggers') }}</h3>
+          <p class="ahm-section-sub">{{ t('animHelp.sectionTriggersSub') }}</p>
           <div
-            v-for="t in TRIGGERS"
-            :key="t.name"
+            v-for="name in TRIGGERS"
+            :key="name"
             class="ahm-card"
           >
-            <code class="ahm-name">{{ t.name }}</code>
-            <p class="ahm-desc">{{ t.desc }}</p>
-            <p class="ahm-when"><span class="ahm-when-tag">cuándo usarlo</span>{{ t.when }}</p>
+            <code class="ahm-name">{{ name }}</code>
+            <p class="ahm-desc">{{ t(`animHelp.triggers.${name}.desc`) }}</p>
+            <p class="ahm-when"><span class="ahm-when-tag">{{ t('animHelp.whenTag') }}</span>{{ t(`animHelp.triggers.${name}.when`) }}</p>
           </div>
 
-          <h3 ref="easingRef" class="ahm-section" data-test="ahm-easing">Easing (curva de aceleración)</h3>
-          <p class="ahm-section-sub">
-            Define la <strong>sensación</strong> del movimiento: si arranca o
-            frena de golpe o con suavidad. Cambia mucho cómo se percibe la
-            animación aunque dure lo mismo.
-          </p>
+          <h3 ref="easingRef" class="ahm-section" data-test="ahm-easing">{{ t('animHelp.sectionEasing') }}</h3>
+          <p class="ahm-section-sub" v-html="t('animHelp.sectionEasingSub')"></p>
           <div
             v-for="g in EASING_GROUPS"
-            :key="g.group"
+            :key="g.groupKey"
             class="ahm-group"
           >
-            <div class="ahm-group-name">{{ g.group }}</div>
+            <div class="ahm-group-name">{{ t(`animHelp.groups.${g.groupKey}`) }}</div>
             <div
               v-for="it in g.items"
-              :key="it.name"
+              :key="it.key"
               class="ahm-card"
             >
               <code class="ahm-name">{{ it.name }}</code>
-              <p class="ahm-desc">{{ it.desc }}</p>
-              <p class="ahm-when"><span class="ahm-when-tag">cuándo usarlo</span>{{ it.when }}</p>
+              <p class="ahm-desc">{{ t(`animHelp.easing.${it.key}.desc`) }}</p>
+              <p class="ahm-when"><span class="ahm-when-tag">{{ t('animHelp.whenTag') }}</span>{{ t(`animHelp.easing.${it.key}.when`) }}</p>
             </div>
           </div>
-          <p class="ahm-intro" style="margin-top:14px">
-            <strong>Si dudas:</strong> usa <code class="ahm-name">easeOut</code>
-            para que algo aparezca y <code class="ahm-name">easeInOut</code> para
-            movimientos continuos. Reserva Quart/Quint para efectos llamativos.
-          </p>
+          <p class="ahm-intro" style="margin-top:14px" v-html="t('animHelp.finalTip')"></p>
         </div>
       </div>
     </div>

@@ -15,6 +15,8 @@ interface ElectronBridge {
   onMenuAction: (cb: (action: string) => void) => () => void
   setWorkspaceCapabilities: (caps: { useGit: boolean; hasS3: boolean; inEditor: boolean }) => void
   setDirty: (dirty: boolean) => void
+  setLocale: (locale: 'es' | 'en') => void
+  onLocaleChanged: (cb: (locale: 'es' | 'en') => void) => () => void
 }
 
 function bridge(): ElectronBridge | null {
@@ -74,6 +76,17 @@ export function useElectron() {
       } catch {
         /* no-op */
       }
+    },
+    /** Notifica al menú nativo el locale activo del renderer. Web: no-op. */
+    setLocale(locale: 'es' | 'en'): void {
+      if (!el) return
+      try { el.setLocale(locale) } catch { /* no-op */ }
+    },
+    /** Recibe cambios de locale disparados desde el menú nativo Ventana → Idioma.
+     *  El renderer aplica el cambio en su propio i18n. Web: never fires. */
+    onLocaleChanged(cb: (locale: 'es' | 'en') => void): () => void {
+      if (!el) return () => {}
+      return el.onLocaleChanged(cb)
     },
   }
 }

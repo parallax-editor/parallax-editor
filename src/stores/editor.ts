@@ -696,9 +696,113 @@ export function getAtPath(path: string): any {
 }
 
 // Set a value at a view-relative dot-path, with undo
+// ─── Section resize with proportional element recalc (Phase 5) ──────────────
+//
+// When the user drags the section's bottom edge to change its height, child
+// elements with PERCENTAGE-based y / size.height (the engine's "number = %" or
+// `"<N>%"` strings) would normally shift to a different artboard pixel as the
+// section grows/shrinks. To keep their absolute pixel position constant we
+// scale every percentage by `oldHeightPx / newHeightPx`. Non-percent units
+// (`px`, `vh`, `vw`, `rem`…) are absolute or unrelated to section height — we
+// leave them alone.
+//
+// Caller contract:
+//   - `originalSection` is a DEEP-CLONED snapshot taken BEFORE the first
+//     mousedown of the resize. Passing the same snapshot for every move event
+//     means percentages don't compound (we always recompute from the original).
+//   - `oldHeightPx` / `newHeightPx` are in the artboard's coordinate space
+//     (canvas zoom already divided out).
+//   - `opts.pushUndo` should be true on the FIRST move event of the gesture so
+//     the whole drag collapses into one undo step.
+function applySectionResizeAndRecalc(
+  sectionPath: string,
+  originalSection: any,
+  oldHeightPx: number,
+  newHeightPx: number,
+  opts: { pushUndo?: boolean } = {},
+) {
+  if (!state.site) return
+  const node = getAtPath(sectionPath)
+  if (!node || oldHeightPx <= 0 || newHeightPx <= 0) return
+  if (opts.pushUndo) pushUndo()
+  node.height = `${Math.round(newHeightPx)}px`
+  const ratio = oldHeightPx / newHeightPx
+  const origLayers = Array.isArray(originalSection.layers) ? originalSection.layers : []
+  const liveLayers = Array.isArray(node.layers) ? node.layers : []
+  for (let li = 0; li < origLayers.length; li++) {
+    const layerNow = liveLayers[li]
+    const layerOrig = origLayers[li]
+    if (!layerNow || !layerOrig) continue
+    const origElems = Array.isArray(layerOrig.elements) ? layerOrig.elements : []
+    for (let ei = 0; ei < origElems.length; ei++) {
+      const elNow = layerNow.elements[ei]
+      const elOrig = origElems[ei]
+      if (!elNow || !elOrig) continue
+      scaleProportional(elNow, 'position', 'y', elOrig.position?.y, ratio)
+      scaleProportional(elNow, 'size', 'height', elOrig.size?.height, ratio)
+      for (const k of ['mobile', 'desktop'] as const) {
+        const liveOverride = elNow[k]
+        const origOverride = elOrig[k]
+        if (!liveOverride || !origOverride) continue
+        scaleProportional(liveOverride, 'position', 'y', origOverride.position?.y, ratio)
+        scaleProportional(liveOverride, 'size', 'height', origOverride.size?.height, ratio)
+      }
+    }
+  }
+}
+
+function scaleProportional(
+  host: any,
+  container: 'position' | 'size',
+  field: 'y' | 'height',
+  originalValue: any,
+  ratio: number,
+) {
+  if (originalValue == null) return
+  const c = host[container] ?? (host[container] = {})
+  if (typeof originalValue === 'number') {
+    // schema "number = %"
+    c[field] = Math.round(originalValue * ratio * 10000) / 10000
+  } else if (typeof originalValue === 'string') {
+    const m = originalValue.trim().match(/^(-?[\d.]+)\s*%$/)
+    if (m) {
+      const scaled = Math.round(parseFloat(m[1]) * ratio * 10000) / 10000
+      c[field] = `${scaled}%`
+    } else {
+      // px / vh / rem / etc. — restore original verbatim (no scaling).
+      c[field] = originalValue
+    }
+  }
+}
+
+export function resizeSectionWithRecalc(
+  sectionPath: string,
+  originalSection: any,
+  oldHeightPx: number,
+  newHeightPx: number,
+  opts: { pushUndo?: boolean } = {},
+) {
+  applySectionResizeAndRecalc(sectionPath, originalSection, oldHeightPx, newHeightPx, opts)
+}
+
 export function setAtPath(path: string, value: any) {
   if (!state.site) return
   pushUndo()
+  writeAtPathInternal(path, value)
+}
+
+// Same write semantics as setAtPath but WITHOUT pushUndo. Use during drags
+// (move/resize/rotate/group-move) so the gesture is a SINGLE undo step
+// instead of one per mousemove. The caller should pushUndo() ONCE at the
+// drag's start (after the DRAG_THRESHOLD is crossed) and then use this
+// helper for every mousemove apply.
+export function setAtPathSilent(path: string, value: any) {
+  if (!state.site) return
+  writeAtPathInternal(path, value)
+}
+
+function writeAtPathInternal(path: string, value: any) {
+  if (!state.site) return
   const parts = toCanonicalPath(path).split('.')
   let obj: any = state.site
   for (let i = 0; i < parts.length - 1; i++) {
@@ -712,6 +816,11 @@ export function setAtPath(path: string, value: any) {
   } else {
     obj[last] = value
   }
+}
+
+// Expose pushUndo so canvas overlays can stamp a single snapshot at drag start.
+export function pushUndoOnce() {
+  pushUndo()
 }
 
 // ─── Global (site-level) selection: "Sitio" (meta) + "Tema" (theme) ────────────
@@ -1148,11 +1257,12 @@ export function moveNode(
 
 // ─── Per-node visibility ───────────────────────────────────────────────────────
 //
-// Elements have a schema `visible` field (engine honors it → preview updates).
-// Sections/layers have NO schema field; we still write a `visible:false` key on
-// them (additive, ignored by the engine/sites) and the editor's previewSite
-// computed strips hidden layers/sections from the throwaway render copy so the
-// canvas preview reflects it. Absence of `visible` = visible.
+// Elements, layers and sections ALL have a schema `visible` field as of engine
+// v1.1 (Phase 3). The engine honors it in render — sections/layers are filtered
+// out at the ParallaxSite/ParallaxSection level, elements at their own
+// template's `v-if`. The editor's previewSite still strips hidden nodes from
+// its throwaway render copy (cheap belt+suspenders so the canvas overview math
+// matches what the engine paints). Absence of `visible` = visible.
 export function isNodeVisible(node: any): boolean {
   return !node || node.visible !== false
 }
@@ -1351,7 +1461,14 @@ export function deleteSelected() {
   }
 }
 
-// Duplicate the selected element
+/**
+ * Cmd+D — duplicate the selected node. Works for elements, layers AND sections;
+ * for sections/layers the contained children also get duplicated (deep clone)
+ * with `-copy` suffixes on their ids so the CAPAS tree stays readable. Ids are
+ * deduped against the whole site: re-duplicating gives `-copy-2`, `-copy-3`, …
+ * Existing `-copy[-N]` suffixes are stripped first so a copy of a copy stays
+ * "foo-copy-2" instead of growing to "foo-copy-copy".
+ */
 export function duplicateSelected() {
   if (!state.selectedPath || !state.site) return
   if (isGlobalPath(state.selectedPath)) return // nothing to duplicate
@@ -1362,7 +1479,8 @@ export function duplicateSelected() {
   const arr = getAtPath(parentPath)
   if (Array.isArray(arr)) {
     const copy = JSON.parse(JSON.stringify(arr[index]))
-    if (copy.id) copy.id = `${copy.id}-copy`
+    const taken = collectAllIds()
+    renameWithCopySuffix(copy, taken)
     if (copy.position) {
       copy.position.x = (copy.position.x || 0) + 2
       copy.position.y = (copy.position.y || 0) + 2
@@ -1370,6 +1488,31 @@ export function duplicateSelected() {
     arr.splice(index + 1, 0, copy)
     state.selectedPath = `${parentPath}.${index + 1}`
   }
+}
+
+// Strip an existing "-copy" or "-copy-N" suffix so successive duplicates stay
+// readable instead of growing "foo-copy-copy-copy".
+const COPY_SUFFIX_PLAIN_RE = /-copy(?:-\d+)?$/
+function nextCopyId(sourceId: string, taken: Set<string>): string {
+  const base = sourceId.replace(COPY_SUFFIX_PLAIN_RE, '')
+  const first = `${base}-copy`
+  if (!taken.has(first)) return first
+  let n = 2
+  while (taken.has(`${base}-copy-${n}`)) n++
+  return `${base}-copy-${n}`
+}
+
+// Rename a duplicated node + every descendant (layers/elements) by appending
+// "-copy" (or "-copy-N" on collision) so the CAPAS tree shows clear lineage.
+// Mutates in place; `taken` accumulates so siblings don't collide.
+function renameWithCopySuffix(node: any, taken: Set<string>) {
+  if (!node) return
+  if (node.id) {
+    node.id = nextCopyId(node.id, taken)
+    taken.add(node.id)
+  }
+  for (const layer of node.layers || []) renameWithCopySuffix(layer, taken)
+  for (const el of node.elements || []) renameWithCopySuffix(el, taken)
 }
 
 // ─── Animations on the selected element ────────────────────────────────────────
@@ -2225,6 +2368,28 @@ function newPngElement(): AnyElement {
   } as AnyElement
 }
 
+function newGifElement(): AnyElement {
+  return {
+    type: 'gif',
+    id: uid('gif'),
+    position: { x: 50, y: 50 },
+    size: { width: 30 },
+    anchor: 'center',
+    opacity: 1,
+    rotation: 0,
+    visible: true,
+    interactive: false,
+    src: '',
+    alt: '',
+    autoplay: true,
+    loop: true,
+    pauseOnHover: false,
+    animations: [
+      { type: 'fadeIn', trigger: 'enter', from: 0, to: 1, duration: 800, easing: 'easeOut' },
+    ],
+  } as AnyElement
+}
+
 function newVideoElement(): AnyElement {
   return {
     type: 'video',
@@ -2399,11 +2564,12 @@ export function addLayer(sectionPath: string) {
 
 // UI element kinds → schema element types.
 // 'form' → component/FormBlock (engine built-in).
-export type ElementKind = 'text' | 'png' | 'video' | 'audio' | 'form'
+export type ElementKind = 'text' | 'png' | 'gif' | 'video' | 'audio' | 'form'
 
 const ELEMENT_FACTORIES: Record<ElementKind, () => AnyElement> = {
   text: newTextElement,
   png: newPngElement,
+  gif: newGifElement,
   video: newVideoElement,
   audio: newAudioElement,
   form: newFormElement,
@@ -2523,6 +2689,21 @@ export function addElementFromResource(
   pushUndo()
   const el = factory() as AnyElement & { src?: string; position?: { x: number; y: number } }
   el.src = src
+  // Friendlier id: derive from the asset's filename so the CAPAS tree shows
+  // "foto-boda" instead of "png-a7c3". Falls back to the factory's random id
+  // if the filename sanitizes to empty. Uniquified against the whole site so
+  // dropping the same asset twice doesn't collide.
+  const derived = idFromAssetSrc(src)
+  if (derived) {
+    const taken = collectAllIds()
+    let final = derived
+    if (taken.has(final)) {
+      let n = 2
+      while (taken.has(`${derived}-${n}`)) n++
+      final = `${derived}-${n}`
+    }
+    ;(el as any).id = final
+  }
   if (opts.pos) {
     const clamp = (n: number) => Math.round(Math.min(100, Math.max(0, n)) * 10) / 10
     el.position = { x: clamp(opts.pos.x), y: clamp(opts.pos.y) }
@@ -2530,4 +2711,17 @@ export function addElementFromResource(
   layer.elements.push(el as AnyElement)
   state.selectedPath = `${layerPath}.elements.${layer.elements.length - 1}`
   state.selectedPaths = []
+}
+
+/**
+ * Turn an asset `src` (e.g. "images/foto-boda.png" or "video/intro.mp4") into a
+ * kebab-id usable as an element id: strip the directory, drop the extension,
+ * sanitize (lowercase, no accents, kebab). Returns '' if nothing meaningful
+ * remains (caller falls back to the factory's random id).
+ */
+function idFromAssetSrc(src: string): string {
+  if (!src) return ''
+  const base = src.split(/[\\/]/).pop() || ''
+  const noExt = base.replace(/\.[^.]+$/, '')
+  return sanitizeId(noExt)
 }

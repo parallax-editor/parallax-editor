@@ -570,6 +570,32 @@ async function suiteAnimations(O) {
       return !!(b && b.width > 0 && b.height > 0)
     }), '')
 
+  // Regression: scrolled-PAST section keeps its animated end state.
+  //
+  // Before the fix in ParallaxSection.vue, sectionProgress short-circuited to 0
+  // when the section's IntersectionObserver flipped !isVisible (rootMargin
+  // 100px). So scrolling FAR PAST the animated section (its rect.top well
+  // below -rect.height) made progress drop back to 0 and the scroll-driven
+  // translateX snapped back to its `from` (-200). In the editor this also
+  // manifested as "texts disappear" on extreme zoom-out + pan, because the
+  // artboard transform pushed sections out of the window viewport.
+  //
+  // After the fix, sectionProgress is computed from the rect regardless of
+  // isVisible — the clamp() in the engine drives it to 1 once rect.top falls
+  // below the viewport. We assert two regressions that the OLD bug would
+  // break: (a) x at end-of-page is STRICTLY GREATER than x at mid-scroll
+  // (progress monotonically increases), and (b) x is well past the `from`
+  // value (-200). With Lenis smooth-scrolling the exact end value can lag
+  // behind a synchronous scrollTo, so we don't pin to the literal `to: 200` —
+  // the broken behavior would put x at exactly -200 (progress 0), so any
+  // positive value is unambiguous evidence of the fix.
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+  await page.waitForTimeout(1200)
+  const xPast = await sx()
+  check('scroll(range): sección scrolleada-PASADA NO colapsa progress a 0 (regression: §sectionProgress no-bail-on-isVisible)',
+    xPast != null && xPast > xHigh && xPast > 0,
+    `x at end-of-page ${xPast} (expected > mid-scroll ${xHigh}, broken behavior would be ≈-200)`)
+
   // hover: scale 1 -> 1.5 on mouseenter. click: rotate 0 -> 45 on click.
   r = await open(O, 'fixture=anim-hover-click')
   check('anim-hover-click monta', r.ready && !r.error, r.error || '')
