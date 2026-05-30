@@ -102,13 +102,13 @@ function startInlineTextEdit(e: MouseEvent) {
   dom.setAttribute('contenteditable', 'plaintext-only')
   dom.style.cursor = 'text'
   dom.style.outline = '2px solid var(--accent-strong, #b06bff)'
-  // Use the text element's CURRENT rendered content as the starting point;
-  // setting innerText would clobber any inline children (split spans, etc.)
-  // — text elements use plain text content, so this is safe.
-  inlineEditOnInput = () => {
-    if (!inlineEditPath || !inlineEditNode) return
-    setAtPath(`${inlineEditPath}.content`, inlineEditNode.innerText)
-  }
+  // NO live store sync during typing: writing to `content` on every
+  // keystroke makes Vue re-render the engine, which resets innerText on
+  // this same DOM node and clobbers the caret. The user saw their typing
+  // appear backwards because every new char's caret position was reset to 0.
+  // The contentEditable element holds the typed text on its own; we read
+  // innerText and persist on commit (Enter / Esc / blur).
+  inlineEditOnInput = null
   inlineEditOnBlur = () => stopInlineTextEdit(true)
   inlineEditOnKeydown = (ev: KeyboardEvent) => {
     if (ev.key === 'Escape') {
@@ -121,7 +121,6 @@ function startInlineTextEdit(e: MouseEvent) {
       stopInlineTextEdit(true)
     }
   }
-  dom.addEventListener('input', inlineEditOnInput)
   dom.addEventListener('blur', inlineEditOnBlur)
   dom.addEventListener('keydown', inlineEditOnKeydown)
   // Focus + place caret at end so typing extends the current text.

@@ -367,9 +367,14 @@ export function gitOriginRecent(cwd: string, n = 5, pathspec?: string): Commit[]
  * Drives the "Publicar" button's enabled state. 0 if no upstream / on error.
  * Never throws.
  */
-export function gitAheadCount(cwd: string): number {
+export function gitAheadCount(cwd: string, pathspec?: string): number {
   try {
-    const raw = git('rev-list --count @{u}..HEAD', cwd)
+    // Scope by pathspec so the toolbar's "Publicar (N)" badge counts only
+    // commits that touched the open slug — matches the GitPanel filter so
+    // the badge and the listed commits agree. Same quoting/sanitization as
+    // gitPendingCommits (pathspec arrives from getContentRelPath upstream).
+    const scope = pathspec ? ` -- "${pathspec.replace(/"/g, '\\"')}"` : ''
+    const raw = git(`rev-list --count @{u}..HEAD${scope}`, cwd)
     const n = parseInt(raw, 10)
     return Number.isFinite(n) ? n : 0
   } catch {

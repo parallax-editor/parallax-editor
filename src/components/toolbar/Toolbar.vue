@@ -51,7 +51,9 @@ const publishTitle = computed(() =>
 async function refreshGitStatus() {
   if (!state.projectType) return
   try {
-    const s = await gitApi.status(state.projectType)
+    // Scope by slug so the toolbar "Publicar (N)" badge counts only commits
+    // that touched the open site, matching what the GitPanel lists.
+    const s = await gitApi.status(state.projectType, state.slug || undefined)
     gitAhead.value = s?.ahead || 0
   } catch {
     gitAhead.value = 0

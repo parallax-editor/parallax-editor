@@ -113,6 +113,11 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
 
   return async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     const url = req.url || ''
+    // Pathname-only view of req.url so endpoint regexes anchored at `$`
+    // still match when a query string is present (e.g. /api/git/X/status?slug=Y).
+    // Without this, /^…\/status$/ silently rejected scoped requests and the
+    // GitPanel went empty. Kept `url` intact for legacy literal-equals checks.
+    const pathname = url.split('?')[0]
     const method = req.method || 'GET'
 
     try {
@@ -411,16 +416,19 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
       // pending commits themselves and the last 5 commits on origin/main. Drives
       // the toolbar "Publicar" enabled state and the GitPanel listings. All
       // best-effort (no upstream / offline are handled inside the helpers).
-      // ?slug= scopes the commit lists to files under that slug's content dir
-      // so the GitPanel doesn't list commits that didn't touch the open site.
-      const gsmatch = url.match(/^\/api\/git\/([^/]+)\/status$/)
+      // ?slug= scopes the commit lists AND the ahead-count to files under that
+      // slug's content dir so the GitPanel / Publicar badge only count commits
+      // that actually touched the open site. Match against PATHNAME (not the
+      // raw url) so the trailing `$` survives a `?slug=…` query — without it
+      // the regex missed every scoped request and the panel went empty.
+      const gsmatch = pathname.match(/^\/api\/git\/([^/]+)\/status$/)
       if (gsmatch && method === 'GET') {
         const repo = getRepoPath(gsmatch[1])
         const u = new URL(req.url || '', 'http://x')
         const slug = (u.searchParams.get('slug') || '').trim()
         const scope = slug ? getContentRelPath(gsmatch[1], slug) : ''
         return json(res, {
-          ahead: gitAheadCount(repo),
+          ahead: gitAheadCount(repo, scope || undefined),
           pending: gitPendingCommits(repo, scope || undefined),
           originRecent: gitOriginRecent(repo, 5, scope || undefined),
         })

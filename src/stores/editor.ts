@@ -1461,7 +1461,14 @@ export function deleteSelected() {
   }
 }
 
-// Duplicate the selected element
+/**
+ * Cmd+D — duplicate the selected node. Works for elements, layers AND sections;
+ * for sections/layers the contained children also get duplicated (deep clone)
+ * with `-copy` suffixes on their ids so the CAPAS tree stays readable. Ids are
+ * deduped against the whole site: re-duplicating gives `-copy-2`, `-copy-3`, …
+ * Existing `-copy[-N]` suffixes are stripped first so a copy of a copy stays
+ * "foo-copy-2" instead of growing to "foo-copy-copy".
+ */
 export function duplicateSelected() {
   if (!state.selectedPath || !state.site) return
   if (isGlobalPath(state.selectedPath)) return // nothing to duplicate
@@ -1472,7 +1479,8 @@ export function duplicateSelected() {
   const arr = getAtPath(parentPath)
   if (Array.isArray(arr)) {
     const copy = JSON.parse(JSON.stringify(arr[index]))
-    if (copy.id) copy.id = `${copy.id}-copy`
+    const taken = collectAllIds()
+    renameWithCopySuffix(copy, taken)
     if (copy.position) {
       copy.position.x = (copy.position.x || 0) + 2
       copy.position.y = (copy.position.y || 0) + 2
@@ -1480,6 +1488,31 @@ export function duplicateSelected() {
     arr.splice(index + 1, 0, copy)
     state.selectedPath = `${parentPath}.${index + 1}`
   }
+}
+
+// Strip an existing "-copy" or "-copy-N" suffix so successive duplicates stay
+// readable instead of growing "foo-copy-copy-copy".
+const COPY_SUFFIX_PLAIN_RE = /-copy(?:-\d+)?$/
+function nextCopyId(sourceId: string, taken: Set<string>): string {
+  const base = sourceId.replace(COPY_SUFFIX_PLAIN_RE, '')
+  const first = `${base}-copy`
+  if (!taken.has(first)) return first
+  let n = 2
+  while (taken.has(`${base}-copy-${n}`)) n++
+  return `${base}-copy-${n}`
+}
+
+// Rename a duplicated node + every descendant (layers/elements) by appending
+// "-copy" (or "-copy-N" on collision) so the CAPAS tree shows clear lineage.
+// Mutates in place; `taken` accumulates so siblings don't collide.
+function renameWithCopySuffix(node: any, taken: Set<string>) {
+  if (!node) return
+  if (node.id) {
+    node.id = nextCopyId(node.id, taken)
+    taken.add(node.id)
+  }
+  for (const layer of node.layers || []) renameWithCopySuffix(layer, taken)
+  for (const el of node.elements || []) renameWithCopySuffix(el, taken)
 }
 
 // ─── Animations on the selected element ────────────────────────────────────────
@@ -2656,6 +2689,21 @@ export function addElementFromResource(
   pushUndo()
   const el = factory() as AnyElement & { src?: string; position?: { x: number; y: number } }
   el.src = src
+  // Friendlier id: derive from the asset's filename so the CAPAS tree shows
+  // "foto-boda" instead of "png-a7c3". Falls back to the factory's random id
+  // if the filename sanitizes to empty. Uniquified against the whole site so
+  // dropping the same asset twice doesn't collide.
+  const derived = idFromAssetSrc(src)
+  if (derived) {
+    const taken = collectAllIds()
+    let final = derived
+    if (taken.has(final)) {
+      let n = 2
+      while (taken.has(`${derived}-${n}`)) n++
+      final = `${derived}-${n}`
+    }
+    ;(el as any).id = final
+  }
   if (opts.pos) {
     const clamp = (n: number) => Math.round(Math.min(100, Math.max(0, n)) * 10) / 10
     el.position = { x: clamp(opts.pos.x), y: clamp(opts.pos.y) }
@@ -2663,4 +2711,17 @@ export function addElementFromResource(
   layer.elements.push(el as AnyElement)
   state.selectedPath = `${layerPath}.elements.${layer.elements.length - 1}`
   state.selectedPaths = []
+}
+
+/**
+ * Turn an asset `src` (e.g. "images/foto-boda.png" or "video/intro.mp4") into a
+ * kebab-id usable as an element id: strip the directory, drop the extension,
+ * sanitize (lowercase, no accents, kebab). Returns '' if nothing meaningful
+ * remains (caller falls back to the factory's random id).
+ */
+function idFromAssetSrc(src: string): string {
+  if (!src) return ''
+  const base = src.split(/[\\/]/).pop() || ''
+  const noExt = base.replace(/\.[^.]+$/, '')
+  return sanitizeId(noExt)
 }
