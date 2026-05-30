@@ -207,25 +207,25 @@ void _LEGACY_HELP_TEXTS
 // verbatim and never rebase to a desktop/mobile view → meta/theme are shared
 // regardless of independent-views mode (exactly the engine contract).
 
-const TRANSITION_OPTS = [
-  { value: '', label: '(ninguno)' },
+const TRANSITION_OPTS = computed(() => [
+  { value: '', label: t('selects.transition.none') },
   ...TRANSITION_TYPES.map((v) => ({ value: v, label: v })),
-]
+])
 // Same option set for section.transition, but the "(ninguna)" label reads
 // naturally for "transición" (feminine) per the spec copy.
-const SECTION_TRANSITION_OPTS = [
-  { value: '', label: '(ninguna)' },
+const SECTION_TRANSITION_OPTS = computed(() => [
+  { value: '', label: t('selects.sectionTransition.none') },
   ...TRANSITION_TYPES.map((v) => ({ value: v, label: v })),
-]
+])
 const FONT_SOURCE_OPTS = ['google', 'custom']
 // Modo de relleno de la imagen (CSS object-fit) con etiquetas amigables.
-const OBJECT_FIT_OPTS = [
-  { value: 'cover', label: 'Llenar (recorta lo que sobra)' },
-  { value: 'contain', label: 'Encajar completa (puede dejar espacio)' },
-  { value: 'fill', label: 'Estirar (deforma para llenar)' },
-  { value: 'none', label: 'Tamaño natural' },
-  { value: 'scale-down', label: 'Reducir si es muy grande' },
-]
+const OBJECT_FIT_OPTS = computed(() => [
+  { value: 'cover', label: t('selects.objectFit.cover') },
+  { value: 'contain', label: t('selects.objectFit.contain') },
+  { value: 'fill', label: t('selects.objectFit.fill') },
+  { value: 'none', label: t('selects.objectFit.none') },
+  { value: 'scale-down', label: t('selects.objectFit.scale-down') },
+])
 
 const meta = computed<any>(() => (state.site as any)?.meta || {})
 const theme = computed<any>(() => (state.site as any)?.theme || null)
@@ -236,14 +236,14 @@ const theme = computed<any>(() => (state.site as any)?.theme || null)
 // model; the color/size/blend controls only render when it's enabled.
 const cursor = computed<any>(() => (state.site as any)?.cursor || null)
 const cursorOn = computed<boolean>(() => !!cursor.value?.enabled)
-const CURSOR_BLEND_OPTS = [
-  { value: 'normal', label: 'Normal' },
-  { value: 'difference', label: 'Diferencia (invierte)' },
-  { value: 'multiply', label: 'Multiplicar' },
-  { value: 'screen', label: 'Trama (screen)' },
-  { value: 'overlay', label: 'Superponer (overlay)' },
-  { value: 'exclusion', label: 'Exclusión' },
-]
+const CURSOR_BLEND_OPTS = computed(() => [
+  { value: 'normal', label: t('selects.cursorBlend.normal') },
+  { value: 'difference', label: t('selects.cursorBlend.difference') },
+  { value: 'multiply', label: t('selects.cursorBlend.multiply') },
+  { value: 'screen', label: t('selects.cursorBlend.screen') },
+  { value: 'overlay', label: t('selects.cursorBlend.overlay') },
+  { value: 'exclusion', label: t('selects.cursorBlend.exclusion') },
+])
 function onCursorEnabledChange(e: Event) {
   setCursorEnabled((e.target as HTMLInputElement).checked)
 }
@@ -390,11 +390,11 @@ function updateNestedProp(baseProp: string, key: string, value: any) {
 // of the same workspace (`site` = target slug). The mode selector exposes the
 // three states; every write goes through setAtPath('<selectedPath>.link', …) so
 // undo + dirty work (never mutate state.site directly).
-const LINK_MODE_OPTS = [
-  { value: 'none', label: 'Ninguno' },
-  { value: 'url', label: 'URL' },
-  { value: 'site', label: 'Sitio' },
-]
+const LINK_MODE_OPTS = computed(() => [
+  { value: 'none', label: t('selects.linkMode.none') },
+  { value: 'url', label: t('selects.linkMode.url') },
+  { value: 'site', label: t('selects.linkMode.site') },
+])
 
 function selectedLink(): any {
   if (!state.selectedPath) return null
@@ -493,12 +493,12 @@ const SCROLL_DIR_OPTS = SCROLL_DIRECTIONS.map((v) => ({
 // "Ninguno" DELETES the whole `background` key (undefined → JSON.stringify drops
 // it, exactly like meta.transition). The controls REFLECT an existing value
 // (type + value shown, not blank) so a section seeded by Claude is editable.
-const BG_TYPE_OPTS = [
-  { value: '', label: 'Ninguno' },
-  { value: 'color', label: 'Color' },
-  { value: 'gradient', label: 'Gradiente' },
-  { value: 'image', label: 'Imagen' },
-]
+const BG_TYPE_OPTS = computed(() => [
+  { value: '', label: t('selects.bgType.none') },
+  { value: 'color', label: t('selects.bgType.color') },
+  { value: 'gradient', label: t('selects.bgType.gradient') },
+  { value: 'image', label: t('selects.bgType.image') },
+])
 
 function sectionBg(): any {
   if (!state.selectedPath) return null
@@ -601,16 +601,10 @@ function toggleParallaxMode(mode: string, on: boolean) {
 // additive/backward-compatible we show "(heredado)" when unset and only WRITE
 // the field once the user actually picks an alignment — picking the blank
 // option clears it back to undefined (field removed, JSON byte-identical).
-const TEXT_ALIGN_LABELS: Record<string, string> = {
-  left: 'Izquierda',
-  center: 'Centro',
-  right: 'Derecha',
-  justify: 'Justificado',
-}
-const TEXT_ALIGN_OPTS = [
-  { value: '', label: '(heredado)' },
-  ...TEXT_ALIGN.map((v) => ({ value: v, label: TEXT_ALIGN_LABELS[v] || v })),
-]
+const TEXT_ALIGN_OPTS = computed(() => [
+  { value: '', label: t('selects.textAlign.inherited') },
+  ...TEXT_ALIGN.map((v) => ({ value: v, label: t(`selects.textAlign.${v}`) })),
+])
 
 function onTextAlignSelect(value: string) {
   // Empty → remove the field (undefined) so absent stays absent; otherwise
@@ -623,18 +617,10 @@ function onTextAlignSelect(value: string) {
 // (preserves consecutive spaces + newlines as the author typed). Editor
 // surfaces "(default: pre-wrap)" when unset and only writes the field once
 // the author opts in.
-const WHITE_SPACE_LABELS: Record<string, string> = {
-  normal: 'Normal (colapsa espacios)',
-  nowrap: 'Sin saltos (nowrap)',
-  pre: 'Pre (preserva todo, sin wrap)',
-  'pre-wrap': 'Pre-wrap (preserva espacios + wrap)',
-  'pre-line': 'Pre-line (preserva saltos, colapsa espacios)',
-  'break-spaces': 'Break-spaces',
-}
-const WHITE_SPACE_OPTS = [
-  { value: '', label: '(default: pre-wrap)' },
-  ...WHITE_SPACE.map((v) => ({ value: v, label: WHITE_SPACE_LABELS[v] || v })),
-]
+const WHITE_SPACE_OPTS = computed(() => [
+  { value: '', label: t('selects.whiteSpace.default') },
+  ...WHITE_SPACE.map((v) => ({ value: v, label: t(`selects.whiteSpace.${v}`) })),
+])
 
 function onWhiteSpaceSelect(value: string) {
   updateProp('whiteSpace', value === '' ? undefined : value)
@@ -742,17 +728,17 @@ const FORM_FIELD_TYPE_OPTS = [...FORM_FIELD_TYPES]
 // Friendly font choices. The site theme exposes --font-display / --font-body
 // (see ParallaxSite.vue). We store the CSS string verbatim so the form
 // inherits the site theme. "custom" lets her type her own family.
-const FORM_FONT_OPTS = [
-  { value: '', label: 'La del sitio (por defecto)' },
-  { value: 'var(--font-body)', label: 'Texto del sitio' },
-  { value: 'var(--font-display)', label: 'Títulos del sitio' },
-  { value: '__custom__', label: 'Personalizada…' },
-]
+const FORM_FONT_OPTS = computed(() => [
+  { value: '', label: t('selects.formFont.siteDefault') },
+  { value: 'var(--font-body)', label: t('selects.formFont.siteBody') },
+  { value: 'var(--font-display)', label: t('selects.formFont.siteDisplay') },
+  { value: '__custom__', label: t('selects.formFont.custom') },
+])
 
 // Is the current fontFamily one of our presets, or a custom string?
 function isCustomFont(v: string): boolean {
   if (!v) return false
-  return !FORM_FONT_OPTS.some((o) => o.value === v && o.value !== '__custom__')
+  return !FORM_FONT_OPTS.value.some((o) => o.value === v && o.value !== '__custom__')
 }
 
 // The <select> shows "__custom__" whenever the stored value isn't a preset.
@@ -1101,11 +1087,11 @@ const allElementOptions = computed<ComboOption[]>(() => {
 })
 
 // Spanish labels for the depends event keyword (writes the keyword verbatim).
-const DEPENDS_EVENT_OPTS = [
-  { value: 'hover', label: 'Hover' },
-  { value: 'click', label: 'Click' },
-  { value: 'enter', label: 'Entrar al viewport' },
-]
+const DEPENDS_EVENT_OPTS = computed(() => [
+  { value: 'hover', label: t('selects.dependsEvent.hover') },
+  { value: 'click', label: t('selects.dependsEvent.click') },
+  { value: 'enter', label: t('selects.dependsEvent.enter') },
+])
 
 // ─── Sitio (meta) image-field uploads + custom-font uploads (TASK #73) ─────────
 //

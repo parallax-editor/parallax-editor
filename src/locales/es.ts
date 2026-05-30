@@ -762,4 +762,203 @@ export default {
     missingProject: 'Falta el proyecto. Abre "Vista en vivo" desde el editor con un proyecto abierto.',
     waitingForData: 'Esperando datos del editor… (vuelve a pulsar "Vista en vivo")',
   },
+  blend: {
+    none: '(ninguno)',
+    custom: 'Personalizado…',
+  },
+  selects: {
+    transition: {
+      none: '(ninguno)',
+    },
+    sectionTransition: {
+      none: '(ninguna)',
+    },
+    objectFit: {
+      cover: 'Llenar (recorta lo que sobra)',
+      contain: 'Encajar completa (puede dejar espacio)',
+      fill: 'Estirar (deforma para llenar)',
+      none: 'Tamaño natural',
+      'scale-down': 'Reducir si es muy grande',
+    },
+    cursorBlend: {
+      normal: 'Normal',
+      difference: 'Diferencia (invierte)',
+      multiply: 'Multiplicar',
+      screen: 'Trama (screen)',
+      overlay: 'Superponer (overlay)',
+      exclusion: 'Exclusión',
+    },
+    linkMode: {
+      none: 'Ninguno',
+      url: 'URL',
+      site: 'Sitio',
+    },
+    bgType: {
+      none: 'Ninguno',
+      color: 'Color',
+      gradient: 'Gradiente',
+      image: 'Imagen',
+    },
+    textAlign: {
+      inherited: '(heredado)',
+      left: 'Izquierda',
+      center: 'Centro',
+      right: 'Derecha',
+      justify: 'Justificado',
+    },
+    whiteSpace: {
+      default: '(default: pre-wrap)',
+      normal: 'Normal (colapsa espacios)',
+      nowrap: 'Sin saltos (nowrap)',
+      pre: 'Pre (preserva todo, sin wrap)',
+      'pre-wrap': 'Pre-wrap (preserva espacios + wrap)',
+      'pre-line': 'Pre-line (preserva saltos, colapsa espacios)',
+      'break-spaces': 'Break-spaces',
+    },
+    formFont: {
+      siteDefault: 'La del sitio (por defecto)',
+      siteBody: 'Texto del sitio',
+      siteDisplay: 'Títulos del sitio',
+      custom: 'Personalizada…',
+    },
+    dependsEvent: {
+      hover: 'Hover',
+      click: 'Click',
+      enter: 'Entrar al viewport',
+    },
+  },
+  animHelp: {
+    title: 'Guía de animaciones',
+    closeAria: 'Cerrar',
+    intro: 'Una animación tiene dos partes: <strong>el tipo</strong> (qué efecto se ve) y <strong>el disparador</strong> (cuándo se reproduce). Elige uno de cada uno.',
+    editVsPreview: '<strong>Edición vs. Preview:</strong> en <strong>Edición</strong> la mesa muestra cada elemento en su <strong>tamaño y posición reales</strong> (sin movimiento) para que puedas ubicarlo bien — solo <em>aparecer/opacidad</em> se ve ya resuelto. Los movimientos (escalar, deslizar, girar…) <strong>se ven recién en Preview</strong> o publicado. Por eso una imagen con <code class="ahm-name">scale</code> «Hasta 2» se ve normal en Edición y al <strong>doble</strong> en Preview: no es un error.',
+    anchor: '<strong>El anchor (punto de anclaje):</strong> es el punto del elemento que se coloca en su <strong>posición</strong> y, además, el <strong>punto fijo</strong> alrededor del cual <strong>gira y escala</strong>. Con anchor <em>centro</em>, al escalar crece desde el centro (hacia todos lados); con <em>arriba-izquierda</em>, crece hacia abajo-derecha. El <code class="ahm-name">translate</code> NO depende del anchor (mueve toda la caja). El anchor se elige en las <strong>propiedades del elemento</strong>, no aquí.',
+    whenTag: 'cuándo usarlo',
+    sectionTypes: 'Tipos de animación',
+    sectionTypesSub: 'Qué efecto visual se aplica.',
+    sectionTriggers: 'Disparadores',
+    sectionTriggersSub: 'Qué hace que la animación se reproduzca.',
+    sectionEasing: 'Easing (curva de aceleración)',
+    sectionEasingSub: 'Define la <strong>sensación</strong> del movimiento: si arranca o frena de golpe o con suavidad. Cambia mucho cómo se percibe la animación aunque dure lo mismo.',
+    finalTip: '<strong>Si dudas:</strong> usa <code class="ahm-name">easeOut</code> para que algo aparezca y <code class="ahm-name">easeInOut</code> para movimientos continuos. Reserva Quart/Quint para efectos llamativos.',
+    groups: {
+      aparicion: 'Aparición',
+      movimiento: 'Movimiento',
+      giro: 'Giro',
+      tamanio: 'Tamaño y deformación',
+      efectos: 'Efectos',
+      basicas: 'Básicas',
+      marcadas: 'Más marcadas (frenado fuerte)',
+    },
+    types: {
+      fadeIn: {
+        desc: 'El elemento aparece pasando de invisible a visible (sube la opacidad).',
+        when: 'Para que un texto o imagen surja con elegancia al entrar en pantalla.',
+      },
+      fadeOut: {
+        desc: 'El elemento se desvanece de visible a invisible.',
+        when: 'Para que algo desaparezca poco a poco al salir o al hacer scroll.',
+      },
+      translateX: {
+        desc: 'Desliza el elemento de lado, en PÍXELES medidos DESDE su posición actual. 0 = en su sitio; positivo = a la derecha, negativo = a la izquierda.',
+        when: 'Para que algo entre deslizándose: ej. Desde −40 Hasta 0 = entra desde la izquierda hasta quedar en su sitio.',
+      },
+      translateY: {
+        desc: 'Desliza el elemento arriba/abajo, en PÍXELES medidos DESDE su posición actual. 0 = en su sitio; positivo = hacia abajo, negativo = hacia arriba.',
+        when: 'Para que un título suba al aparecer: ej. Desde 30 Hasta 0. (No es relativo al anchor: mueve toda la caja.)',
+      },
+      rotate: {
+        desc: 'Gira el elemento sobre el plano (en grados).',
+        when: 'Para un sello, una flecha o un detalle que rota al aparecer.',
+      },
+      rotateX: {
+        desc: 'Gira en 3D sobre el eje horizontal (se inclina hacia adelante/atrás).',
+        when: 'Para un efecto de tarjeta que se voltea hacia el lector.',
+      },
+      rotateY: {
+        desc: 'Gira en 3D sobre el eje vertical (se inclina a izquierda/derecha).',
+        when: 'Para que algo "abra" como una puerta o se voltee de lado.',
+      },
+      scale: {
+        desc: 'Agranda o achica el elemento. Es un MULTIPLICADOR de su tamaño (su caja): 1 = tamaño normal, 0,5 = la mitad, 2 = el doble, 0 = desaparece. Crece/encoge tomando como punto fijo el anchor.',
+        when: 'Para que una imagen crezca suavemente al entrar: ej. Desde 0,8 Hasta 1. Evita Desde 0 o Hasta 2: son saltos enormes (de invisible al doble).',
+      },
+      skew: {
+        desc: 'Inclina/sesga el elemento (en grados), como un paralelogramo.',
+        when: 'Para un toque dinámico o de movimiento en textos y formas.',
+      },
+      blur: {
+        desc: 'Pasa de borroso a nítido (o al revés). "Desde/Hasta" en píxeles.',
+        when: 'Para que una imagen entre enfocándose, como una cámara que ajusta el foco.',
+      },
+      clipPath: {
+        desc: 'Revela el elemento descubriéndolo progresivamente (de 0 a 100).',
+        when: 'Para que un texto o imagen se "destape" como una cortina al aparecer.',
+      },
+    },
+    triggers: {
+      enter: {
+        desc: 'Va por TIEMPO: cuando el elemento entra en pantalla reproduce la animación completa de "Desde" a "Hasta" UNA vez (durante "Duración"). SIEMPRE arranca en el valor "Desde".',
+        when: 'Lo más común y predecible. Si quieres que algo "nazca" desde un valor (ej. scale 0,8→1, o translateY 30→0), usa enter.',
+      },
+      scroll: {
+        desc: 'Va por POSICIÓN DE SCROLL, no por tiempo: el valor va de "Desde" a "Hasta" según cuánto avanzaste por la sección (0% cuando entra, 100% cuando sale). ⚠️ Si la sección ya está en pantalla al cargar (p. ej. la PRIMERA, muy alta), el scroll arranca a MITAD → puede que NUNCA veas el valor "Desde" (por eso un scale 0→2 se ve grande de entrada y no "nace" desde 0).',
+        when: 'Para efectos atados al scroll (algo que se mueve mientras bajas). Si necesitas que siempre arranque en "Desde", usa enter.',
+      },
+      loop: {
+        desc: 'Se repite en bucle sin parar. Puedes activar "Yoyo" para que vaya y vuelva.',
+        when: 'Para una pulsación, un flotar suave o un brillo que late de forma continua.',
+      },
+      mouse: {
+        desc: 'Reacciona al movimiento del mouse.',
+        when: 'Para un detalle interactivo en pantallas grandes (un elemento que sigue o reacciona al cursor).',
+      },
+      gyroscope: {
+        desc: 'En el celular, reacciona al inclinar el teléfono (sensores de movimiento).',
+        when: 'Para que la experiencia en móvil se sienta viva al mover el dispositivo.',
+      },
+      hover: {
+        desc: 'Se reproduce al pasar el mouse por encima del elemento.',
+        when: 'Para resaltar un botón, una imagen o una tarjeta cuando la persona la apunta.',
+      },
+      click: {
+        desc: 'Se reproduce al hacer click sobre el elemento.',
+        when: 'Para dar respuesta visual a un toque o click (un botón que reacciona).',
+      },
+      depends: {
+        desc: 'Se dispara por una interacción sobre OTRO elemento (eliges cuál y qué evento: hover, click o enter).',
+        when: 'Para encadenar: por ejemplo, una imagen se anima cuando pasas el mouse sobre un título.',
+      },
+    },
+    easing: {
+      linear: {
+        desc: 'Velocidad constante, sin acelerar ni frenar. Se siente mecánico.',
+        when: 'Para bucles continuos (un giro o flotar que no debe "respirar").',
+      },
+      easeIn: {
+        desc: 'Arranca lento y acelera. Como si tomara impulso.',
+        when: 'Para salidas: algo que se va ganando velocidad al desaparecer.',
+      },
+      easeOut: {
+        desc: 'Arranca rápido y frena suave. La más natural.',
+        when: 'Para entradas de elementos (lo que aparece en pantalla).',
+      },
+      easeInOut: {
+        desc: 'Suave al inicio y al final. La más equilibrada.',
+        when: 'Lo más seguro para casi todo, sobre todo movimientos continuos.',
+      },
+      easeOutCubic: {
+        desc: 'Variantes de easeOut cada vez más pronunciadas: frenan más fuerte al final (Quint es la más dramática).',
+        when: 'Para entradas con más carácter; Quart/Quint para efectos llamativos.',
+      },
+      easeInCubic: {
+        desc: 'Igual pero acelerando al arrancar, cada vez más marcado.',
+        when: 'Para salidas con énfasis.',
+      },
+      easeInOutCubic: {
+        desc: 'Suaves a ambos lados pero más pronunciadas que easeInOut.',
+        when: 'Para movimientos elegantes con un punto extra de dramatismo.',
+      },
+    },
+  },
 } as const

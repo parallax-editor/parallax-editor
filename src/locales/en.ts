@@ -762,4 +762,203 @@ export default {
     missingProject: 'Project missing. Open "Live preview" from the editor with a project open.',
     waitingForData: 'Waiting for data from the editor… (press "Live preview" again)',
   },
+  blend: {
+    none: '(none)',
+    custom: 'Custom…',
+  },
+  selects: {
+    transition: {
+      none: '(none)',
+    },
+    sectionTransition: {
+      none: '(none)',
+    },
+    objectFit: {
+      cover: 'Fill (crops overflow)',
+      contain: 'Fit complete (may leave space)',
+      fill: 'Stretch (distorts to fill)',
+      none: 'Natural size',
+      'scale-down': 'Shrink if too large',
+    },
+    cursorBlend: {
+      normal: 'Normal',
+      difference: 'Difference (inverts)',
+      multiply: 'Multiply',
+      screen: 'Screen',
+      overlay: 'Overlay',
+      exclusion: 'Exclusion',
+    },
+    linkMode: {
+      none: 'None',
+      url: 'URL',
+      site: 'Site',
+    },
+    bgType: {
+      none: 'None',
+      color: 'Color',
+      gradient: 'Gradient',
+      image: 'Image',
+    },
+    textAlign: {
+      inherited: '(inherited)',
+      left: 'Left',
+      center: 'Center',
+      right: 'Right',
+      justify: 'Justified',
+    },
+    whiteSpace: {
+      default: '(default: pre-wrap)',
+      normal: 'Normal (collapses spaces)',
+      nowrap: 'No wrap (nowrap)',
+      pre: 'Pre (preserves all, no wrap)',
+      'pre-wrap': 'Pre-wrap (preserves spaces + wrap)',
+      'pre-line': 'Pre-line (preserves breaks, collapses spaces)',
+      'break-spaces': 'Break-spaces',
+    },
+    formFont: {
+      siteDefault: "Site's default",
+      siteBody: 'Site body text',
+      siteDisplay: 'Site display text',
+      custom: 'Custom…',
+    },
+    dependsEvent: {
+      hover: 'Hover',
+      click: 'Click',
+      enter: 'Enter the viewport',
+    },
+  },
+  animHelp: {
+    title: 'Animations guide',
+    closeAria: 'Close',
+    intro: 'An animation has two parts: <strong>the type</strong> (what effect is seen) and <strong>the trigger</strong> (when it plays). Choose one of each.',
+    editVsPreview: '<strong>Edit vs. Preview:</strong> in <strong>Edit</strong> the canvas shows every element at its <strong>real size and position</strong> (without motion) so you can place it well — only <em>fade/opacity</em> is shown resolved. Movements (scale, slide, rotate…) <strong>only appear in Preview</strong> or once published. That is why an image with <code class="ahm-name">scale</code> "To 2" looks normal in Edit and <strong>doubled</strong> in Preview: it is not a bug.',
+    anchor: '<strong>The anchor (anchor point):</strong> is the point of the element placed at its <strong>position</strong> and, additionally, the <strong>fixed point</strong> around which it <strong>rotates and scales</strong>. With anchor <em>center</em>, scaling grows from the center (in every direction); with <em>top-left</em>, it grows toward the bottom-right. <code class="ahm-name">translate</code> does NOT depend on the anchor (it moves the whole box). The anchor is chosen in the <strong>element properties</strong>, not here.',
+    whenTag: 'when to use it',
+    sectionTypes: 'Animation types',
+    sectionTypesSub: 'What visual effect is applied.',
+    sectionTriggers: 'Triggers',
+    sectionTriggersSub: 'What makes the animation play.',
+    sectionEasing: 'Easing (acceleration curve)',
+    sectionEasingSub: 'Defines the <strong>feel</strong> of the motion: whether it starts or stops abruptly or smoothly. It changes a lot how the animation is perceived even at the same duration.',
+    finalTip: '<strong>If unsure:</strong> use <code class="ahm-name">easeOut</code> for things appearing and <code class="ahm-name">easeInOut</code> for continuous motion. Reserve Quart/Quint for striking effects.',
+    groups: {
+      aparicion: 'Appearance',
+      movimiento: 'Movement',
+      giro: 'Rotation',
+      tamanio: 'Size and deformation',
+      efectos: 'Effects',
+      basicas: 'Basic',
+      marcadas: 'More marked (strong braking)',
+    },
+    types: {
+      fadeIn: {
+        desc: 'The element appears going from invisible to visible (opacity rises).',
+        when: 'For text or image to appear elegantly when entering the screen.',
+      },
+      fadeOut: {
+        desc: 'The element fades from visible to invisible.',
+        when: 'For something to slowly disappear when leaving or scrolling.',
+      },
+      translateX: {
+        desc: 'Slides the element sideways, in PIXELS measured FROM its current position. 0 = in place; positive = right, negative = left.',
+        when: 'For something to slide in: e.g. From −40 To 0 = slides in from the left into place.',
+      },
+      translateY: {
+        desc: 'Slides the element up/down, in PIXELS measured FROM its current position. 0 = in place; positive = down, negative = up.',
+        when: 'For a title to rise as it appears: e.g. From 30 To 0. (Not relative to the anchor: moves the whole box.)',
+      },
+      rotate: {
+        desc: 'Rotates the element on the plane (in degrees).',
+        when: 'For a stamp, an arrow or a detail that rotates as it appears.',
+      },
+      rotateX: {
+        desc: 'Rotates in 3D around the horizontal axis (tilts forward/backward).',
+        when: 'For a card-flip effect toward the reader.',
+      },
+      rotateY: {
+        desc: 'Rotates in 3D around the vertical axis (tilts left/right).',
+        when: 'For something to "open" like a door or flip sideways.',
+      },
+      scale: {
+        desc: 'Enlarges or shrinks the element. It is a MULTIPLIER of its size (its box): 1 = normal size, 0.5 = half, 2 = double, 0 = disappears. Grows/shrinks around the anchor as the fixed point.',
+        when: 'For an image to grow smoothly as it enters: e.g. From 0.8 To 1. Avoid From 0 or To 2: those are huge jumps (from invisible to double).',
+      },
+      skew: {
+        desc: 'Skews the element (in degrees), like a parallelogram.',
+        when: 'For a dynamic touch or sense of motion in text and shapes.',
+      },
+      blur: {
+        desc: 'Goes from blurry to sharp (or vice versa). "From/To" in pixels.',
+        when: 'For an image to enter focusing, like a camera adjusting focus.',
+      },
+      clipPath: {
+        desc: 'Reveals the element by progressively uncovering it (from 0 to 100).',
+        when: 'For text or an image to be "uncovered" like a curtain on appear.',
+      },
+    },
+    triggers: {
+      enter: {
+        desc: 'Goes by TIME: when the element enters the screen it plays the full animation from "From" to "To" ONCE (over "Duration"). It ALWAYS starts at the "From" value.',
+        when: 'The most common and predictable. If you want something to "be born" from a value (e.g. scale 0.8→1, or translateY 30→0), use enter.',
+      },
+      scroll: {
+        desc: 'Goes by SCROLL POSITION, not by time: the value goes from "From" to "To" as you advance through the section (0% when entering, 100% when leaving). ⚠️ If the section is already on screen on load (e.g. the FIRST one, very tall), scroll starts at HALFWAY → you may NEVER see the "From" value (that is why a scale 0→2 looks large from the start and does not "grow" from 0).',
+        when: 'For effects tied to scroll (something that moves as you scroll). If you need it to always start at "From", use enter.',
+      },
+      loop: {
+        desc: 'Repeats forever in a loop. You can enable "Yoyo" so it goes back and forth.',
+        when: 'For a pulse, a soft float or a continuously beating glow.',
+      },
+      mouse: {
+        desc: 'Reacts to mouse movement.',
+        when: 'For an interactive detail on large screens (an element that follows or reacts to the cursor).',
+      },
+      gyroscope: {
+        desc: 'On mobile, reacts to tilting the phone (motion sensors).',
+        when: 'For the mobile experience to feel alive when moving the device.',
+      },
+      hover: {
+        desc: 'Plays when the mouse hovers over the element.',
+        when: 'To highlight a button, image or card when pointed at.',
+      },
+      click: {
+        desc: 'Plays when the element is clicked.',
+        when: 'To give visual response to a tap or click (a reacting button).',
+      },
+      depends: {
+        desc: 'Triggered by interaction on ANOTHER element (you choose which and what event: hover, click or enter).',
+        when: 'To chain effects: e.g., an image animates when you hover over a title.',
+      },
+    },
+    easing: {
+      linear: {
+        desc: 'Constant speed, no acceleration or braking. Feels mechanical.',
+        when: 'For continuous loops (a spin or float that should not "breathe").',
+      },
+      easeIn: {
+        desc: 'Starts slow and accelerates. As if gathering momentum.',
+        when: 'For exits: something that gains speed as it disappears.',
+      },
+      easeOut: {
+        desc: 'Starts fast and brakes softly. The most natural one.',
+        when: 'For element entries (things that appear on screen).',
+      },
+      easeInOut: {
+        desc: 'Smooth at start and end. The most balanced one.',
+        when: 'The safest for almost everything, especially continuous motion.',
+      },
+      easeOutCubic: {
+        desc: 'easeOut variants increasingly pronounced: brake harder at the end (Quint is the most dramatic).',
+        when: 'For entries with more character; Quart/Quint for striking effects.',
+      },
+      easeInCubic: {
+        desc: 'Same but accelerating at the start, increasingly marked.',
+        when: 'For exits with emphasis.',
+      },
+      easeInOutCubic: {
+        desc: 'Smooth on both sides but more pronounced than easeInOut.',
+        when: 'For elegant motion with an extra touch of drama.',
+      },
+    },
+  },
 }

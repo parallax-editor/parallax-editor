@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import HelpHint from './HelpHint.vue'
+
+const { t } = useI18n()
 
 /**
  * Friendly CSS mix-blend-mode select. Emits the raw CSS keyword (verbatim,
@@ -99,9 +102,9 @@ function onCustomInput(e: Event) {
         :data-test="`blendselect-${testId}-select`"
         @change="onSelect"
       >
-        <option v-if="allowEmpty" value="">(ninguno)</option>
+        <option v-if="allowEmpty" value="">{{ t('blend.none') }}</option>
         <option v-for="b in BLENDS" :key="b.value" :value="b.value">{{ b.label }}</option>
-        <option :value="CUSTOM">Personalizado…</option>
+        <option :value="CUSTOM">{{ t('blend.custom') }}</option>
       </select>
       <input
         v-if="selectValue === CUSTOM"
