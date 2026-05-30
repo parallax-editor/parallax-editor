@@ -124,29 +124,57 @@ function startInlineTextEdit(e: MouseEvent) {
   dom.addEventListener('blur', inlineEditOnBlur)
   dom.addEventListener('keydown', inlineEditOnKeydown)
   // Focus + place caret AT THE DOUBLE-CLICK POINT (Illustrator-style) so
-  // editing starts where the user pointed, not at the end. Falls back to
-  // end-of-text if the browser doesn't expose a caret-from-point API or it
-  // returns nothing usable (e.g. dblclick on padding outside any text node).
+  // editing starts where the user pointed, not at the end. Crucial detail:
+  // the SelectionOverlay's `.move-area` div sits ON TOP of the text element
+  // (inset:0, pointer-events:auto) and INTERCEPTS the dblclick — so
+  // caretPositionFromPoint(e.clientX, e.clientY) returns the overlay, NOT a
+  // position inside the text. To recover the true under-cursor caret we
+  // temporarily punch `pointer-events: none` on every overlay div whose
+  // box covers the click point, then call the API, then restore. Same for
+  // the cross-browser caretRangeFromPoint (webkit) fallback.
   dom.focus()
   try {
     const sel = window.getSelection()
     if (!sel) throw new Error('no selection api')
-    let range: Range | null = null
-    // Spec name (Firefox + Safari) and webkit name (Chrome/Electron) differ.
-    const cpfp: any = (document as any).caretPositionFromPoint
-    const crfp: any = (document as any).caretRangeFromPoint
-    if (typeof cpfp === 'function') {
-      const pos = cpfp.call(document, e.clientX, e.clientY)
-      if (pos && pos.offsetNode) {
-        range = document.createRange()
-        range.setStart(pos.offsetNode, pos.offset)
-        range.collapse(true)
+
+    // Disable pointer-events on every overlay element under the click so
+    // elementsFromPoint() sees through to the actual text element. We restore
+    // them after the lookup (whether it succeeded or not).
+    const blockers: Array<{ el: HTMLElement; prev: string }> = []
+    const stack = document.elementsFromPoint(e.clientX, e.clientY) as HTMLElement[]
+    for (const el of stack) {
+      if (el === dom) break // reached the text element — stop punching through
+      if (!dom.contains(el) && el !== dom) {
+        blockers.push({ el, prev: el.style.pointerEvents })
+        el.style.pointerEvents = 'none'
       }
-    } else if (typeof crfp === 'function') {
-      range = crfp.call(document, e.clientX, e.clientY)
-      if (range) range.collapse(true)
     }
-    // Fallback: caret at end of text content.
+
+    let range: Range | null = null
+    try {
+      const cpfp: any = (document as any).caretPositionFromPoint
+      const crfp: any = (document as any).caretRangeFromPoint
+      if (typeof cpfp === 'function') {
+        const pos = cpfp.call(document, e.clientX, e.clientY)
+        if (pos && pos.offsetNode && dom.contains(pos.offsetNode)) {
+          range = document.createRange()
+          range.setStart(pos.offsetNode, pos.offset)
+          range.collapse(true)
+        }
+      } else if (typeof crfp === 'function') {
+        const r = crfp.call(document, e.clientX, e.clientY)
+        if (r && dom.contains(r.startContainer)) {
+          range = r
+          range.collapse(true)
+        }
+      }
+    } finally {
+      for (const b of blockers) b.el.style.pointerEvents = b.prev
+    }
+
+    // Fallback: caret at end of text content (dblclick on padding / outside
+    // any text node, or API unavailable). Better than collapsing to start
+    // which would land BEFORE all the existing copy.
     if (!range || !dom.contains(range.startContainer)) {
       range = document.createRange()
       range.selectNodeContents(dom)
