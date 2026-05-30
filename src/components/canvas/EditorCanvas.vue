@@ -725,12 +725,21 @@ function onCanvasDrop(e: DragEvent) {
   background-position: 0 0, 0 10px, 10px -10px, -10px 0;
   opacity: 0.3;
 }
-.pan-wrapper { position: relative; }
+.pan-wrapper {
+  position: relative;
+  /* Stable GPU layer: avoid the Chrome compositor dropping the cached text
+     raster when pan + zoom land on certain fractional combos (texts vanish
+     until you re-zoom or hit "Reiniciar mesa"). */
+  will-change: transform;
+}
 .preview-frame {
   background: white;
   box-shadow: 0 4px 40px rgba(0,0,0,0.4);
   overflow: hidden;
   position: relative;
+  /* Same reason as .pan-wrapper above — preview-frame is the scaled box; if
+     its layer is reclaimed, text inside the engine preview disappears. */
+  will-change: transform;
 }
 /* The actual scroller: same box as the artboard, scrolls the tall engine
    content so every section (100vh/150vh/…) is reachable. overflow:auto on
