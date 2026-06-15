@@ -184,7 +184,14 @@ watch(showCreate, (v) => {
 })
 function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape') {
-    if (showCreate.value) { e.stopPropagation(); showCreate.value = false; newName.value = '' }
+    // Orden: cerramos los modales de AYUDA primero (preset-explain, s3-policy,
+    // git-pat) porque viven encima de los otros. Después los modales
+    // principales. Esto evita que Escape cierre el config modal mientras el
+    // usuario está mirando uno de los help modales por encima.
+    if (showPresetExplain.value) { e.stopPropagation(); showPresetExplain.value = false }
+    else if (showS3PolicyHelp.value) { e.stopPropagation(); showS3PolicyHelp.value = false }
+    else if (showGitPatHelp.value) { e.stopPropagation(); showGitPatHelp.value = false }
+    else if (showCreate.value) { e.stopPropagation(); showCreate.value = false; newName.value = '' }
     else if (wsConfigId.value) { e.stopPropagation(); wsConfigId.value = null }
     else if (showNewWs.value) { e.stopPropagation(); showNewWs.value = false }
   }
@@ -1654,23 +1661,29 @@ async function createWorkspace() {
 
 /* ── Preset picker ─────────────────────────────────────────────────────────── */
 .preset-section { margin-bottom: 18px; }
-.preset-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.preset-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 16px; }
 .preset-header h4 { margin: 0; font-size: 13px; font-weight: 700; color: #c4c4c4; text-transform: uppercase; letter-spacing: 0.06em; }
 .preset-help-btn {
   background: none; border: none; color: var(--accent); font-size: 12px;
   cursor: pointer; padding: 4px 6px; text-decoration: underline; text-underline-offset: 2px;
+  flex-shrink: 0;
 }
 .preset-help-btn:hover { color: var(--accent-hover); }
 .preset-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .preset-card {
   display: flex; flex-direction: column; gap: 4px;
-  padding: 12px 14px; border: 1px solid #3a3a3a; border-radius: 10px;
-  background: #1f1f1f; cursor: pointer; transition: border-color .15s, background .15s;
+  padding: 12px 14px; border: 1.5px solid #3a3a3a; border-radius: 10px;
+  background: #1f1f1f; cursor: pointer; transition: border-color .15s, background .15s, box-shadow .15s;
   position: relative;
 }
 .preset-card input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
-.preset-card:hover { border-color: #4a4a4a; background: #232323; }
-.preset-card.selected { border-color: var(--accent); background: #2a2418; }
+.preset-card:hover { border-color: #5a5a5a; background: #232323; }
+.preset-card.selected {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, #2e2a1b 0%, #25210f 100%);
+  box-shadow: 0 0 0 3px rgba(255, 213, 109, 0.12), inset 0 0 0 1px rgba(255, 213, 109, 0.25);
+}
+.preset-card.selected .preset-card-title { color: #ffe2a3; }
 .preset-card-title { font-size: 13px; font-weight: 600; color: #e6e6e6; }
 .preset-card-desc { font-size: 11px; color: #999; line-height: 1.45; }
 .preset-explain-p { font-size: 13px; color: #d6d6d6; line-height: 1.55; margin: 0 0 12px; }
@@ -1707,9 +1720,11 @@ async function createWorkspace() {
 .s3-creds-section { margin-top: 16px; padding-top: 12px; border-top: 1px solid #2f2f2f; }
 .s3-creds-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .s3-creds-header h5 { margin: 0; font-size: 12px; font-weight: 700; color: #c4c4c4; text-transform: uppercase; letter-spacing: 0.06em; }
-.radio-row { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: flex-start; padding: 8px 4px; border-radius: 6px; cursor: pointer; }
-.radio-row:hover { background: #1f1f1f; }
-.radio-row input[type="radio"] { margin-top: 2px; }
+.radio-row { display: grid; grid-template-columns: 18px 1fr; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; transition: background .15s, border-color .15s; }
+.radio-row:hover { background: #1f1f1f; border-color: #333; }
+.radio-row input[type="radio"] { margin-top: 2px; accent-color: var(--accent); }
+.radio-row:has(input[type="radio"]:checked) { background: #1f1d12; border-color: rgba(255, 213, 109, 0.4); }
+.radio-row:has(input[type="radio"]:checked) .radio-label strong { color: #ffe2a3; }
 .radio-label { display: flex; flex-direction: column; gap: 2px; }
 .radio-label strong { font-size: 13px; color: #e6e6e6; font-weight: 600; }
 .radio-desc { font-size: 11px; color: #999; line-height: 1.45; }
