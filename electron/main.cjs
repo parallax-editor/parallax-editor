@@ -22,6 +22,7 @@ const { app, BrowserWindow, Menu, dialog, shell, ipcMain, nativeImage, powerMoni
 const path = require('path')
 const fs = require('fs')
 const { fixPath } = require('./path-fix.cjs')
+const secrets = require('./secrets.cjs')
 
 // CRÍTICO: corregir el PATH ANTES de cualquier spawn (el server in-process
 // lanza `claude`/`git`). Idempotente; no-op nocivo en dev.
@@ -529,6 +530,17 @@ function registerIpc() {
   ipcMain.on('editor:dirty', (_e, dirty) => {
     editorDirty = !!dirty
   })
+
+  // ── SecretsBus (Fase 2) ────────────────────────────────────────────────────
+  // El renderer NUNCA toca safeStorage directamente — siempre via IPC. Esto
+  // mantiene la frontera: el proceso de render no tiene acceso a `app` ni al
+  // FS, y nadie puede leer/escribir el archivo de secretos saltándose el
+  // validador de keys de electron/secrets.cjs.
+  ipcMain.handle('secrets:set', (_e, key, value) => secrets.setSecret(key, value))
+  ipcMain.handle('secrets:get', (_e, key) => secrets.getSecret(key))
+  ipcMain.handle('secrets:delete', (_e, key) => secrets.deleteSecret(key))
+  ipcMain.handle('secrets:list', () => ({ ok: true, keys: secrets.listKeys() }))
+  ipcMain.handle('secrets:backend', () => ({ ok: true, backend: secrets.backend() }))
 }
 
 // Ícono del Dock en macOS. El ícono de electron-builder SOLO aplica a la app

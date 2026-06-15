@@ -12,7 +12,7 @@
 // problema clásico de PATH al abrir desde Finder (ver electron/path-fix.cjs).
 
 import { execSync } from 'child_process'
-import { existsSync } from 'fs'
+import { existsSync, readdirSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { gitConfigStatus } from './git'
@@ -56,8 +56,58 @@ export function awsStatus(): AwsStatus {
   }
 }
 
+/**
+ * Estado de la "auth-cadena" del sistema para `git push` HTTPS — heurística
+ * sin red. Detecta si hay alguna fuente de credenciales que `git` típicamente
+ * usa para no pedir password al push:
+ *   - Credential helper configurado (`git config --global credential.helper`).
+ *   - Llave SSH en `~/.ssh/id_*` (para remotos SSH).
+ *
+ * Si NINGUNA está presente, el push a un remoto HTTPS pedirá password y se
+ * colgará / fallará. El Doctor screen lo usa para sugerir configurar un PAT
+ * por workspace (Fase 4) sin asustar al usuario cuando sí tiene SSH/Keychain.
+ */
+export interface GitAuthAvailability {
+  /** Hay algún medio de auth detectado (helper o SSH key). */
+  available: boolean
+  /** Helper configurado, p.ej. 'osxkeychain', 'manager', 'cache'. null si no. */
+  credentialHelper: string | null
+  /** ¿Hay al menos una llave en ~/.ssh/id_*? */
+  hasSshKey: boolean
+}
+export function gitAuthAvailability(): GitAuthAvailability {
+  let credentialHelper: string | null = null
+  try {
+    const out = execSync('git config --global --get credential.helper', {
+      timeout: 3000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString().trim()
+    credentialHelper = out || null
+  } catch {
+    credentialHelper = null
+  }
+  let hasSshKey = false
+  try {
+    const sshDir = join(homedir(), '.ssh')
+    if (existsSync(sshDir)) {
+      // id_rsa / id_ed25519 / id_ecdsa… cualquiera. Ignoramos los .pub.
+      const entries = readdirSync(sshDir)
+      hasSshKey = entries.some((f) => /^id_[a-z0-9]+$/i.test(f))
+    }
+  } catch {
+    hasSshKey = false
+  }
+  return {
+    available: !!credentialHelper || hasSshKey,
+    credentialHelper,
+    hasSshKey,
+  }
+}
+
 export interface Diagnostics {
   git: ReturnType<typeof gitConfigStatus>
+  /** Auth-cadena heurística del sistema para git push (Fase 4). */
+  gitAuth: GitAuthAvailability
   claude: { available: boolean }
   aws: AwsStatus
   // Solo las CLIs que importan en la máquina del usuario. NO va `node` (Electron
@@ -69,6 +119,7 @@ export interface Diagnostics {
 export function getDiagnostics(): Diagnostics {
   return {
     git: gitConfigStatus(),
+    gitAuth: gitAuthAvailability(),
     claude: { available: isClaudeAvailable() },
     aws: awsStatus(),
     bins: {

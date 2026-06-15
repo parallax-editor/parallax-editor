@@ -140,6 +140,72 @@ flat `<workspace>/content/<slug>/site.json` layout. The editor reads/writes
 those `site.json` files, runs git in the folder (if `useGit:true`), and
 launches `claude -p` with the workspace folder as cwd.
 
+### Workspace preset
+
+`Workspace.preset` (`'linked-home' | 'multi-tenant'`, default `multi-tenant`
+for back-compat) mirrors the engine's Nuxt module presets and drives editor
+UX decisions:
+
+- `linked-home`: the `home` slug is pinned at the top of the project list with
+  a badge ("Inicio"); copy says "+ Nuevo sitio"; `s3.publishManifest` defaults
+  to `true`. Use for public portfolios with a single home + linked sub-sites.
+- `multi-tenant`: flat project list; copy says "+ Nuevo evento";
+  `s3.publishManifest` defaults to `false`; a warning blocks Publish if
+  `meta.ogImage` is missing (so WhatsApp previews don't come through blank).
+
+The `publishManifestUserSet` flag distinguishes "default applied" from
+"user explicitly chose this value" so toggling preset later doesn't silently
+overwrite the user's choice. Server normalization in
+`activateWorkspace` keeps client + host in sync.
+
+### Per-workspace credentials (S3 + Git)
+
+By default S3 publish and `git push` use the host's default chains
+(`~/.aws`, SSH key / `osxkeychain`). When the workspace points at its own
+AWS user or GitHub repo, the gear modal lets you store credentials
+specifically for that workspace:
+
+- **S3** — `WorkspaceS3.credentialsMode: 'system' | 'explicit'`. In
+  `explicit`, an Access Key ID + Secret Access Key live in the
+  SecretsBus (see below). `server/s3.ts` constructs `new S3Client({ region,
+  credentials })` only when the caller supplied them; absent credentials
+  fall back to the SDK default chain. `publishWorkspaceSlug` /
+  `deleteWorkspaceSlug` gate strictly: a buggy client posting
+  credentials while the workspace is in `system` is a no-op, not a
+  silent override.
+- **Git** — `WorkspaceGit.authMode: 'system' | 'pat'` plus
+  `provider: 'github' | 'gitlab' | 'bitbucket'`. In `pat`, `gitPush(cwd,
+  { username, token })` writes a temp `GIT_ASKPASS` script (mode 0700,
+  random name in `tmpdir()`), exports `GIT_TERMINAL_PROMPT=0` +
+  `GIT_CONFIG_COUNT=1/credential.helper=""` to block the system
+  credential helper, runs `git push`, and unlinks the script in
+  `finally`. The HTTPS gate validates the **effective** push remote
+  (the branch's upstream when set, else `origin`), not blindly
+  `origin` — this prevents a PAT from being injected into an
+  un-validated host. Error messages pass through `scrubSecret` to
+  redact the token verbatim AND any public PAT prefix
+  (`ghp_…`/`glpat-`/`ATBB…`).
+- **Validation** — `s3Api.headBucket` / `gitApi.validatePat` smoke-test
+  credentials before save. The modals also fire post-save validations
+  but don't block saving when they fail (the user might be editing
+  offline).
+- **Secrets never live in the workspace JSON**, in the host's
+  in-memory cache, or in any log. Tests
+  (`workspaces-preset.test.mjs`, `s3-credentials-flow.test.mjs`,
+  `git-pat-flow.test.mjs`) assert the schema parser strips any
+  credentials a buggy/malicious client tries to push through.
+
+### SecretsBus (`electron/secrets.cjs` + `src/composables/useSecrets.ts`)
+
+Tiny IPC layer over `safeStorage`. Convention: `s3:<workspaceId>` /
+`git:<workspaceId>` keys; values are JSON serialized. In **Electron** the
+main process writes encrypted blobs to `<userData>/secrets.json`
+(atomic via `.tmp` + rename, mode 0600); in **web mode** (`yarn editor`
+without Electron) the wrapper falls back to AES-GCM-encrypted
+`sessionStorage` with an in-memory key — secrets are ephemeral by
+session and never persist to disk. Doctor screen pins which backend is
+active (`safeStorage`, `session`, or `null`).
+
 ## Out of scope
 
 - Auth, multi-user, deploying from the editor

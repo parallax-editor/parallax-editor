@@ -56,4 +56,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('app:locale-changed', handler)
     return () => ipcRenderer.removeListener('app:locale-changed', handler)
   },
+
+})
+
+// ── SecretsBus (Fase 2) ────────────────────────────────────────────────────
+// Bridge tipado y mínimo al keychain del SO (via safeStorage). El renderer NO
+// tiene acceso al filesystem ni al módulo safeStorage; solo a estas 5 ops.
+// Expuesto bajo `window.parallax.secrets` como contrato único (el wrapper del
+// renderer `useSecrets` lo busca por ahí). Una sola fachada = una sola
+// superficie de ataque IPC para auditar.
+contextBridge.exposeInMainWorld('parallax', {
+  secrets: {
+    set: (key, value) => ipcRenderer.invoke('secrets:set', key, value),
+    get: (key) => ipcRenderer.invoke('secrets:get', key),
+    delete: (key) => ipcRenderer.invoke('secrets:delete', key),
+    list: () => ipcRenderer.invoke('secrets:list'),
+    backend: () => ipcRenderer.invoke('secrets:backend'),
+  },
 })

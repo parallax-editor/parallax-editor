@@ -6,6 +6,8 @@ import { activeWorkspace } from '../../stores/workspaces'
 import { validateSite } from '@parallax-editor/parallax-engine/schema'
 import { useDialog } from '../../composables/useDialog'
 import { usePanelScroll } from '../../composables/usePanelScroll'
+import { resolveS3Credentials } from '../../composables/useS3CredentialsResolver'
+import { resolveGitCredentials } from '../../composables/useGitCredentialsResolver'
 import { useI18n } from 'vue-i18n'
 
 const dialog = useDialog()
@@ -125,6 +127,24 @@ async function publish() {
     validationErrors.value = ['No hay un proyecto abierto para publicar.']
     return
   }
+  // ── Preset multi-tenant: og:image requerido para WhatsApp ─────────────────
+  // Los workspaces multi-tenant se comparten exclusivamente por mensaje (WhatsApp
+  // / iMessage). Sin og:image el preview sale vacío y la invitación parece rota.
+  // Avisamos antes del push para que el usuario pueda agregarla, pero no
+  // bloqueamos (puede querer publicar igual para iterar). El preset puede venir
+  // undefined en workspaces existentes en localStorage → cae a multi-tenant.
+  const preset = activeWorkspace.value?.preset || 'multi-tenant'
+  if (preset === 'multi-tenant') {
+    const og = state.site?.meta?.ogImage
+    if (!og || !String(og).trim()) {
+      const okOg = await dialog.confirm({
+        title: t('workspace.publishOgImageMissingTitle'),
+        message: t('workspace.publishOgImageMissingBody'),
+        confirmText: t('workspace.publishOgImageMissingConfirm'),
+      })
+      if (!okOg) return
+    }
+  }
   const ok = await dialog.confirm({
     title: 'Publicar cambios',
     message: 'Publicar cambios? Esto hará git push y, si está configurado, subirá el sitio a S3.',
@@ -134,7 +154,27 @@ async function publish() {
   loading.value = true
   pushResult.value = 'Publicando… (push + sincronización con S3)'
   try {
-    const r = await publishApi.run(state.projectType, state.slug)
+    // Hidrata las creds explícitas desde el Keychain SOLO si el workspace lo
+    // pidió. En modo 'system' devuelve undefined y el server usa la cadena por
+    // defecto. Si el workspace está en 'explicit' pero el secreto no se puede
+    // recuperar (p.ej. el usuario nunca lo guardó), devolvemos `null` y el
+    // publish dejaría que la SDK intente; mejor avisar.
+    const creds = await resolveS3Credentials(state.projectType, activeWorkspace.value?.s3)
+    if (activeWorkspace.value?.s3?.credentialsMode === 'explicit' && !creds) {
+      pushResult.value = `Error: ${t('workspace.publishMissingStoredCreds')}`
+      loading.value = false
+      return
+    }
+    // Mismo gate para PAT: si el workspace está en authMode='pat' pero no hay
+    // PAT guardado, mejor avisar antes que dejar que git pida password en una
+    // terminal que el usuario no ve.
+    const gitAuth = await resolveGitCredentials(state.projectType, activeWorkspace.value?.git)
+    if (activeWorkspace.value?.git?.authMode === 'pat' && !gitAuth) {
+      pushResult.value = `Error: ${t('workspace.publishMissingStoredGitPat')}`
+      loading.value = false
+      return
+    }
+    const r = await publishApi.run(state.projectType, state.slug, creds, gitAuth)
     if (!r.ok) {
       pushResult.value = `Error: ${r.error || 'no se pudo publicar'}`
     } else {

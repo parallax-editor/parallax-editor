@@ -17,11 +17,12 @@ import {
   S3Client,
   ListBucketsCommand,
   CreateBucketCommand,
+  HeadBucketCommand,
   PutObjectCommand,
   ListObjectsV2Command,
   DeleteObjectsCommand,
 } from '@aws-sdk/client-s3'
-import type { Workspace } from './workspaces'
+import type { Workspace, S3Credentials } from './workspaces'
 import { buildCatalogItems, serializeCatalog } from './catalog'
 
 // Content-type by extension (mirrors the editor's MIME table + a few extras).
@@ -40,9 +41,25 @@ function contentType(file: string): string {
   return MIME[extname(file).toLowerCase()] || 'application/octet-stream'
 }
 
-function client(region: string): S3Client {
-  // Default credential chain (host ~/.aws / env / SSO). No secrets in the editor.
-  return new S3Client({ region: region || 'us-east-1' })
+/**
+ * Construye un `S3Client`.
+ *
+ * - `credentials` undefined → cadena por defecto de la SDK (~/.aws / env / SSO).
+ *   Es el comportamiento histórico, y el que aplica para `credentialsMode:'system'`
+ *   o para workspaces legacy sin el campo. NUNCA se guarda nada del usuario.
+ * - `credentials` presente → key id + secret key explícitos. La SDK NO los
+ *   persiste; viven solo en este cliente, que vive solo durante el request.
+ *   El caller los recibe por body HTTP y NO los persiste tampoco.
+ */
+function client(region: string, credentials?: S3Credentials): S3Client {
+  const cfg: any = { region: region || 'us-east-1' }
+  if (credentials && credentials.accessKeyId && credentials.secretAccessKey) {
+    cfg.credentials = {
+      accessKeyId: credentials.accessKeyId,
+      secretAccessKey: credentials.secretAccessKey,
+    }
+  }
+  return new S3Client(cfg)
 }
 
 export interface ListBucketsResult {
@@ -51,9 +68,9 @@ export interface ListBucketsResult {
   error?: string
 }
 
-export async function listBuckets(region = 'us-east-1'): Promise<ListBucketsResult> {
+export async function listBuckets(region = 'us-east-1', credentials?: S3Credentials): Promise<ListBucketsResult> {
   try {
-    const out = await client(region).send(new ListBucketsCommand({}))
+    const out = await client(region, credentials).send(new ListBucketsCommand({}))
     return { ok: true, buckets: (out.Buckets || []).map((b) => b.Name || '').filter(Boolean) }
   } catch (e: any) {
     return { ok: false, error: e?.message || 'No se pudieron listar los buckets de S3.' }
@@ -66,7 +83,7 @@ export interface CreateBucketResult {
   error?: string
 }
 
-export async function createBucket(name: string, region = 'us-east-1'): Promise<CreateBucketResult> {
+export async function createBucket(name: string, region = 'us-east-1', credentials?: S3Credentials): Promise<CreateBucketResult> {
   const bucket = (name || '').trim()
   if (!bucket) return { ok: false, error: 'Falta el nombre del bucket.' }
   try {
@@ -75,10 +92,33 @@ export async function createBucket(name: string, region = 'us-east-1'): Promise<
     if (region && region !== 'us-east-1') {
       input.CreateBucketConfiguration = { LocationConstraint: region }
     }
-    await client(region).send(new CreateBucketCommand(input))
+    await client(region, credentials).send(new CreateBucketCommand(input))
     return { ok: true, bucket }
   } catch (e: any) {
     return { ok: false, error: e?.message || 'No se pudo crear el bucket.' }
+  }
+}
+
+/**
+ * Valida credenciales contra un bucket existente sin escribir nada. Útil para
+ * el botón "Guardar" del modal de workspace: si el HeadBucket falla, el usuario
+ * sabe inmediatamente que las creds están mal sin esperar al próximo Publicar.
+ *
+ * No diferenciamos auth-fail vs bucket-missing más allá del mensaje del SDK —
+ * la UI lo muestra tal cual.
+ */
+export interface HeadBucketResult {
+  ok: boolean
+  error?: string
+}
+export async function headBucket(bucket: string, region = 'us-east-1', credentials?: S3Credentials): Promise<HeadBucketResult> {
+  const Bucket = (bucket || '').trim()
+  if (!Bucket) return { ok: false, error: 'Falta el nombre del bucket.' }
+  try {
+    await client(region, credentials).send(new HeadBucketCommand({ Bucket }))
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'No se pudo verificar el acceso al bucket.' }
   }
 }
 
@@ -121,7 +161,7 @@ export interface SyncResult {
  * object under that slug prefix that no longer exists locally (orphan cleanup).
  * Acotado al slug — nunca toca nada fuera de ese prefijo.
  */
-export async function syncSiteToS3(ws: Workspace, slug: string): Promise<SyncResult> {
+export async function syncSiteToS3(ws: Workspace, slug: string, credentials?: S3Credentials): Promise<SyncResult> {
   const s3cfg = ws.s3
   if (!s3cfg || !s3cfg.enabled || !s3cfg.bucket) {
     return { ok: false, error: 'El workspace no tiene S3 habilitado o falta el bucket.' }
@@ -131,7 +171,7 @@ export async function syncSiteToS3(ws: Workspace, slug: string): Promise<SyncRes
     return { ok: false, error: `No existe la carpeta del sitio: ${ws.contentRoot}/${slug}` }
   }
   const region = s3cfg.region || 'us-east-1'
-  const c = client(region)
+  const c = client(region, credentials)
   // Key prefix scoped to this slug. Always ends with a trailing slash so the
   // orphan-listing/delete can never match a sibling slug with a shared prefix.
   const parts = [s3cfg.prefix, ws.contentRoot, slug].filter(Boolean)
@@ -243,7 +283,7 @@ export interface ManifestResult {
  * Usa el builder compartido (server/catalog.ts) para que el objeto S3 y el
  * archivo local NUNCA divergan.
  */
-export async function publishCatalogManifest(ws: Workspace): Promise<ManifestResult> {
+export async function publishCatalogManifest(ws: Workspace, credentials?: S3Credentials): Promise<ManifestResult> {
   const s3cfg = ws.s3
   if (!s3cfg || !s3cfg.enabled || !s3cfg.bucket) {
     return { ok: false, error: 'El workspace no tiene S3 habilitado o falta el bucket.' }
@@ -257,7 +297,7 @@ export async function publishCatalogManifest(ws: Workspace): Promise<ManifestRes
   const Key = parts.join('/').replace(/\/+/g, '/').replace(/^\/+/, '') + '/manifest.json'
   try {
     const body = serializeCatalog(items)
-    await client(s3cfg.region || 'us-east-1').send(
+    await client(s3cfg.region || 'us-east-1', credentials).send(
       new PutObjectCommand({
         Bucket: s3cfg.bucket,
         Key,
@@ -285,12 +325,12 @@ export interface DeleteS3Result {
  * compartido. Es la inversa de syncSiteToS3: se usa al ELIMINAR un proyecto para
  * que el sitio publicado deje de existir. Acotado al slug — nada más.
  */
-export async function deleteSiteFromS3(ws: Workspace, slug: string): Promise<DeleteS3Result> {
+export async function deleteSiteFromS3(ws: Workspace, slug: string, credentials?: S3Credentials): Promise<DeleteS3Result> {
   const s3cfg = ws.s3
   if (!s3cfg || !s3cfg.enabled || !s3cfg.bucket) {
     return { ok: false, error: 'El workspace no tiene S3 habilitado o falta el bucket.' }
   }
-  const c = client(s3cfg.region || 'us-east-1')
+  const c = client(s3cfg.region || 'us-east-1', credentials)
   const parts = [s3cfg.prefix, ws.contentRoot, slug].filter(Boolean)
   const keyPrefix = parts.join('/').replace(/\/+/g, '/').replace(/^\/+/, '') + '/'
   try {

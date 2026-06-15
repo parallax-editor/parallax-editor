@@ -2,11 +2,14 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { projectsApi, workspaceApi, s3Api } from '../composables/useApi'
+import { projectsApi, workspaceApi, s3Api, gitApiExtra, HOME_SLUG, presetPublishManifestDefault } from '../composables/useApi'
+import { resolveS3Credentials } from '../composables/useS3CredentialsResolver'
+import { resolveGitCredentials } from '../composables/useGitCredentialsResolver'
+import { useSecrets, secretKeys } from '../composables/useSecrets'
 
 const { t } = useI18n()
 import { APP_VERSION } from '../version'
-import type { ProjectListItem, Workspace } from '../composables/useApi'
+import type { ProjectListItem, Workspace, WorkspacePreset } from '../composables/useApi'
 import ProjectCard from '../components/selector/ProjectCard.vue'
 import HelpHint from '../components/properties/HelpHint.vue'
 // The SAME canonical slug transform the server uses to create the folder, so
@@ -99,10 +102,81 @@ function sortByRecent(list: ProjectListItem[]): ProjectListItem[] {
     return (a.title || a.slug).localeCompare(b.title || b.slug, 'es')
   })
 }
+
+// El proyecto `home` se trata especial solo cuando el preset es `linked-home`:
+// se quita de la lista normal y se renderiza arriba como card pineada.
+// En `multi-tenant` no existe ese tratamiento — todos los proyectos van planos.
+const isLinkedHome = computed(() => activeWorkspace.value?.preset === 'linked-home')
+const homeProject = computed<ProjectListItem | null>(() => {
+  if (!isLinkedHome.value) return null
+  return projects.value.find((p) => p.slug === HOME_SLUG) || null
+})
+const nonHomeProjects = computed(() =>
+  isLinkedHome.value ? projects.value.filter((p) => p.slug !== HOME_SLUG) : projects.value,
+)
 const visibleProjects = computed(() => {
   const q = norm(search.value)
-  return sortByRecent(projects.value).filter((p) => matches(p, q))
+  return sortByRecent(nonHomeProjects.value).filter((p) => matches(p, q))
 })
+
+// ── Copy condicional al preset ──────────────────────────────────────────────
+// Default ('multi-tenant') es lo más conservador: workspaces existentes en
+// localStorage SIN preset entran a este flujo. `linked-home` solo cambia el
+// texto cuando el usuario lo eligió explícitamente.
+const newProjectCtaText = computed(() => {
+  if (!activeWorkspace.value) return t('selector.newProjectCta')
+  return isLinkedHome.value
+    ? t('selector.newProjectCtaLinkedHome')
+    : t('selector.newProjectCtaMultiTenant')
+})
+const createDialogTitleText = computed(() =>
+  isLinkedHome.value
+    ? t('selector.createDialogTitleLinkedHome')
+    : t('selector.createDialogTitleMultiTenant'),
+)
+const namePlaceholderText = computed(() =>
+  isLinkedHome.value
+    ? t('selector.namePlaceholderLinkedHome')
+    : t('selector.namePlaceholderMultiTenant'),
+)
+
+async function createHomeSite() {
+  const ws = activeWorkspace.value
+  if (!ws || !isLinkedHome.value || creating.value) return
+  // Guard CRÍTICO: si `home` ya existe, NO llamar a /api/projects (el server
+  // auto-incrementa el slug colisionado → crearía `home-2` y eso NO sirve para
+  // este preset porque el routing del consumidor sirve exactamente `home` en /).
+  // Solo lo abrimos.
+  if (projects.value.some((p) => p.slug === HOME_SLUG)) {
+    openProject(HOME_SLUG)
+    return
+  }
+  creating.value = true
+  wsError.value = null
+  try {
+    // El servidor canoniza el name → slug; slugify("Home") === "home".
+    const r = await projectsApi.create(ws.id, 'Home')
+    await refreshProjects()
+    const created = r?.slug
+    if (!created) {
+      wsError.value = t('workspace.hostRejected')
+      return
+    }
+    if (created !== HOME_SLUG) {
+      // No debería pasar (acabamos de verificar que no existe), pero si el
+      // server canoniza distinto, surfaceamos para no abrir un slug fantasma.
+      await dialog.alert({
+        title: t('selector.addressInUseTitle'),
+        message: t('selector.addressInUseMessage', { slug: created }),
+      })
+    }
+    openProject(created)
+  } catch (e: any) {
+    wsError.value = e?.message || t('workspace.activationError')
+  } finally {
+    creating.value = false
+  }
+}
 
 // ── Create / open / duplicate / delete (scoped to the active workspace) ──────
 watch(showCreate, (v) => {
@@ -169,11 +243,41 @@ async function remove(slug: string) {
     danger: true,
   })
   if (!ok) return
+  // Mismo contrato que Publish: si el workspace usa creds explícitas, las
+  // hidratamos para que el borrado S3 también funcione; si no, undefined →
+  // server usa la cadena del sistema. SIMETRÍA CRÍTICA con GitPanel.publish:
+  // si el modo es 'explicit' pero el secreto no se encuentra, NO seguimos —
+  // si lo hiciéramos, el server caería a la cadena del sistema (probablemente
+  // sin permisos del bucket configurado) y el sitio quedaría vivo en S3
+  // aunque la carpeta local se borre. Mejor abortar con un mensaje claro.
+  let creds: Awaited<ReturnType<typeof resolveS3Credentials>> = undefined
+  if (ws.s3?.credentialsMode === 'explicit') {
+    creds = await resolveS3Credentials(ws.id, ws.s3)
+    if (!creds) {
+      await dialog.alert({
+        title: t('workspace.deleteNeedsCredsTitle'),
+        message: t('workspace.deleteNeedsCredsBody'),
+      })
+      return
+    }
+  }
+  // Mismo gate para PAT.
+  let gitAuth: Awaited<ReturnType<typeof resolveGitCredentials>> = undefined
+  if (ws.git?.authMode === 'pat') {
+    gitAuth = await resolveGitCredentials(ws.id, ws.git)
+    if (!gitAuth) {
+      await dialog.alert({
+        title: t('workspace.deleteNeedsGitPatTitle'),
+        message: t('workspace.deleteNeedsGitPatBody'),
+      })
+      return
+    }
+  }
   // Feedback en la fila: spinner mientras el borrado asíncrono corre. En éxito,
   // refreshProjects() quita la fila; en error, el finally restaura los botones.
   deletingSlug.value = slug
   try {
-    await projectsApi.delete(ws.id, slug)
+    await projectsApi.delete(ws.id, slug, creds, gitAuth)
     await refreshProjects()
   } finally {
     deletingSlug.value = null
@@ -182,24 +286,135 @@ async function remove(slug: string) {
 
 // ── Workspace config modal (gear) ─────────────────────────────────────────────
 const wsConfigId = ref<string | null>(null)
-const cfg = ref<Workspace>({ id: '', name: '', repoPath: '', contentRoot: 'content', useGit: true })
+const cfg = ref<Workspace>({ id: '', name: '', repoPath: '', contentRoot: 'content', useGit: true, preset: 'multi-tenant' })
 const bucketSuggestions = ref<string[]>([])
 const wsBusy = ref(false)
 const wsModalError = ref<string | null>(null)
+// Modal informativo "¿qué preset elijo?"
+const showPresetExplain = ref(false)
+// Modal informativo "¿qué permisos S3 debo darle?"
+const showS3PolicyHelp = ref(false)
+// Modal informativo "¿cómo creo un PAT?" — el cuerpo depende del provider.
+const showGitPatHelp = ref(false)
+
+// ── Credenciales S3 explícitas (Fase 3) ──────────────────────────────────────
+// Los campos accessKeyId/secretAccessKey NO viven en `cfg` (el workspace) sino
+// en este local del modal. Al guardar se persisten en el SecretsBus
+// (Keychain/sesión) bajo `s3:${ws.id}` — JAMÁS en localStorage. Si el modo es
+// 'system' se ignoran, y si el usuario apaga 'explicit' borramos el secreto.
+const secretsApi = useSecrets()
+const s3Creds = ref<{ accessKeyId: string; secretAccessKey: string }>({ accessKeyId: '', secretAccessKey: '' })
+const s3ShowSecret = ref(false)
+const s3CredsHasStored = ref(false)
+// Sentinel: si el usuario NO toca los campos y solo cambia bucket/region, NO
+// reescribimos el secreto guardado. Esto evita borrar accidentalmente las creds
+// guardadas si el form se abrió "vacío" en una sesión nueva.
+const s3CredsDirty = ref(false)
+function onS3CredsInput() { s3CredsDirty.value = true }
+// Estado del botón "Verificar":
+//   - 'idle' (por defecto)
+//   - 'busy' mientras se hace el HeadBucket
+//   - 'ok'   si pasó
+//   - 'fail' si no pasó (con `s3VerifyError`)
+const s3VerifyState = ref<'idle' | 'busy' | 'ok' | 'fail'>('idle')
+const s3VerifyError = ref<string | null>(null)
+
+// ── Git PAT por workspace (Fase 4) ──────────────────────────────────────────
+// Mismo patrón que el bloque S3: el form NO precarga el token guardado, solo
+// indica si hay uno y permite reemplazar. El secreto vive en SecretsBus bajo
+// `git:${ws.id}`. La validación es un `git ls-remote` con ASKPASS — más
+// caro que HeadBucket de S3 pero igual de informativo.
+const gitCreds = ref<{ username: string; token: string }>({ username: '', token: '' })
+const gitShowToken = ref(false)
+const gitCredsHasStored = ref(false)
+const gitCredsDirty = ref(false)
+function onGitCredsInput() { gitCredsDirty.value = true }
+const gitVerifyState = ref<'idle' | 'busy' | 'ok' | 'fail'>('idle')
+const gitVerifyError = ref<string | null>(null)
 
 function openConfig(id: string) {
   const ws = wsState.list.find((w) => w.id === id)
   if (!ws) return
+  // BACK-COMPAT: el localStorage de un workspace legacy (pre-preset) puede
+  // tener `s3.publishManifest:true` SIN el flag `publishManifestUserSet`. Si
+  // dejáramos `userSet=false`, un cambio de preset desde el modal pisaría su
+  // elección. Promovemos el flag a true cuando vemos `publishManifest` con un
+  // valor booleano explícito — mismo criterio que el server aplica en
+  // `activateWorkspace`, así cliente y server quedan alineados.
+  const legacyS3UserSet =
+    ws.s3 != null &&
+    (ws.s3.publishManifestUserSet === true ||
+      typeof ws.s3.publishManifest === 'boolean')
   // Deep clone so editing the form doesn't mutate the store until "Guardar".
   cfg.value = JSON.parse(JSON.stringify({
     id: ws.id, name: ws.name, repoPath: ws.repoPath, gitRemote: ws.gitRemote || '',
     contentRoot: ws.contentRoot,
     useGit: ws.useGit !== false,
-    s3: ws.s3 ? { ...ws.s3 } : { enabled: false, bucket: '', prefix: '', region: 'us-east-1' },
+    // Default 'multi-tenant' por back-compat con workspaces existentes en
+    // localStorage que no traen preset.
+    preset: (ws.preset || 'multi-tenant') as WorkspacePreset,
+    s3: ws.s3
+      ? {
+          ...ws.s3,
+          publishManifestUserSet: legacyS3UserSet,
+          credentialsMode: ws.s3.credentialsMode === 'explicit' ? 'explicit' : 'system',
+        }
+      : { enabled: false, bucket: '', prefix: '', region: 'us-east-1', publishManifest: presetPublishManifestDefault(ws.preset), publishManifestUserSet: false, credentialsMode: 'system' },
+    git: ws.git
+      ? { authMode: ws.git.authMode === 'pat' ? 'pat' : 'system', provider: ws.git.provider || 'github' }
+      : { authMode: 'system', provider: 'github' },
   }))
   wsModalError.value = null
   wsConfigId.value = id
+  // Reset estado del bloque de creds. Los campos NUNCA se prepoblan desde el
+  // SecretsBus — el usuario solo ve "hay credenciales guardadas" / "no hay" y
+  // si quiere reemplazarlas las re-escribe. Esto evita que un screencast del
+  // modal exponga el secreto al instante de abrirlo.
+  s3Creds.value = { accessKeyId: '', secretAccessKey: '' }
+  s3ShowSecret.value = false
+  s3CredsDirty.value = false
+  s3VerifyState.value = 'idle'
+  s3VerifyError.value = null
+  // Solo necesitamos saber SI hay creds guardadas (no su valor).
+  ;(async () => {
+    try {
+      const r = await secretsApi.get(secretKeys.s3(ws.id))
+      s3CredsHasStored.value = !!(r?.ok && r.value)
+    } catch {
+      s3CredsHasStored.value = false
+    }
+  })()
+  // Reset del bloque Git — mismo patrón que el de S3.
+  gitCreds.value = { username: '', token: '' }
+  gitShowToken.value = false
+  gitCredsDirty.value = false
+  gitVerifyState.value = 'idle'
+  gitVerifyError.value = null
+  ;(async () => {
+    try {
+      const r = await secretsApi.get(secretKeys.git(ws.id))
+      gitCredsHasStored.value = !!(r?.ok && r.value)
+    } catch {
+      gitCredsHasStored.value = false
+    }
+  })()
   void loadBuckets()
+}
+
+/**
+ * Cuando el usuario cambia el preset desde el modal, si NO marcó publishManifest
+ * explícitamente, refrescamos su valor al default del preset nuevo. Si ya lo
+ * tocó (`publishManifestUserSet`), respetamos su elección. Mismo contrato que
+ * el server (`presetPublishManifestDefault`).
+ */
+function onPresetChange(newPreset: WorkspacePreset) {
+  cfg.value.preset = newPreset
+  if (cfg.value.s3 && !cfg.value.s3.publishManifestUserSet) {
+    cfg.value.s3.publishManifest = presetPublishManifestDefault(newPreset)
+  }
+}
+function onPublishManifestToggle() {
+  if (cfg.value.s3) cfg.value.s3.publishManifestUserSet = true
 }
 
 async function loadBuckets() {
@@ -276,14 +491,95 @@ async function saveConfig() {
   if (!wsConfigId.value) return
   wsBusy.value = true
   wsModalError.value = null
+  const wsId = wsConfigId.value
   try {
-    updateWorkspace(wsConfigId.value, {
+    // Persistencia de credenciales S3 explícitas:
+    //   - mode='explicit' + creds dirty (usuario tipeó algo) → upsert al keychain
+    //   - mode='system' Y había creds guardadas → BORRAMOS para no dejar
+    //     huérfanas (si más adelante vuelve a 'explicit' sin escribir nada
+    //     pensaría que están listas y publicaría con un secreto fantasma)
+    //   - mode='explicit' + nada dirty + ya había guardadas → no tocamos
+    //   - mode='explicit' + nada dirty + NUNCA hubo guardadas → no validamos
+    //     ahora (el usuario las puede agregar después o usar verify); el publish
+    //     ya tiene un check claro de "no hay creds guardadas".
+    const s3cfg = cfg.value.s3
+    if (s3cfg?.credentialsMode === 'explicit' && s3CredsDirty.value) {
+      const ak = s3Creds.value.accessKeyId.trim()
+      const sk = s3Creds.value.secretAccessKey.trim()
+      if (!ak || !sk) {
+        wsModalError.value = t('workspace.s3CredsBothRequired')
+        return
+      }
+      const setRes = await secretsApi.setJson(secretKeys.s3(wsId), { accessKeyId: ak, secretAccessKey: sk })
+      if (!setRes.ok) {
+        wsModalError.value = setRes.error || t('workspace.s3CredsSaveFailed')
+        return
+      }
+      // Validación post-guardar: si hay bucket, hacemos un HeadBucket. Si falla
+      // dejamos guardado pero avisamos para que el usuario sepa que el publish
+      // va a fallar igual. NO bloqueamos el guardado del resto del workspace.
+      if (s3cfg.bucket) {
+        const headRes = await s3Api.headBucket(s3cfg.bucket, s3cfg.region || 'us-east-1', { accessKeyId: ak, secretAccessKey: sk })
+        if (!headRes.ok) {
+          wsModalError.value = `${t('workspace.s3VerifyFailedSavingAnyway')} ${headRes.error || ''}`.trim()
+          // No `return` aquí — el usuario quiere guardar igual; solo avisamos.
+        }
+      }
+    } else if (s3cfg?.credentialsMode === 'system') {
+      // Cambió a 'system'. NO confíes en el sentinel `s3CredsHasStored` — su
+      // carga es una IIFE async que pudo no haber resuelto si el usuario
+      // pulsó Guardar muy rápido tras abrir el modal. Re-consultamos al
+      // SecretsBus aquí y, si hay algo guardado, lo borramos. Sin esta
+      // re-consulta un toggle rápido 'system → explicit → system' podía
+      // dejar un secreto huérfano en disco.
+      try {
+        const cur = await secretsApi.get(secretKeys.s3(wsId))
+        if (cur?.ok && cur.value) await secretsApi.delete(secretKeys.s3(wsId))
+      } catch { /* non-fatal */ }
+    }
+
+    // ── Persistencia del PAT Git (Fase 4) — mismo contrato que S3 ──────────────
+    const gitCfg = cfg.value.git
+    if (gitCfg?.authMode === 'pat' && gitCredsDirty.value) {
+      const u = gitCreds.value.username.trim()
+      const tk = gitCreds.value.token.trim()
+      if (!u || !tk) {
+        wsModalError.value = t('workspace.gitPatBothRequired')
+        return
+      }
+      const setRes = await secretsApi.setJson(secretKeys.git(wsId), {
+        username: u,
+        token: tk,
+        provider: gitCfg.provider || 'github',
+      })
+      if (!setRes.ok) {
+        wsModalError.value = setRes.error || t('workspace.gitPatSaveFailed')
+        return
+      }
+      // Validación opcional contra el remoto. NO bloquea el guardado si falla;
+      // el usuario quizá está editando algo offline.
+      try {
+        const r = await gitApiExtra.validatePat(wsId, { username: u, token: tk })
+        if (!r.ok) {
+          wsModalError.value = `${t('workspace.gitPatVerifyFailedSavingAnyway')} ${r.error || ''}`.trim()
+        }
+      } catch { /* tolerante a offline */ }
+    } else if (gitCfg?.authMode === 'system') {
+      try {
+        const cur = await secretsApi.get(secretKeys.git(wsId))
+        if (cur?.ok && cur.value) await secretsApi.delete(secretKeys.git(wsId))
+      } catch { /* non-fatal */ }
+    }
+
+    updateWorkspace(wsId, {
       name: cfg.value.name,
       repoPath: cfg.value.repoPath,
       gitRemote: cfg.value.useGit ? (cfg.value.gitRemote || undefined) : undefined,
       contentRoot: cfg.value.contentRoot,
       useGit: cfg.value.useGit,
+      preset: cfg.value.preset,
       s3: cfg.value.s3,
+      git: cfg.value.git,
     })
     // If we edited the active workspace, re-activate + reload projects.
     if (wsConfigId.value === wsState.activeId) {
@@ -304,19 +600,102 @@ async function deleteWorkspace() {
     danger: true,
   })
   if (!ok) return
-  removeWorkspace(wsConfigId.value)
+  const wsId = wsConfigId.value
+  // Limpia los secretos asociados al workspace antes de removerlo del store.
+  // Mejor un huérfano cifrado en disco que un orphan con referencia
+  // perdida — `secretsApi.delete` es idempotente y no falla si no existe.
+  try { await secretsApi.delete(secretKeys.s3(wsId)) } catch { /* best-effort */ }
+  try { await secretsApi.delete(secretKeys.git(wsId)) } catch { /* best-effort */ }
+  removeWorkspace(wsId)
   wsConfigId.value = null
   void activateAndLoad()
 }
 
+/** Verifica el PAT tipeado contra el origin del workspace. */
+async function verifyGitCredentials() {
+  const wsId = wsConfigId.value
+  if (!wsId) return
+  const u = gitCreds.value.username.trim()
+  const tk = gitCreds.value.token.trim()
+  if (!u || !tk) {
+    gitVerifyState.value = 'fail'
+    gitVerifyError.value = t('workspace.gitPatBothRequired')
+    return
+  }
+  gitVerifyState.value = 'busy'
+  gitVerifyError.value = null
+  try {
+    const r = await gitApiExtra.validatePat(wsId, { username: u, token: tk })
+    if (r.ok) {
+      gitVerifyState.value = 'ok'
+    } else {
+      gitVerifyState.value = 'fail'
+      gitVerifyError.value = r.error || t('workspace.gitPatVerifyFailedGeneric')
+    }
+  } catch (e: any) {
+    gitVerifyState.value = 'fail'
+    gitVerifyError.value = e?.message || t('workspace.gitPatVerifyFailedGeneric')
+  }
+}
+
+/** Verifica las creds tipeadas haciendo un HeadBucket. Botón "Verificar". */
+async function verifyS3Credentials() {
+  const s3cfg = cfg.value.s3
+  if (!s3cfg) return
+  const ak = s3Creds.value.accessKeyId.trim()
+  const sk = s3Creds.value.secretAccessKey.trim()
+  if (!ak || !sk) {
+    s3VerifyState.value = 'fail'
+    s3VerifyError.value = t('workspace.s3CredsBothRequired')
+    return
+  }
+  if (!s3cfg.bucket) {
+    s3VerifyState.value = 'fail'
+    s3VerifyError.value = t('workspace.s3VerifyNeedsBucket')
+    return
+  }
+  s3VerifyState.value = 'busy'
+  s3VerifyError.value = null
+  try {
+    const r = await s3Api.headBucket(s3cfg.bucket, s3cfg.region || 'us-east-1', { accessKeyId: ak, secretAccessKey: sk })
+    if (r.ok) {
+      s3VerifyState.value = 'ok'
+    } else {
+      s3VerifyState.value = 'fail'
+      s3VerifyError.value = r.error || t('workspace.s3VerifyFailedGeneric')
+    }
+  } catch (e: any) {
+    s3VerifyState.value = 'fail'
+    s3VerifyError.value = e?.message || t('workspace.s3VerifyFailedGeneric')
+  }
+}
+
 // ── New workspace modal ───────────────────────────────────────────────────────
 const showNewWs = ref(false)
-const newWs = ref({ name: '', repoPath: '', mode: 'folder' as 'folder' | 'clone', gitUrl: '', clonePath: '', contentRoot: 'content', useGit: true })
+const newWs = ref({
+  name: '',
+  repoPath: '',
+  mode: 'folder' as 'folder' | 'clone',
+  gitUrl: '',
+  clonePath: '',
+  contentRoot: 'content',
+  useGit: true,
+  preset: 'multi-tenant' as WorkspacePreset,
+})
 const newWsBusy = ref(false)
 const newWsError = ref<string | null>(null)
 
 function openNewWs() {
-  newWs.value = { name: '', repoPath: '', mode: 'folder', gitUrl: '', clonePath: '', contentRoot: 'content', useGit: true }
+  newWs.value = {
+    name: '',
+    repoPath: '',
+    mode: 'folder',
+    gitUrl: '',
+    clonePath: '',
+    contentRoot: 'content',
+    useGit: true,
+    preset: 'multi-tenant',
+  }
   newWsError.value = null
   showNewWs.value = true
 }
@@ -363,12 +742,23 @@ async function createWorkspace() {
     }
     if (!repoPath) { newWsError.value = t('workspace.pickFolderOrClone'); return }
     const name = newWs.value.name.trim() || repoPath.split('/').pop() || 'Workspace'
+    const preset = newWs.value.preset || 'multi-tenant'
     const id = addWorkspace({
       name,
       repoPath,
       contentRoot: newWs.value.contentRoot.trim() || 'content',
       useGit: newWs.value.useGit,
-      s3: { enabled: false, bucket: '', prefix: '', region: 'us-east-1' },
+      preset,
+      s3: {
+        enabled: false,
+        bucket: '',
+        prefix: '',
+        region: 'us-east-1',
+        // Default DERIVADO del preset. `publishManifestUserSet:false` deja al
+        // server reaplicar el default si el preset cambia más adelante.
+        publishManifest: presetPublishManifestDefault(preset),
+        publishManifestUserSet: false,
+      },
     })
     showNewWs.value = false
     const r = await selectWorkspace(id)
@@ -440,18 +830,54 @@ async function createWorkspace() {
     <div v-if="loading" class="loading">{{ t('selector.loading') }}</div>
 
     <template v-else>
+      <!-- Home pin: solo en linked-home. Si hay home en el listado, se renderiza
+           como card destacada con badge "Inicio". Si NO existe, se ofrece un CTA
+           para crearlo (el slug `home` se sirve en /). -->
+      <section
+        v-if="activeWorkspace && isLinkedHome"
+        class="project-group home-group"
+        data-test="home-pin-section"
+      >
+        <div class="group-header home-header">
+          <h2 class="home-badge">{{ t('workspace.homeCardBadge') }}</h2>
+        </div>
+
+        <div v-if="homeProject" class="cards">
+          <ProjectCard
+            :type="(activeWorkspace as Workspace).id"
+            :project="homeProject"
+            :deleting="deletingSlug === homeProject.slug"
+            @open="openProject(homeProject.slug)"
+            @duplicate="duplicate(homeProject.slug)"
+            @remove="remove(homeProject.slug)"
+          />
+        </div>
+        <div v-else class="home-empty" data-test="home-empty">
+          <div class="home-empty-text">
+            <strong>{{ t('workspace.homeCardEmptyTitle') }}</strong>
+            <p>{{ t('workspace.homeCardEmptyBody') }}</p>
+          </div>
+          <button
+            class="btn-create-home"
+            data-test="home-create"
+            :disabled="creating"
+            @click="createHomeSite"
+          >{{ creating ? t('workspace.homeCardCreating') : t('workspace.homeCardCreateCta') }}</button>
+        </div>
+      </section>
+
       <section class="project-group">
         <div class="group-header">
           <h2>{{ activeWorkspace?.name || t('selector.defaultGroup') }}</h2>
-          <span class="group-count">{{ projects.length }}</span>
-          <button class="btn-new" :disabled="!activeWorkspace" @click="showCreate = true">{{ t('selector.newProjectCta') }}</button>
+          <span class="group-count">{{ nonHomeProjects.length }}</span>
+          <button class="btn-new" data-test="btn-new-project" :disabled="!activeWorkspace" @click="showCreate = true">{{ newProjectCtaText }}</button>
         </div>
 
         <div v-if="!activeWorkspace" class="empty">
           {{ t('selector.noWorkspaceSelected') }} <strong>{{ t('selector.noWorkspaceCta') }}</strong>.
         </div>
-        <div v-else-if="projects.length === 0" class="empty">
-          {{ t('selector.noProjectsInWs') }} <strong>{{ t('selector.newProjectCta') }}</strong>.
+        <div v-else-if="nonHomeProjects.length === 0" class="empty">
+          {{ t('selector.noProjectsInWs') }} <strong>{{ newProjectCtaText }}</strong>.
         </div>
         <div v-else-if="visibleProjects.length === 0" class="no-results" data-test="no-results">
           {{ t('selector.noResults', { q: search }) }}
@@ -476,7 +902,7 @@ async function createWorkspace() {
       <div v-if="showCreate" class="create-backdrop" @click.self="showCreate = false">
         <div class="create-dialog" role="dialog" :aria-label="t('selector.createDialogAria')" data-test="create-dialog">
           <header class="cd-head">
-            <h3>{{ t('selector.createDialogTitle') }}</h3>
+            <h3 data-test="create-dialog-title">{{ createDialogTitleText }}</h3>
             <button class="cd-close" :aria-label="t('selector.closeAria')" @click="showCreate = false">&times;</button>
           </header>
           <div class="cd-body">
@@ -486,7 +912,7 @@ async function createWorkspace() {
               ref="nameInput"
               v-model="newName"
               data-test="new-site-name"
-              :placeholder="t('selector.namePlaceholder')"
+              :placeholder="namePlaceholderText"
               @keydown.enter="createNew"
             />
             <div class="slug-caption">{{ t('selector.slugCaption') }} <code data-test="new-site-slug">{{ slugPreview || '—' }}</code></div>
@@ -511,6 +937,53 @@ async function createWorkspace() {
             <button class="cd-close" :aria-label="t('selector.closeAria')" @click="wsConfigId = null">&times;</button>
           </header>
           <div class="cd-body">
+            <!-- Preset: dos cards radio. Aparece arriba porque el resto del
+                 modal (publishManifest default, copy del proyecto) depende de
+                 esta elección. -->
+            <section class="preset-section" data-test="ws-cfg-preset">
+              <div class="preset-header">
+                <h4>{{ t('workspace.presetSection') }}</h4>
+                <button
+                  type="button"
+                  class="preset-help-btn"
+                  data-test="ws-cfg-preset-help"
+                  @click="showPresetExplain = true"
+                >{{ t('workspace.presetExplainLink') }}</button>
+              </div>
+              <div class="preset-cards">
+                <label
+                  class="preset-card"
+                  :class="{ selected: cfg.preset === 'linked-home' }"
+                  data-test="ws-cfg-preset-linked-home"
+                >
+                  <input
+                    type="radio"
+                    name="ws-preset"
+                    value="linked-home"
+                    :checked="cfg.preset === 'linked-home'"
+                    @change="onPresetChange('linked-home')"
+                  />
+                  <div class="preset-card-title">{{ t('workspace.presetLinkedHomeTitle') }}</div>
+                  <div class="preset-card-desc">{{ t('workspace.presetLinkedHomeDesc') }}</div>
+                </label>
+                <label
+                  class="preset-card"
+                  :class="{ selected: cfg.preset === 'multi-tenant' }"
+                  data-test="ws-cfg-preset-multi-tenant"
+                >
+                  <input
+                    type="radio"
+                    name="ws-preset"
+                    value="multi-tenant"
+                    :checked="cfg.preset === 'multi-tenant'"
+                    @change="onPresetChange('multi-tenant')"
+                  />
+                  <div class="preset-card-title">{{ t('workspace.presetMultiTenantTitle') }}</div>
+                  <div class="preset-card-desc">{{ t('workspace.presetMultiTenantDesc') }}</div>
+                </label>
+              </div>
+            </section>
+
             <label class="field-label">{{ t('workspace.nameField') }}</label>
             <input v-model="cfg.name" data-test="ws-cfg-name" :placeholder="t('workspace.namePlaceholder')" />
 
@@ -585,13 +1058,200 @@ async function createWorkspace() {
               </template>
 
               <label class="check-row manifest-row">
-                <input type="checkbox" v-model="cfg.s3.publishManifest" data-test="ws-cfg-s3-manifest" />
+                <input
+                  type="checkbox"
+                  v-model="cfg.s3.publishManifest"
+                  data-test="ws-cfg-s3-manifest"
+                  @change="onPublishManifestToggle"
+                />
                 {{ t('workspace.s3Manifest') }}
                 <HelpHint
                   :label="t('workspace.s3ManifestHelp')"
                   :text="t('workspace.s3ManifestHelpText')"
                 />
               </label>
+
+              <!-- ── Modo de credenciales S3 (Fase 3) ──────────────────────── -->
+              <div class="s3-creds-section" data-test="ws-cfg-s3-creds-section">
+                <div class="s3-creds-header">
+                  <h5>{{ t('workspace.s3CredsTitle') }}</h5>
+                  <button
+                    type="button"
+                    class="preset-help-btn"
+                    data-test="ws-cfg-s3-policy-help"
+                    @click="showS3PolicyHelp = true"
+                  >{{ t('workspace.s3PolicyHelpLink') }}</button>
+                </div>
+
+                <label class="radio-row">
+                  <input
+                    type="radio"
+                    name="ws-s3-mode"
+                    value="system"
+                    :checked="cfg.s3.credentialsMode !== 'explicit'"
+                    data-test="ws-cfg-s3-creds-system"
+                    @change="cfg.s3.credentialsMode = 'system'"
+                  />
+                  <span class="radio-label">
+                    <strong>{{ t('workspace.s3CredsSystemTitle') }}</strong>
+                    <span class="radio-desc">{{ t('workspace.s3CredsSystemDesc') }}</span>
+                  </span>
+                </label>
+                <label class="radio-row">
+                  <input
+                    type="radio"
+                    name="ws-s3-mode"
+                    value="explicit"
+                    :checked="cfg.s3.credentialsMode === 'explicit'"
+                    data-test="ws-cfg-s3-creds-explicit"
+                    @change="cfg.s3.credentialsMode = 'explicit'"
+                  />
+                  <span class="radio-label">
+                    <strong>{{ t('workspace.s3CredsExplicitTitle') }}</strong>
+                    <span class="radio-desc">{{ t('workspace.s3CredsExplicitDesc') }}</span>
+                  </span>
+                </label>
+
+                <div v-if="cfg.s3.credentialsMode === 'explicit'" class="s3-creds-fields">
+                  <p v-if="s3CredsHasStored && !s3CredsDirty" class="s3-creds-stored-note" data-test="ws-cfg-s3-creds-stored">
+                    {{ t('workspace.s3CredsStoredNote') }}
+                  </p>
+                  <label class="field-label">{{ t('workspace.s3AccessKeyIdField') }}</label>
+                  <input
+                    v-model="s3Creds.accessKeyId"
+                    type="text"
+                    data-test="ws-cfg-s3-accesskeyid"
+                    :placeholder="t('workspace.s3AccessKeyIdPlaceholder')"
+                    autocomplete="off"
+                    spellcheck="false"
+                    @input="onS3CredsInput"
+                  />
+                  <label class="field-label">{{ t('workspace.s3SecretAccessKeyField') }}</label>
+                  <div class="row-with-btn">
+                    <input
+                      v-model="s3Creds.secretAccessKey"
+                      :type="s3ShowSecret ? 'text' : 'password'"
+                      data-test="ws-cfg-s3-secretkey"
+                      :placeholder="t('workspace.s3SecretAccessKeyPlaceholder')"
+                      autocomplete="off"
+                      spellcheck="false"
+                      @input="onS3CredsInput"
+                    />
+                    <button
+                      class="aux-btn"
+                      type="button"
+                      data-test="ws-cfg-s3-toggle-secret"
+                      @click="s3ShowSecret = !s3ShowSecret"
+                    >{{ s3ShowSecret ? t('workspace.s3HideSecret') : t('workspace.s3ShowSecret') }}</button>
+                  </div>
+
+                  <div class="s3-verify-row">
+                    <button
+                      type="button"
+                      class="aux-btn"
+                      data-test="ws-cfg-s3-verify"
+                      :disabled="s3VerifyState === 'busy'"
+                      @click="verifyS3Credentials"
+                    >{{ s3VerifyState === 'busy' ? t('workspace.s3VerifyBusy') : t('workspace.s3VerifyCta') }}</button>
+                    <span v-if="s3VerifyState === 'ok'" class="s3-verify-ok" data-test="ws-cfg-s3-verify-ok">✓ {{ t('workspace.s3VerifyOk') }}</span>
+                    <span v-else-if="s3VerifyState === 'fail'" class="s3-verify-fail" data-test="ws-cfg-s3-verify-fail">✗ {{ s3VerifyError || t('workspace.s3VerifyFailedGeneric') }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── Git Authentication (Fase 4) — solo aparece si el workspace
+                 usa git. Mismo patrón visual que el bloque S3 credentials. -->
+            <div v-if="cfg.useGit && cfg.git" class="git-auth-section" data-test="ws-cfg-git-auth-section">
+              <div class="git-auth-header">
+                <h4>{{ t('workspace.gitAuthSection') }}</h4>
+                <button
+                  type="button"
+                  class="preset-help-btn"
+                  data-test="ws-cfg-git-pat-help"
+                  @click="showGitPatHelp = true"
+                >{{ t('workspace.gitPatHelpLink') }}</button>
+              </div>
+
+              <label class="radio-row">
+                <input
+                  type="radio"
+                  name="ws-git-mode"
+                  value="system"
+                  :checked="cfg.git.authMode !== 'pat'"
+                  data-test="ws-cfg-git-mode-system"
+                  @change="cfg.git.authMode = 'system'"
+                />
+                <span class="radio-label">
+                  <strong>{{ t('workspace.gitAuthSystemTitle') }}</strong>
+                  <span class="radio-desc">{{ t('workspace.gitAuthSystemDesc') }}</span>
+                </span>
+              </label>
+              <label class="radio-row">
+                <input
+                  type="radio"
+                  name="ws-git-mode"
+                  value="pat"
+                  :checked="cfg.git.authMode === 'pat'"
+                  data-test="ws-cfg-git-mode-pat"
+                  @change="cfg.git.authMode = 'pat'"
+                />
+                <span class="radio-label">
+                  <strong>{{ t('workspace.gitAuthPatTitle') }}</strong>
+                  <span class="radio-desc">{{ t('workspace.gitAuthPatDesc') }}</span>
+                </span>
+              </label>
+
+              <div v-if="cfg.git.authMode === 'pat'" class="git-pat-fields">
+                <p v-if="gitCredsHasStored && !gitCredsDirty" class="s3-creds-stored-note" data-test="ws-cfg-git-pat-stored">
+                  {{ t('workspace.gitPatStoredNote') }}
+                </p>
+                <label class="field-label">{{ t('workspace.gitProviderField') }}</label>
+                <select v-model="cfg.git.provider" data-test="ws-cfg-git-provider">
+                  <option value="github">GitHub</option>
+                  <option value="gitlab">GitLab</option>
+                  <option value="bitbucket">Bitbucket</option>
+                </select>
+                <label class="field-label">{{ t('workspace.gitPatUsernameField') }}</label>
+                <input
+                  v-model="gitCreds.username"
+                  type="text"
+                  data-test="ws-cfg-git-pat-username"
+                  :placeholder="t('workspace.gitPatUsernamePlaceholder')"
+                  autocomplete="off"
+                  spellcheck="false"
+                  @input="onGitCredsInput"
+                />
+                <label class="field-label">{{ t('workspace.gitPatTokenField') }}</label>
+                <div class="row-with-btn">
+                  <input
+                    v-model="gitCreds.token"
+                    :type="gitShowToken ? 'text' : 'password'"
+                    data-test="ws-cfg-git-pat-token"
+                    :placeholder="t('workspace.gitPatTokenPlaceholder')"
+                    autocomplete="off"
+                    spellcheck="false"
+                    @input="onGitCredsInput"
+                  />
+                  <button
+                    class="aux-btn"
+                    type="button"
+                    data-test="ws-cfg-git-pat-toggle"
+                    @click="gitShowToken = !gitShowToken"
+                  >{{ gitShowToken ? t('workspace.s3HideSecret') : t('workspace.s3ShowSecret') }}</button>
+                </div>
+                <div class="s3-verify-row">
+                  <button
+                    type="button"
+                    class="aux-btn"
+                    data-test="ws-cfg-git-pat-verify"
+                    :disabled="gitVerifyState === 'busy'"
+                    @click="verifyGitCredentials"
+                  >{{ gitVerifyState === 'busy' ? t('workspace.s3VerifyBusy') : t('workspace.gitPatVerifyCta') }}</button>
+                  <span v-if="gitVerifyState === 'ok'" class="s3-verify-ok" data-test="ws-cfg-git-pat-verify-ok">✓ {{ t('workspace.gitPatVerifyOk') }}</span>
+                  <span v-else-if="gitVerifyState === 'fail'" class="s3-verify-fail" data-test="ws-cfg-git-pat-verify-fail">✗ {{ gitVerifyError || t('workspace.gitPatVerifyFailedGeneric') }}</span>
+                </div>
+              </div>
             </div>
 
             <p v-if="wsModalError" class="ws-err">{{ wsModalError }}</p>
@@ -617,6 +1277,53 @@ async function createWorkspace() {
             <button class="cd-close" :aria-label="t('selector.closeAria')" @click="showNewWs = false">&times;</button>
           </header>
           <div class="cd-body">
+            <!-- Preset: misma elección que en el modal de config. Aparece al
+                 inicio porque el resto del flujo (defaults de manifest, copy de
+                 "Nuevo evento/sitio") depende de esto. -->
+            <section class="preset-section" data-test="new-ws-preset">
+              <div class="preset-header">
+                <h4>{{ t('workspace.presetSection') }}</h4>
+                <button
+                  type="button"
+                  class="preset-help-btn"
+                  data-test="new-ws-preset-help"
+                  @click="showPresetExplain = true"
+                >{{ t('workspace.presetExplainLink') }}</button>
+              </div>
+              <div class="preset-cards">
+                <label
+                  class="preset-card"
+                  :class="{ selected: newWs.preset === 'linked-home' }"
+                  data-test="new-ws-preset-linked-home"
+                >
+                  <input
+                    type="radio"
+                    name="new-ws-preset"
+                    value="linked-home"
+                    :checked="newWs.preset === 'linked-home'"
+                    @change="newWs.preset = 'linked-home'"
+                  />
+                  <div class="preset-card-title">{{ t('workspace.presetLinkedHomeTitle') }}</div>
+                  <div class="preset-card-desc">{{ t('workspace.presetLinkedHomeDesc') }}</div>
+                </label>
+                <label
+                  class="preset-card"
+                  :class="{ selected: newWs.preset === 'multi-tenant' }"
+                  data-test="new-ws-preset-multi-tenant"
+                >
+                  <input
+                    type="radio"
+                    name="new-ws-preset"
+                    value="multi-tenant"
+                    :checked="newWs.preset === 'multi-tenant'"
+                    @change="newWs.preset = 'multi-tenant'"
+                  />
+                  <div class="preset-card-title">{{ t('workspace.presetMultiTenantTitle') }}</div>
+                  <div class="preset-card-desc">{{ t('workspace.presetMultiTenantDesc') }}</div>
+                </label>
+              </div>
+            </section>
+
             <label class="field-label">{{ t('workspace.nameWsField') }}</label>
             <input v-model="newWs.name" data-test="new-ws-name" :placeholder="t('workspace.nameWsPlaceholder')" />
 
@@ -667,6 +1374,124 @@ async function createWorkspace() {
             <button class="primary" data-test="new-ws-create" :disabled="newWsBusy" @click="createWorkspace">
               {{ newWsBusy ? t('workspace.creatingWs') : t('workspace.createWs') }}
             </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- S3 IAM policy help modal — abierto desde "¿qué permisos S3 necesito?" -->
+    <Teleport to="body">
+      <div v-if="showS3PolicyHelp" class="create-backdrop" @click.self="showS3PolicyHelp = false">
+        <div class="create-dialog wide" role="dialog" :aria-label="t('workspace.s3PolicyHelpTitle')" data-test="s3-policy-help">
+          <header class="cd-head">
+            <h3>{{ t('workspace.s3PolicyHelpTitle') }}</h3>
+            <button class="cd-close" :aria-label="t('selector.closeAria')" @click="showS3PolicyHelp = false">&times;</button>
+          </header>
+          <div class="cd-body">
+            <p class="s3-help-intro">{{ t('workspace.s3PolicyHelpIntro') }}</p>
+            <ol class="s3-help-steps">
+              <li>{{ t('workspace.s3PolicyHelpStep1') }}</li>
+              <li>{{ t('workspace.s3PolicyHelpStep2') }}</li>
+              <li>{{ t('workspace.s3PolicyHelpStep3') }}</li>
+              <li>{{ t('workspace.s3PolicyHelpStep4') }}</li>
+              <li>{{ t('workspace.s3PolicyHelpStep5') }}</li>
+            </ol>
+            <p class="s3-help-policy-label">{{ t('workspace.s3PolicyHelpPolicyLabel') }}</p>
+            <pre class="s3-help-policy" data-test="s3-policy-snippet">{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": [
+      "s3:PutObject",
+      "s3:DeleteObject",
+      "s3:GetObject",
+      "s3:ListBucket"
+    ],
+    "Resource": [
+      "arn:aws:s3:::TU-BUCKET",
+      "arn:aws:s3:::TU-BUCKET/*"
+    ]
+  }]
+}</pre>
+            <p class="s3-help-note">{{ t('workspace.s3PolicyHelpNote') }}</p>
+          </div>
+          <div class="dialog-actions">
+            <button class="primary" @click="showS3PolicyHelp = false">{{ t('common.close') }}</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Git PAT help modal — body depende del provider seleccionado -->
+    <Teleport to="body">
+      <div v-if="showGitPatHelp" class="create-backdrop" @click.self="showGitPatHelp = false">
+        <div class="create-dialog wide" role="dialog" :aria-label="t('workspace.gitPatHelpTitle')" data-test="git-pat-help">
+          <header class="cd-head">
+            <h3>{{ t('workspace.gitPatHelpTitle') }}</h3>
+            <button class="cd-close" :aria-label="t('selector.closeAria')" @click="showGitPatHelp = false">&times;</button>
+          </header>
+          <div class="cd-body">
+            <p class="s3-help-intro">{{ t('workspace.gitPatHelpIntro') }}</p>
+
+            <!-- GitHub -->
+            <section v-if="(cfg.git?.provider || 'github') === 'github'">
+              <h4 class="git-pat-help-provider">GitHub</h4>
+              <ol class="s3-help-steps">
+                <li>{{ t('workspace.gitPatHelpGhStep1') }}</li>
+                <li>{{ t('workspace.gitPatHelpGhStep2') }}</li>
+                <li>{{ t('workspace.gitPatHelpGhStep3') }}</li>
+                <li>{{ t('workspace.gitPatHelpGhStep4') }}</li>
+              </ol>
+              <p class="s3-help-note">{{ t('workspace.gitPatHelpGhNote') }}</p>
+            </section>
+
+            <!-- GitLab -->
+            <section v-else-if="cfg.git?.provider === 'gitlab'">
+              <h4 class="git-pat-help-provider">GitLab</h4>
+              <ol class="s3-help-steps">
+                <li>{{ t('workspace.gitPatHelpGlStep1') }}</li>
+                <li>{{ t('workspace.gitPatHelpGlStep2') }}</li>
+                <li>{{ t('workspace.gitPatHelpGlStep3') }}</li>
+              </ol>
+            </section>
+
+            <!-- Bitbucket -->
+            <section v-else-if="cfg.git?.provider === 'bitbucket'">
+              <h4 class="git-pat-help-provider">Bitbucket</h4>
+              <ol class="s3-help-steps">
+                <li>{{ t('workspace.gitPatHelpBbStep1') }}</li>
+                <li>{{ t('workspace.gitPatHelpBbStep2') }}</li>
+                <li>{{ t('workspace.gitPatHelpBbStep3') }}</li>
+              </ol>
+            </section>
+
+            <p class="s3-help-note">{{ t('workspace.gitPatHelpHttpsOnly') }}</p>
+          </div>
+          <div class="dialog-actions">
+            <button class="primary" @click="showGitPatHelp = false">{{ t('common.close') }}</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Preset explanation modal — shared between config + new-workspace modals -->
+    <Teleport to="body">
+      <div v-if="showPresetExplain" class="create-backdrop" @click.self="showPresetExplain = false">
+        <div class="create-dialog" role="dialog" :aria-label="t('workspace.presetExplainTitle')" data-test="preset-explain">
+          <header class="cd-head">
+            <h3>{{ t('workspace.presetExplainTitle') }}</h3>
+            <button class="cd-close" :aria-label="t('selector.closeAria')" @click="showPresetExplain = false">&times;</button>
+          </header>
+          <div class="cd-body">
+            <p
+              v-for="(para, i) in t('workspace.presetExplainBody').split('\n\n')"
+              :key="i"
+              class="preset-explain-p"
+              v-html="para.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`(.+?)`/g, '<code>$1</code>')"
+            />
+          </div>
+          <div class="dialog-actions">
+            <button class="primary" @click="showPresetExplain = false">{{ t('common.close') }}</button>
           </div>
         </div>
       </div>
@@ -826,4 +1651,93 @@ async function createWorkspace() {
 .dialog-actions .primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); transition: background .12s ease; }
 .dialog-actions .primary:hover:not(:disabled) { background: var(--accent-hover); }
 .dialog-actions .primary:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Preset picker ─────────────────────────────────────────────────────────── */
+.preset-section { margin-bottom: 18px; }
+.preset-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.preset-header h4 { margin: 0; font-size: 13px; font-weight: 700; color: #c4c4c4; text-transform: uppercase; letter-spacing: 0.06em; }
+.preset-help-btn {
+  background: none; border: none; color: var(--accent); font-size: 12px;
+  cursor: pointer; padding: 4px 6px; text-decoration: underline; text-underline-offset: 2px;
+}
+.preset-help-btn:hover { color: var(--accent-hover); }
+.preset-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.preset-card {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 12px 14px; border: 1px solid #3a3a3a; border-radius: 10px;
+  background: #1f1f1f; cursor: pointer; transition: border-color .15s, background .15s;
+  position: relative;
+}
+.preset-card input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+.preset-card:hover { border-color: #4a4a4a; background: #232323; }
+.preset-card.selected { border-color: var(--accent); background: #2a2418; }
+.preset-card-title { font-size: 13px; font-weight: 600; color: #e6e6e6; }
+.preset-card-desc { font-size: 11px; color: #999; line-height: 1.45; }
+.preset-explain-p { font-size: 13px; color: #d6d6d6; line-height: 1.55; margin: 0 0 12px; }
+.preset-explain-p:last-child { margin-bottom: 0; }
+.preset-explain-p strong { color: #fff; }
+.preset-explain-p code { color: #6aa9e9; background: #1a1a1a; padding: 1px 6px; border-radius: 4px; font-family: monospace; font-size: 12px; }
+
+/* ── Home pin ──────────────────────────────────────────────────────────────── */
+.home-group { margin-bottom: 18px; }
+.home-header { gap: 8px; }
+.home-badge {
+  font-size: 11px !important; font-weight: 700; color: var(--accent) !important;
+  background: rgba(255, 213, 109, 0.08); border: 1px solid rgba(255, 213, 109, 0.25);
+  padding: 2px 10px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.08em;
+}
+.home-empty {
+  display: flex; align-items: center; gap: 16px; justify-content: space-between;
+  padding: 14px 16px; border: 1px dashed #3a3a3a; border-radius: 10px;
+  background: #1c1c1c;
+}
+.home-empty-text { flex: 1 1 auto; }
+.home-empty-text strong { display: block; color: #e6e6e6; font-size: 14px; margin-bottom: 4px; }
+.home-empty-text p { margin: 0; font-size: 12px; color: #999; line-height: 1.5; }
+.btn-create-home {
+  flex-shrink: 0;
+  background: var(--accent); color: var(--accent-fg); border: 1px solid var(--accent);
+  padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;
+  transition: background .12s ease;
+}
+.btn-create-home:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-create-home:disabled { opacity: 0.5; cursor: default; }
+
+/* ── S3 credentials section (Fase 3) ─────────────────────────────────────── */
+.s3-creds-section { margin-top: 16px; padding-top: 12px; border-top: 1px solid #2f2f2f; }
+.s3-creds-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.s3-creds-header h5 { margin: 0; font-size: 12px; font-weight: 700; color: #c4c4c4; text-transform: uppercase; letter-spacing: 0.06em; }
+.radio-row { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: flex-start; padding: 8px 4px; border-radius: 6px; cursor: pointer; }
+.radio-row:hover { background: #1f1f1f; }
+.radio-row input[type="radio"] { margin-top: 2px; }
+.radio-label { display: flex; flex-direction: column; gap: 2px; }
+.radio-label strong { font-size: 13px; color: #e6e6e6; font-weight: 600; }
+.radio-desc { font-size: 11px; color: #999; line-height: 1.45; }
+.s3-creds-fields { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #333; }
+.s3-creds-stored-note {
+  font-size: 12px; color: #9ad8a3;
+  background: #1d2a1f; border: 1px solid #2a4a30; padding: 8px 10px; border-radius: 6px;
+  margin: 0 0 10px;
+}
+.s3-verify-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+.s3-verify-ok { color: #6ad08c; font-size: 12px; }
+.s3-verify-fail { color: #ff8a8a; font-size: 12px; }
+.s3-help-intro { font-size: 13px; color: #d6d6d6; margin: 0 0 12px; line-height: 1.5; }
+.s3-help-steps { padding-left: 18px; margin: 0 0 14px; color: #d6d6d6; }
+.s3-help-steps li { margin-bottom: 6px; font-size: 13px; line-height: 1.5; }
+.s3-help-policy-label { font-size: 12px; color: #aaa; margin: 8px 0 4px; }
+.s3-help-policy {
+  background: #1a1a1a; border: 1px solid #333; border-radius: 8px;
+  padding: 12px 14px; color: #d6d6d6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+  line-height: 1.5; overflow-x: auto;
+  white-space: pre;
+}
+.s3-help-note { font-size: 12px; color: #888; line-height: 1.5; margin: 10px 0 0; }
+.git-auth-section { margin-top: 18px; padding-top: 12px; border-top: 1px solid #333; }
+.git-auth-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.git-auth-header h4 { margin: 0; font-size: 13px; font-weight: 700; color: #c4c4c4; text-transform: uppercase; letter-spacing: 0.06em; }
+.git-pat-fields { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #333; }
+.git-pat-help-provider { margin: 12px 0 8px; font-size: 14px; color: #e6e6e6; }
+.create-dialog select { width: 100%; padding: 10px 12px; border: 1px solid #555; border-radius: 6px; background: #1a1a1a; color: #e0e0e0; font-size: 14px; }
 </style>
