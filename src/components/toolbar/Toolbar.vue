@@ -462,8 +462,11 @@ async function onEnableIndependent() {
 .icon-btn { display: inline-flex; align-items: center; gap: 6px; }
 .icon-btn svg { display: block; }
 .tool-label { font-size: 12px; font-weight: 600; }
-.device-btn { background: none; border: none; font-size: 16px; cursor: pointer; opacity: 0.5; padding: 2px 4px; }
-.device-btn.active { opacity: 1; }
+/* color explícito: un <button> sin color usa el negro del user-agent y los
+   labels ESCRITORIO/MÓVIL (modo Preview) quedaban ilegibles sobre el toolbar
+   oscuro. */
+.device-btn { background: none; border: none; font-size: 16px; cursor: pointer; opacity: 0.5; padding: 2px 4px; color: #d6d6d6; }
+.device-btn.active { opacity: 1; color: #fff; }
 .view-badge { font-size: 11px; font-weight: 600; border-radius: 4px; padding: 3px 8px; cursor: pointer; border: 1px solid #444; }
 .view-badge-shared { background: #2a2a2a; color: #aaa; }
 .view-badge-shared:hover { background: #383838; color: #ddd; }
