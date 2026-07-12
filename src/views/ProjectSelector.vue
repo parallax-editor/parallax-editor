@@ -779,7 +779,13 @@ async function createWorkspace() {
   <div class="selector">
     <header class="hero">
       <div class="hero-text">
-        <h1 class="title">Parallax Editor <span class="app-version" data-test="app-version">{{ t('selector.appVersionLabel', { version: APP_VERSION }) }}</span></h1>
+        <!-- Brand con el mismo look serif de la landing (GitHub Pages):
+             icono + "Parallax" seminegrita + "Editor" en itálica atenuada. -->
+        <h1 class="title">
+          <img class="brand-icon" src="/brand-icon.png" alt="" aria-hidden="true" />
+          <span class="brand-name">Parallax&nbsp;<em>Editor</em></span>
+          <span class="app-version" data-test="app-version">{{ t('selector.appVersionLabel', { version: APP_VERSION }) }}</span>
+        </h1>
         <p class="subtitle">{{ t('selector.subtitle') }}</p>
       </div>
       <div class="hero-actions">
@@ -1525,11 +1531,18 @@ async function createWorkspace() {
   gap: 16px;
 }
 .hero-actions { flex-shrink: 0; }
-.title {
-  font-size: 30px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 4px;
-  background: linear-gradient(90deg, #ffffff, #b9c4d6);
-  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+/* Brand serif de la landing: Playfair Display (local, ver index.html),
+   "Parallax" 600 + "Editor" italic 400 atenuado, con el icono al lado. */
+.title { display: flex; align-items: center; gap: 13px; margin-bottom: 6px; }
+.brand-icon { width: 38px; height: 38px; border-radius: 9px; display: block; }
+.brand-name {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #f2efe8;
 }
+.brand-name em { font-style: italic; font-weight: 400; color: #b9b4a8; }
 .subtitle { color: #8a8a8a; font-size: 14px; }
 .loading { color: #888; padding: 24px 0; }
 
@@ -1606,7 +1619,7 @@ async function createWorkspace() {
 .slug-caption code { color: #6aa9e9; font-family: monospace; background: #1a1a1a; padding: 2px 6px; border-radius: 4px; }
 .slug-hint { font-size: 11px; color: #777; margin: 4px 0 0; }
 .ws-hint { font-size: 12px; color: #9a9a9a; background: #232323; border: 1px solid #2e2e2e; border-radius: 8px; padding: 8px 10px; margin: 4px 0 6px; line-height: 1.5; }
-.app-version { font-size: 12px; font-weight: 500; color: #6b7280; vertical-align: middle; margin-left: 8px; -webkit-text-fill-color: #6b7280; }
+.app-version { font-size: 12px; font-weight: 500; color: #6b7280; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; align-self: flex-end; margin-bottom: 4px; }
 .row-with-btn { display: flex; gap: 8px; align-items: center; }
 .row-with-btn input { flex: 1 1 auto; }
 .aux-btn { background: #333; border: 1px solid #555; color: #e0e0e0; border-radius: 6px; padding: 9px 12px; cursor: pointer; font-size: 13px; white-space: nowrap; }
