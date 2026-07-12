@@ -975,6 +975,7 @@ export default {
     titleWithSlug: 'Vista en vivo · {slug}',
     missingProject: 'Falta el proyecto. Abre "Vista en vivo" desde el editor con un proyecto abierto.',
     waitingForData: 'Esperando datos del editor… (vuelve a pulsar "Vista en vivo")',
+    fitWindow: 'Ventana actual',
   },
   blend: {
     none: '(ninguno)',

@@ -46,6 +46,9 @@ import {
 // window.innerWidth (grande) y los textos con `clamp(…,9vw,…)` desbordan por
 // los bordes del frame 390.
 import { remapSiteViewportUnits } from '../composables/useDeviceUnitRemap'
+// Presets de tamaños de dispositivo — los MISMOS del dropdown del canvas del
+// editor (módulo puro, sin dependencia del store del editor).
+import { MOBILE_PRESETS, DESKTOP_PRESETS } from '../constants/devicePresets'
 
 // ── Project identity from the query string ────────────────────────────────
 // `type` es el id del workspace — CUALQUIERA, no solo eventos/site (antes esto
@@ -178,13 +181,88 @@ function onFadeEnd() {
 // en vivo cómo se rendería en Móvil sin salir de esta pestaña.
 //
 // Cuando el usuario elige Móvil, envolvemos <ParallaxSite> en un frame
-// simulado 390×844 (el mismo tamaño lógico del artboard móvil del editor)
+// simulado (390×844 por defecto — configurable con el menú de tamaños)
 // centrado en la pantalla, con un fondo neutro alrededor. El engine sigue
 // pintando `mode="prod"` como siempre; el frame es puramente visual — como el
 // simulador de Xcode o el modo mobile de Chrome DevTools. `vh`/`vw` resuelven
 // naturalmente contra ese contenedor (ancho controlado por CSS).
-const MOBILE_W = 390
-const MOBILE_H = 844
+//
+// ── Menú de tamaños (mismos presets del canvas del editor) ──
+// `simMobile` / `simDesktop` guardan el tamaño elegido por modo. En desktop
+// hay además la opción "Ventana actual" (default) = comportamiento histórico:
+// el mundo ocupa la ventana real, sin frame ni remap. Con un preset desktop
+// activo, el frame se encaja con `zoom` CSS si es más ancho que la ventana
+// (Chrome/Electron only — el editor no corre en otros browsers).
+const simMobile = ref({ width: 390, height: 844 })
+const simDesktop = ref<{ width: number; height: number } | null>(null) // null = ventana actual
+const sizeMenuOpen = ref(false)
+const customW = ref(390)
+const customH = ref(844)
+// Ancho real de la ventana (reactivo a resize) para el zoom-to-fit desktop.
+const winW = ref(typeof window !== 'undefined' ? window.innerWidth : 1440)
+function onWinResize() { winW.value = window.innerWidth }
+
+const activeFrame = computed(() =>
+  deviceMode.value === 'mobile' ? simMobile.value : simDesktop.value,
+)
+const presetsForMode = computed(() =>
+  deviceMode.value === 'mobile' ? MOBILE_PRESETS : DESKTOP_PRESETS,
+)
+const activePresetId = computed(() => {
+  const f = activeFrame.value
+  if (!f) return null
+  const match = presetsForMode.value.find((p) => p.width === f.width && p.height === f.height)
+  return match ? match.id : null
+})
+// "Personalizado" activo = hay frame pero no coincide con ningún preset.
+const isCustomSize = computed(() => activeFrame.value !== null && activePresetId.value === null)
+const sizeButtonLabel = computed(() => {
+  const f = activeFrame.value
+  return f ? `${f.width}×${f.height}` : t('live.fitWindow')
+})
+
+const controlsRef = ref<HTMLElement | null>(null)
+function onDocMouseDown(e: MouseEvent) {
+  // Click fuera de la barra (y su desplegable) → cierra el menú y deja que
+  // el auto-hide vuelva a mandar.
+  if (controlsRef.value && !controlsRef.value.contains(e.target as Node)) {
+    sizeMenuOpen.value = false
+    document.removeEventListener('mousedown', onDocMouseDown, true)
+    scheduleHide(600)
+  }
+}
+function toggleSizeMenu() {
+  sizeMenuOpen.value = !sizeMenuOpen.value
+  if (sizeMenuOpen.value) {
+    const f = activeFrame.value
+    customW.value = f?.width ?? (deviceMode.value === 'mobile' ? 390 : 1440)
+    customH.value = f?.height ?? (deviceMode.value === 'mobile' ? 844 : 900)
+    document.addEventListener('mousedown', onDocMouseDown, true)
+  } else {
+    document.removeEventListener('mousedown', onDocMouseDown, true)
+  }
+}
+function pickSizePreset(id: string) {
+  const p = presetsForMode.value.find((x) => x.id === id)
+  if (!p) return
+  applyFrameSize({ width: p.width, height: p.height })
+  sizeMenuOpen.value = false
+}
+function pickFitWindow() {
+  // Solo existe en desktop: vuelve al comportamiento sin frame.
+  simDesktop.value = null
+  sizeMenuOpen.value = false
+}
+function applyCustomSize() {
+  const w = Number(customW.value)
+  const h = Number(customH.value)
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w < 200 || h < 200) return
+  applyFrameSize({ width: Math.round(w), height: Math.round(h) })
+}
+function applyFrameSize(size: { width: number; height: number }) {
+  if (deviceMode.value === 'mobile') simMobile.value = size
+  else simDesktop.value = size
+}
 // Overlay de controles — feedback Josh (2ª iteración): con el mousemove global
 // el escondido era "de suerte" porque CUALQUIER movimiento del mouse (que en
 // una vista previa pasa todo el tiempo) reseteaba el timer y los dejaba
@@ -202,7 +280,9 @@ let inHotZone = false
 function scheduleHide(delay: number) {
   if (hideTimer) clearTimeout(hideTimer)
   hideTimer = setTimeout(() => {
-    if (!inHotZone) controlsVisible.value = false
+    // Con el menú de tamaños abierto la barra no se oculta jamás (el mouse
+    // puede estar sobre el desplegable, fuera del strip de la barra).
+    if (!inHotZone && !sizeMenuOpen.value) controlsVisible.value = false
   }, delay)
 }
 function onHotZoneEnter() {
@@ -216,32 +296,40 @@ function onHotZoneLeave() {
 }
 function setDevice(m: DeviceMode) {
   deviceMode.value = m
-  // No forzamos visibilidad extra: el usuario ya está encima de la barra.
+  // El menú de tamaños es POR MODO (presets distintos) — se cierra al cambiar.
+  sizeMenuOpen.value = false
 }
-// Estilo del contenedor del engine. En desktop: no aplicamos nada (el mundo
-// ocupa la ventana). En mobile: ancho fijo 390 y `min-height:844`, centrado
-// horizontalmente. `overflow:visible` para no cortar posibles secciones más
-// altas — el usuario scrollea dentro de la ventana como en el móvil real.
+// Estilo del contenedor del engine. Sin frame activo (desktop "Ventana
+// actual"): nada — el mundo ocupa la ventana. Con frame (móvil siempre;
+// desktop con preset): ancho fijo + minHeight del tamaño elegido, centrado.
+// `overflow:hidden` + borderRadius para el look de dispositivo. Si el frame
+// es más ancho que la ventana (p.ej. PC 2K en un laptop), `zoom` lo encaja —
+// el remap vw/vh ya convirtió a px, así que el zoom escala todo uniforme.
 const stageStyle = computed<Record<string, string>>(() => {
-  if (deviceMode.value !== 'mobile') return {}
-  return {
-    width: `${MOBILE_W}px`,
-    maxWidth: `${MOBILE_W}px`,
-    minHeight: `${MOBILE_H}px`,
+  const f = activeFrame.value
+  if (!f) return {}
+  const isMobile = deviceMode.value === 'mobile'
+  const fit = Math.min(1, (winW.value - 48) / f.width)
+  const style: Record<string, string> = {
+    width: `${f.width}px`,
+    maxWidth: `${f.width}px`,
+    minHeight: `${f.height}px`,
     margin: '0 auto',
     boxShadow: '0 0 0 1px rgba(255,255,255,.08), 0 20px 60px rgba(0,0,0,.35)',
     background: '#fff',
-    // Radio de 24px que evoca la esquina de un iPhone sin caer en el "chrome
-    // completo" con notch etc. — sobrio pero claro.
-    borderRadius: '24px',
+    // Radio de 24px que evoca la esquina de un teléfono en móvil; en desktop
+    // un radio más sobrio de monitor/ventana.
+    borderRadius: isMobile ? '24px' : '10px',
     overflow: 'hidden',
   }
+  if (fit < 1) style.zoom = String(fit)
+  return style
 })
 // The engine-ready render copy: shared asset-prefix + active-view resolution.
-// En modo mobile-sim adicionalmente remapeamos `vw`/`vh` a `px` contra
-// 390×844 (el frame simulado), así el engine se comporta como si estuviera en
-// un móvil real dentro de una ventana grande. En desktop NO se remapea —
-// resuelven contra el viewport real como en el sitio publicado.
+// Con un frame activo (móvil siempre; desktop con preset) remapeamos `vw`/`vh`
+// a `px` contra el tamaño del frame, así el engine se comporta como si ese
+// frame fuera el viewport real. Sin frame (desktop "Ventana actual") NO se
+// remapea — resuelven contra el viewport real como en el sitio publicado.
 const previewSite = computed(() => {
   if (!rawSite.value) return null
   try {
@@ -251,8 +339,9 @@ const previewSite = computed(() => {
       currentSlug.value,
       deviceMode.value,
     )
-    if (deviceMode.value === 'mobile' && base) {
-      return remapSiteViewportUnits(base, { width: MOBILE_W, height: MOBILE_H })
+    const f = activeFrame.value
+    if (f && base) {
+      return remapSiteViewportUnits(base, { width: f.width, height: f.height })
     }
     return base
   } catch (e: any) {
@@ -319,6 +408,7 @@ onMounted(() => {
   // visible para siempre en esa ruta.
   controlsVisible.value = true
   scheduleHide(2500)
+  window.addEventListener('resize', onWinResize)
   if (!validType || !originalSlug) {
     errorMsg.value = t('live.missingProject')
     return
@@ -358,6 +448,8 @@ onBeforeUnmount(() => {
     channel = null
   }
   window.removeEventListener('storage', onStorage)
+  window.removeEventListener('resize', onWinResize)
+  document.removeEventListener('mousedown', onDocMouseDown, true)
   if (hideTimer) clearTimeout(hideTimer)
 })
 </script>
@@ -389,6 +481,7 @@ onBeforeUnmount(() => {
     <!-- Barra flotante de controles (Ver como: 🖥 / 📱). Reveal por hot-zone
          del borde superior. Copia el mismo copy del toolbar del editor. -->
     <div
+      ref="controlsRef"
       class="live-controls"
       :class="{ 'is-visible': controlsVisible }"
       data-test="live-controls"
@@ -411,6 +504,79 @@ onBeforeUnmount(() => {
         data-test="live-device-mobile"
         @click="setDevice('mobile')"
       >&#x1F4F1; <span class="live-device-lbl">{{ t('toolbar.mobile') }}</span></button>
+
+      <span class="live-controls-sep" aria-hidden="true" />
+
+      <!-- Tamaño del dispositivo: mismos presets del canvas del editor. -->
+      <button
+        type="button"
+        class="live-size-btn"
+        :aria-expanded="sizeMenuOpen"
+        data-test="live-size-toggle"
+        @click="toggleSizeMenu"
+      >
+        <span class="live-size-value">{{ sizeButtonLabel }}</span>
+        <span class="live-size-caret" aria-hidden="true">▾</span>
+      </button>
+
+      <!-- Desplegable anclado a la barra (dentro de .live-controls para que
+           el hover lo cuente como "en la barra" y no se auto-oculte). -->
+      <div v-if="sizeMenuOpen" class="live-size-menu" role="menu" data-test="live-size-menu">
+        <div class="lsm-title">{{ deviceMode === 'mobile' ? t('mobileSize.titleMobile') : t('mobileSize.titleDesktop') }}</div>
+        <button
+          v-if="deviceMode === 'desktop'"
+          type="button"
+          :class="['lsm-item', { active: !activeFrame }]"
+          role="menuitemradio"
+          :aria-checked="!activeFrame"
+          data-test="live-size-fit-window"
+          @click="pickFitWindow"
+        >
+          <span class="lsm-check">{{ !activeFrame ? '✓' : '' }}</span>
+          <span class="lsm-label">{{ t('live.fitWindow') }}</span>
+        </button>
+        <button
+          v-for="p in presetsForMode"
+          :key="p.id"
+          type="button"
+          :class="['lsm-item', { active: activePresetId === p.id }]"
+          role="menuitemradio"
+          :aria-checked="activePresetId === p.id"
+          :data-test="`live-size-preset-${p.id}`"
+          @click="pickSizePreset(p.id)"
+        >
+          <span class="lsm-check">{{ activePresetId === p.id ? '✓' : '' }}</span>
+          <span class="lsm-label">{{ p.label }}</span>
+          <span class="lsm-dim">{{ p.width }}×{{ p.height }}</span>
+        </button>
+        <div class="lsm-sep" />
+        <div :class="['lsm-custom', { active: isCustomSize }]">
+          <span class="lsm-check">{{ isCustomSize ? '✓' : '' }}</span>
+          <span class="lsm-label">{{ t('mobileSize.custom') }}</span>
+          <div class="lsm-inputs">
+            <input
+              type="number"
+              v-model.number="customW"
+              min="200"
+              max="3840"
+              :aria-label="t('mobileSize.customWidth')"
+              data-test="live-size-custom-width"
+              @keydown.enter="applyCustomSize"
+            />
+            <span class="lsm-times">×</span>
+            <input
+              type="number"
+              v-model.number="customH"
+              min="200"
+              max="3840"
+              :aria-label="t('mobileSize.customHeight')"
+              data-test="live-size-custom-height"
+              @keydown.enter="applyCustomSize"
+            />
+            <button type="button" class="lsm-apply" data-test="live-size-custom-apply" @click="applyCustomSize">{{ t('mobileSize.apply') }}</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Contenedor del engine. Si es mobile, aplicamos ancho fijo + centrado y
@@ -616,4 +782,95 @@ body,
   border-color: rgba(255, 213, 109, 0.4);
 }
 .live-device-lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* ── Menú de tamaños de dispositivo (mismos presets del canvas) ────────── */
+.live-controls-sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.16);
+  margin: 0 2px;
+  flex: none;
+}
+.live-size-btn {
+  background: transparent;
+  color: #d6d6d6;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 600 12px inherit;
+  transition: background 0.12s, color 0.12s;
+}
+.live-size-btn:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.live-size-value { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+.live-size-caret { font-size: 9px; opacity: 0.8; }
+
+/* Desplegable anclado bajo la barra. Vive DENTRO de .live-controls, así el
+   mouseenter de la barra lo cubre y el auto-hide no lo mata mientras eliges. */
+.live-size-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 252px;
+  background: rgba(24, 24, 28, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  max-height: 70vh;
+  overflow-y: auto;
+  text-align: left;
+}
+.lsm-title { font-size: 11px; color: #8a8a94; padding: 4px 8px 6px; font-weight: 600; }
+.lsm-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: #ccc;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+.lsm-item:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
+.lsm-item.active { color: #fff; }
+.lsm-check { width: 12px; color: var(--accent-strong, #4a9eff); font-size: 12px; flex-shrink: 0; }
+.lsm-label { flex: 1; font-weight: 500; }
+.lsm-dim { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #8a8a94; font-size: 11px; }
+.lsm-sep { height: 1px; background: rgba(255, 255, 255, 0.12); margin: 6px 4px; }
+.lsm-custom { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; flex-wrap: wrap; font-size: 12px; color: #ccc; }
+.lsm-custom.active { color: #fff; }
+.lsm-inputs { display: flex; align-items: center; gap: 4px; width: 100%; margin-top: 6px; padding-left: 20px; }
+.lsm-inputs input {
+  width: 64px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #eee;
+  border-radius: 5px;
+  padding: 3px 6px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.lsm-inputs input:focus { outline: none; border-color: var(--accent-strong, #4a9eff); }
+.lsm-times { color: #8a8a94; }
+.lsm-apply {
+  background: var(--accent, #0066cc);
+  border: none;
+  color: var(--accent-fg, #fff);
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+.lsm-apply:hover { background: var(--accent-hover, #157ae0); }
 </style>

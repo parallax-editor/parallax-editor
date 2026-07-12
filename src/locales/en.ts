@@ -972,6 +972,7 @@ export default {
     titleWithSlug: 'Live preview · {slug}',
     missingProject: 'Project missing. Open "Live preview" from the editor with a project open.',
     waitingForData: 'Waiting for data from the editor… (press "Live preview" again)',
+    fitWindow: 'Current window',
   },
   blend: {
     none: '(none)',
