@@ -1,0 +1,59 @@
+# ─── Release firmado + notarizado (Bloque D) ─────────────────────────────────
+#
+# Trigger: push de un tag `v*` (ej. v0.2.0). Produce dos .dmg (arm64 + x64)
+# firmados con Developer ID Application y notarizados con notarytool.
+#
+# Requisitos que TÚ configuras UNA VEZ en Settings → Secrets and variables →
+# Actions del repo:
+#   APPLE_ID              tu Apple ID (email)
+#   APPLE_ID_PASSWORD     app-specific password (appleid.apple.com → Security)
+#   APPLE_TEAM_ID         Team ID (developer.apple.com → Membership)
+#   CSC_LINK              certificado .p12 exportado del Keychain, base64
+#                         → `base64 -i cert.p12 | pbcopy`
+#   CSC_KEY_PASSWORD      password del .p12
+#
+# Si el push no viene con tag `v*` el workflow no corre. Si algún secreto
+# falta electron-builder producirá un .dmg unsigned local — pero notarytool
+# fallará y el build se marca rojo, que es lo correcto.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build-mac:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Build (SPA + server + electron)
+        env:
+          # Inyectamos las creds solo en pasos que las necesitan; el env global
+          # las expone durante `yarn dist:mac` que llama electron-builder.
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # electron-builder lee `CSC_LINK` (base64 del .p12 o file://path) y
+          # `CSC_KEY_PASSWORD` para importar el cert en un keychain temporal
+          # aislado durante el build. Nada persiste en el runner.
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: yarn dist:mac
+      # Sube AMBOS DMG al GitHub Release del tag. Nombre estable
+      # `Parallax-Editor-<arch>.dmg` sin versión → la landing puede apuntar a
+      # /releases/latest/download/… sin rewrite por release.
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist-electron/Parallax-Editor-arm64.dmg
+            dist-electron/Parallax-Editor-x64.dmg
+          fail_on_unmatched_files: true

@@ -2579,7 +2579,28 @@ function openAnimHelp(section: string | null = null) {
              in-engine to another workspace project (link = { site: '<slug>' }).
              Every write goes through setAtPath('<selectedPath>.link', …). -->
         <div class="prop-group-title">{{ t('properties.groupLink') }}</div>
-        <div class="prop-field" data-test="link-mode-field">
+
+        <!-- CTA visible cuando el elemento NO es un enlace (feedback de
+             Daniela: "cómo enlazo un botón"). Un botón grande en vez del
+             dropdown escondido resuelve la discoverability sin cambiar el
+             modelo — el click deriva a `linkMode='url'` con href vacío, que
+             abre los campos como cualquier otro modo del select. -->
+        <div v-if="linkMode === 'none'" class="link-cta-row" data-test="link-cta">
+          <button
+            type="button"
+            class="link-cta-btn"
+            data-test="link-cta-btn"
+            @click="onLinkModeChange('url')"
+          >
+            <span class="link-cta-icon" aria-hidden="true">🔗</span>
+            <span class="link-cta-text">
+              <strong>{{ t('properties.linkCtaTitle') }}</strong>
+              <span class="link-cta-sub">{{ t('properties.linkCtaSub') }}</span>
+            </span>
+          </button>
+        </div>
+
+        <div v-else class="prop-field" data-test="link-mode-field">
           <label class="field-label">{{ t('properties.f.type') }}</label>
           <select
             class="field-input field-control"
@@ -2790,6 +2811,21 @@ function openAnimHelp(section: string | null = null) {
 .props-content { padding: 8px 12px; }
 .prop-section-title { font-weight: 600; font-size: 14px; margin-bottom: 8px; text-transform: capitalize; }
 .prop-group-title { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 12px; margin-bottom: 4px; padding-top: 8px; border-top: 1px solid #333; }
+/* Link CTA (feedback Daniela C4): botón grande cuando el elemento NO es
+   enlace todavía. Textura similar al empty-state del home pin en el
+   selector — invita a la acción sin ser intrusivo. */
+.link-cta-row { padding: 6px 0 4px; }
+.link-cta-btn {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border: 1px dashed #3a3a3a; border-radius: 8px;
+  background: #1c1c1c; color: #e0e0e0; cursor: pointer;
+  text-align: left; transition: border-color .15s, background .15s;
+}
+.link-cta-btn:hover { border-color: var(--accent); background: #2a2418; }
+.link-cta-icon { font-size: 18px; line-height: 1; }
+.link-cta-text { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.link-cta-text strong { font-size: 12px; color: #f0f0f0; }
+.link-cta-sub { font-size: 11px; color: #999; line-height: 1.4; }
 .prop-readonly { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
 .ro-label { font-size: 11px; color: #999; min-width: 70px; flex-shrink: 0; }
 .ro-value { flex: 1; font-size: 12px; color: #aaa; background: #242424; border: 1px solid #333; border-radius: 4px; padding: 4px 8px; }

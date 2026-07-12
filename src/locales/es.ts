@@ -426,6 +426,8 @@ export default {
     groupForm: 'Formulario',
     groupComponent: 'Componente',
     groupLink: 'Link',
+    linkCtaTitle: 'Convertir en enlace',
+    linkCtaSub: 'Que al hacer click abra una URL o navegue a otro sitio del workspace.',
     groupSite: 'Sitio',
     groupTheme: 'Tema',
     f: {

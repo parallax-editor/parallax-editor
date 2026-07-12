@@ -61,14 +61,33 @@ mac:
   category: public.app-category.developer-tools
   # Ícono de la app (PÆ). Generado con iconutil desde build/icon-1024.png.
   icon: build/icon.icns
-  # Firma ad-hoc (sin identidad de Apple Developer). App interna.
-  identity: null
+  # ── Firma + Notarize (Bloque D) ──────────────────────────────────────────
+  # Cuando `CSC_LINK` (certificado exportado en base64 o file:// path) está
+  # presente en el env, electron-builder firma con el "Developer ID Application"
+  # que tenga match dentro del keychain temporal. Si no hay CSC_LINK →
+  # `identity: null` sigue produciendo un ad-hoc unsigned (path histórico para
+  # desarrollo local, sin cambios). El pipeline de release en GitHub Actions
+  # inyecta las creds solo en el runner protegido.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # `notarize:false` → electron-builder NO llama a altool automáticamente.
+  # Ejecutamos `scripts/notarize.mjs` en la fase afterAllArtifactBuild para
+  # usar notarytool (el path moderno + más rápido). Cuando falta CSC_LINK el
+  # notarize se omite silenciosamente (`skip if unsigned`).
+  notarize: false
   # Descripciones de uso (TCC): macOS las muestra al pedir acceso a estas
   # carpetas protegidas cuando el usuario elige/clona un workspace ahí.
   extendInfo:
     NSDocumentsFolderUsageDescription: "Parallax Editor necesita acceder a las carpetas que elijas para abrir y guardar tus sitios."
     NSDesktopFolderUsageDescription: "Parallax Editor necesita acceder a las carpetas que elijas para abrir y guardar tus sitios."
     NSDownloadsFolderUsageDescription: "Parallax Editor necesita acceder a las carpetas que elijas para abrir y guardar tus sitios."
+
+# afterAllArtifactBuild: al final de todos los .dmg, corremos notarize.mjs
+# para cada uno (arm64 + x64). Si CSC/APPLE_ID no están presentes es un no-op
+# — permite seguir haciendo builds locales unsigned.
+afterAllArtifactBuild: scripts/notarize.mjs
 
 dmg:
   title: Parallax Editor

@@ -423,6 +423,8 @@ export default {
     groupForm: 'Form',
     groupComponent: 'Component',
     groupLink: 'Link',
+    linkCtaTitle: 'Turn into a link',
+    linkCtaSub: 'On click, open a URL or navigate to another site of the workspace.',
     groupSite: 'Site',
     groupTheme: 'Theme',
     f: {

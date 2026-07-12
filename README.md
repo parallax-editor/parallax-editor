@@ -104,28 +104,20 @@ yarn dist:dir           # quick validation (no .dmg, ~30s) → dist-electron/mac
 yarn dist:mac           # full build → dist-electron/Parallax-Editor-{x64,arm64}.dmg
 ```
 
-Both `.dmg` files are **ad-hoc unsigned** today. Notarized signing
-(Apple Developer ID + `notarytool`) is on the roadmap — at that point
-the first-open dance below goes away. Until then:
+**Local builds are ad-hoc unsigned.** If you run `yarn dist:mac` on your
+Mac without an Apple Developer certificate configured, the .dmg comes
+out unsigned and macOS will show the misleading "damaged" prompt on
+first open. Clear it once with `xattr -dr com.apple.quarantine
+"/Applications/Parallax Editor.app"` and it opens normally afterwards.
 
-When you open the installed `.app` for the first time, macOS may show:
-
-> **"Parallax Editor" is damaged and can't be opened. You should move it to the Trash.**
-
-That message is misleading — the app isn't damaged. It's Gatekeeper
-refusing an ad-hoc-signed app that the browser tagged with
-`com.apple.quarantine` on download. Clear the flag once and the app
-opens normally afterwards:
-
-```bash
-xattr -dr com.apple.quarantine "/Applications/Parallax Editor.app"
-```
-
-(adjust the path if you moved the `.app` elsewhere). After clearing
-quarantine, double-click as normal. macOS may still show a less
-alarming "downloaded from Internet — are you sure?" prompt the first
-time — that one is harmless: right-click the `.app` → **Open** once
-to confirm and it won't ask again.
+**Official releases from `main` are signed + notarized** by the GitHub
+Actions workflow at `.github/workflows/release.yml`. Pushing a `v*`
+tag triggers electron-builder with `Developer ID Application` signing
++ hardened runtime + `notarytool` submission; the .dmg attached to
+the GitHub Release opens without Gatekeeper friction. Repo maintainers
+need these secrets configured once: `APPLE_ID`, `APPLE_ID_PASSWORD`
+(app-specific), `APPLE_TEAM_ID`, `CSC_LINK` (base64 of the .p12
+exported from Keychain), `CSC_KEY_PASSWORD`.
 
 ## Commands
 
