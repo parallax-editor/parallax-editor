@@ -19,7 +19,7 @@
 // Contrato: la composable NO renderiza — solo devuelve estado + funciones.
 // Cada consumer (modal en el selector o pantalla dedicada) monta su UI.
 
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import {
   s3Api,
   gitApiExtra,
@@ -98,6 +98,18 @@ export function useWorkspaceForm(opts: UseWorkspaceFormOpts): WorkspaceForm {
   const gitVerifyState = ref<'idle' | 'busy' | 'ok' | 'fail'>('idle')
   const gitVerifyError = ref<string | null>(null)
   const onGitCredsInput = () => { gitCredsDirty.value = true }
+
+  // Cambiar el MODO (system ↔ explicit/pat) limpia el resultado de la última
+  // verificación: un "✗ falta usuario/token" del modo PAT no tiene sentido
+  // pegado en pantalla después de pasarse a auth del sistema (y viceversa).
+  watch(() => cfg.value?.s3?.credentialsMode, () => {
+    s3VerifyState.value = 'idle'
+    s3VerifyError.value = null
+  })
+  watch(() => cfg.value?.git?.authMode, () => {
+    gitVerifyState.value = 'idle'
+    gitVerifyError.value = null
+  })
 
   function loadWorkspace(id: string) {
     const ws = wsState.list.find((w) => w.id === id)
