@@ -193,6 +193,14 @@ export async function syncSiteToS3(ws: Workspace, slug: string, credentials?: S3
           Body: createReadStream(file),
           ContentType: contentType(file),
           ContentLength: statSync(file).size,
+          // Sin CacheControl el navegador cachea heurísticamente (por
+          // Last-Modified) y un publish posterior queda invisible hasta un
+          // hard-refresh — el usuario ve "la versión vieja" aunque S3 ya
+          // tenga la nueva. JSON (site.json/manifest.json) va `no-cache`:
+          // siempre revalida contra S3 (ETag) y un publish se ve al instante.
+          // El resto de assets llevan nombre estable pero cambian poco:
+          // max-age corto (5 min) como equilibrio carga/frescura.
+          CacheControl: /\.json$/i.test(rel) ? 'no-cache' : 'public, max-age=300',
         }),
       )
       uploaded++
@@ -304,6 +312,9 @@ export async function publishCatalogManifest(ws: Workspace, credentials?: S3Cred
         Body: body,
         ContentType: 'application/json',
         ContentLength: Buffer.byteLength(body, 'utf-8'),
+        // Igual que los site.json del publish: sin esto el navegador cachea
+        // heurísticamente y el catálogo publicado queda stale.
+        CacheControl: 'no-cache',
       }),
     )
     return { ok: true, count: items.length }

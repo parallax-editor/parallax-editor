@@ -3,7 +3,7 @@ import type { Server as HttpServer } from 'http'
 import { createReadStream, existsSync } from 'fs'
 import { extname } from 'path'
 import { listProjects, readProject, writeProject, createProject, duplicateProject, getRepoPath, getContentRelPath, getAssetPath, saveProjectAsset, assetKindFromMime, listProjectAssets, deleteProjectAsset, contentSignature } from './projects'
-import { gitLog, gitShow, gitCommit, gitPush, gitPull, gitPendingCommits, gitOriginRecent, gitAheadCount, gitConfigStatus, gitClone, gitRestoreSnapshot, validatePat, getRemoteUrl } from './git'
+import { gitLog, gitShow, gitCommit, gitPush, gitPull, gitPendingCommits, gitOriginRecent, gitAheadCount, gitConfigStatus, gitClone, gitRestoreSnapshot, validatePat, validateSystemGitAccess, getRemoteUrl } from './git'
 import { runClaude, cancelClaude, isClaudeAvailable } from './claude'
 import { setupWatcher, addWatchPath } from './watcher'
 import { loadComponentRegistry, formatComponentCatalogForPrompt } from './components'
@@ -658,6 +658,22 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
           return json(res, r, r.ok ? 200 : 200) // siempre 200; el ok dice el resultado
         } catch (e: any) {
           return json(res, { ok: false, error: e?.message || 'No se pudo validar el PAT.' })
+        }
+      }
+
+      // POST /api/git/verify-access { workspaceId } → ls-remote con la auth
+      // del SISTEMA (SSH key / credential helper). El "Verificar acceso" de la
+      // tab Git en modo `system` — paridad con el botón de S3 en modo system.
+      if (url === '/api/git/verify-access' && method === 'POST') {
+        const body = await parseBody(req).catch(() => ({}))
+        const wsId = String(body?.workspaceId || '')
+        const ws = resolveWorkspace(wsId)
+        if (!ws) return json(res, { ok: false, error: 'Workspace desconocido' }, 404)
+        try {
+          const r = validateSystemGitAccess(ws.repoPath)
+          return json(res, r)
+        } catch (e: any) {
+          return json(res, { ok: false, error: e?.message || 'No se pudo verificar el acceso.' })
         }
       }
 

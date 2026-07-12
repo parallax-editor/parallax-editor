@@ -352,6 +352,13 @@ export const gitApiExtra = {
       method: 'POST',
       body: JSON.stringify({ workspaceId, gitAuth }),
     }),
+  // POST /api/git/verify-access → ls-remote con la auth del SISTEMA (SSH /
+  // credential helper). El "Verificar acceso" del modo `system` de la tab Git.
+  verifySystemAccess: (workspaceId: string) =>
+    api<{ ok: boolean; error?: string }>('/git/verify-access', {
+      method: 'POST',
+      body: JSON.stringify({ workspaceId }),
+    }),
 }
 
 /**

@@ -252,17 +252,25 @@ export function useWorkspaceForm(opts: UseWorkspaceFormOpts): WorkspaceForm {
 
   async function verifyGitCredentials() {
     if (!cfg.value) return
-    const u = gitCreds.value.username.trim()
-    const tk = gitCreds.value.token.trim()
-    if (!u || !tk) {
-      gitVerifyState.value = 'fail'
-      gitVerifyError.value = t('workspace.gitPatBothRequired')
-      return
-    }
+    const isPat = cfg.value.git?.authMode === 'pat'
     gitVerifyState.value = 'busy'
     gitVerifyError.value = null
     try {
-      const r = await gitApiExtra.validatePat(cfg.value.id, { username: u, token: tk })
+      let r: { ok: boolean; error?: string }
+      if (isPat) {
+        const u = gitCreds.value.username.trim()
+        const tk = gitCreds.value.token.trim()
+        if (!u || !tk) {
+          gitVerifyState.value = 'fail'
+          gitVerifyError.value = t('workspace.gitPatBothRequired')
+          return
+        }
+        r = await gitApiExtra.validatePat(cfg.value.id, { username: u, token: tk })
+      } else {
+        // Modo `system`: prueba la auth del host (SSH key / credential
+        // helper) con ls-remote — paridad con el verify de S3 en system.
+        r = await gitApiExtra.verifySystemAccess(cfg.value.id)
+      }
       if (r.ok) { gitVerifyState.value = 'ok' }
       else { gitVerifyState.value = 'fail'; gitVerifyError.value = r.error || t('workspace.gitPatVerifyFailedGeneric') }
     } catch (e: any) {

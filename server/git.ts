@@ -384,6 +384,35 @@ export function validatePat(cwd: string, auth: GitAuth): { ok: boolean; error?: 
   }
 }
 
+/**
+ * Valida el acceso al remoto con la AUTENTICACIÓN DEL SISTEMA (SSH key,
+ * credential helper) — el equivalente de `validatePat` para `authMode:
+ * 'system'`. `git ls-remote --heads` contra el remoto efectivo de push, con
+ * `GIT_TERMINAL_PROMPT=0` y `BatchMode` de SSH para que un host sin llave
+ * falle con error en vez de colgarse esperando un prompt interactivo.
+ */
+export function validateSystemGitAccess(cwd: string): { ok: boolean; error?: string } {
+  const remote = effectivePushRemote(cwd)
+  if (!remote) {
+    return {
+      ok: false,
+      error: 'No se pudo determinar el remoto de push. Configura el upstream y vuelve a intentar.',
+    }
+  }
+  const env: NodeJS.ProcessEnv = {
+    GIT_TERMINAL_PROMPT: '0',
+    // SSH sin prompts: si la llave no sirve, error inmediato (no password ni
+    // confirmación de host nuevo colgando el request).
+    GIT_SSH_COMMAND: 'ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new',
+  }
+  try {
+    git(`ls-remote --heads ${remote.name}`, cwd, env)
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: (e && e.message) || 'No se pudo acceder al remoto con la autenticación del sistema.' }
+  }
+}
+
 // Traer cambios del remoto. Estrategia para 2 personas editando el repo:
 //   1) `pull --ff-only` (avance limpio cuando solo el remoto cambió).
 //   2) si NO puede avanzar por DIVERGENCIA (ambos commitearon) y el árbol está

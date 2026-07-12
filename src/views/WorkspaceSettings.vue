@@ -441,11 +441,16 @@ function goBack() { router.push('/') }
             <input v-model="form.gitCreds.value.token" :type="form.gitShowToken.value ? 'text' : 'password'" data-test="wsSettings-git-token" :placeholder="t('workspace.gitPatTokenPlaceholder')" autocomplete="off" spellcheck="false" @input="form.onGitCredsInput" />
             <button class="aux-btn" type="button" @click="form.gitShowToken.value = !form.gitShowToken.value">{{ form.gitShowToken.value ? t('workspace.s3HideSecret') : t('workspace.s3ShowSecret') }}</button>
           </div>
-          <div class="verify-row">
-            <button type="button" class="aux-btn" data-test="wsSettings-git-verify" :disabled="form.gitVerifyState.value === 'busy'" @click="form.verifyGitCredentials">{{ form.gitVerifyState.value === 'busy' ? t('workspace.s3VerifyBusy') : t('workspace.gitPatVerifyCta') }}</button>
-            <span v-if="form.gitVerifyState.value === 'ok'" class="verify-ok">✓ {{ t('workspace.gitPatVerifyOk') }}</span>
-            <span v-else-if="form.gitVerifyState.value === 'fail'" class="verify-fail">✗ {{ form.gitVerifyError.value || t('workspace.gitPatVerifyFailedGeneric') }}</span>
-          </div>
+        </div>
+
+        <!-- Verificar acceso: SIEMPRE visible (system y pat) — en system
+             prueba la SSH key / credential helper del host con ls-remote;
+             en pat exige username+token tipeados. Paridad con el botón de
+             S3 (feedback Josh). -->
+        <div class="verify-row">
+          <button type="button" class="aux-btn" data-test="wsSettings-git-verify" :disabled="form.gitVerifyState.value === 'busy'" @click="form.verifyGitCredentials">{{ form.gitVerifyState.value === 'busy' ? t('workspace.s3VerifyBusy') : t('workspace.gitPatVerifyCta') }}</button>
+          <span v-if="form.gitVerifyState.value === 'ok'" class="verify-ok">✓ {{ t('workspace.gitPatVerifyOk') }}</span>
+          <span v-else-if="form.gitVerifyState.value === 'fail'" class="verify-fail">✗ {{ form.gitVerifyError.value || t('workspace.gitPatVerifyFailedGeneric') }}</span>
         </div>
       </div>
     </section>
