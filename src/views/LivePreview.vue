@@ -313,6 +313,12 @@ function onStorage(e: StorageEvent) {
 
 onMounted(() => {
   document.title = originalSlug ? t('live.titleWithSlug', { slug: originalSlug }) : t('live.title')
+  // Discovery inicial de los controles: visibles 2.5s y luego se ocultan.
+  // Debe armarse ANTES del early-return de "proyecto inválido" — la barra
+  // existe también en la pantalla de espera/error y sin esto quedaba
+  // visible para siempre en esa ruta.
+  controlsVisible.value = true
+  scheduleHide(2500)
   if (!validType || !originalSlug) {
     errorMsg.value = t('live.missingProject')
     return
@@ -340,10 +346,6 @@ onMounted(() => {
   // (the editor only writes localStorage on open, not per-edit) and the sole
   // live path when BroadcastChannel is unavailable.
   window.addEventListener('storage', onStorage)
-  // Discovery inicial: visibles 2.5s al montar y luego se ocultan. Después
-  // los revela el hot-zone del borde superior (v-on en la template).
-  controlsVisible.value = true
-  scheduleHide(2500)
   if (rawSite.value === null) {
     errorMsg.value = t('live.waitingForData')
   }
