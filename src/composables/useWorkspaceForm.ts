@@ -61,9 +61,12 @@ export interface WorkspaceForm {
   onPublishManifestToggle: () => void
   // ── Persist ──
   loadWorkspace: (id: string) => void
+  hydrateGitRemoteFromServer: (remoteUrl: string | null | undefined) => void
   saveWorkspace: () => Promise<{ ok: boolean; error?: string }>
   wsBusy: ReturnType<typeof ref<boolean>>
   wsError: ReturnType<typeof ref<string | null>>
+  /** True cuando el workspace legacy no traía preset en localStorage. */
+  presetMissingAtLoad: ReturnType<typeof ref<boolean>>
 }
 
 export function useWorkspaceForm(opts: UseWorkspaceFormOpts): WorkspaceForm {
@@ -73,6 +76,10 @@ export function useWorkspaceForm(opts: UseWorkspaceFormOpts): WorkspaceForm {
   const cfg = ref<Workspace | null>(null)
   const wsBusy = ref(false)
   const wsError = ref<string | null>(null)
+  // Flag: el workspace legacy no traía preset en localStorage. La UI lo pinta
+  // como advertencia + bloquea Guardar hasta que el usuario elija. Sin este
+  // fallback, un clic distraído sobrescribía linked-home a multi-tenant.
+  const presetMissingAtLoad = ref(false)
 
   // S3 creds — nunca prepobladas desde el keychain; solo un flag "hay guardadas".
   const s3Creds = ref({ accessKeyId: '', secretAccessKey: '' })
@@ -101,14 +108,33 @@ export function useWorkspaceForm(opts: UseWorkspaceFormOpts): WorkspaceForm {
     const legacyS3UserSet =
       ws.s3 != null &&
       (ws.s3.publishManifestUserSet === true || typeof ws.s3.publishManifest === 'boolean')
+    // BUG CRÍTICO reportado por Josh (settings de daniela-reyes-site):
+    //   Un workspace pre-feature preset tiene `ws.preset === undefined`. Antes
+    //   caíamos silenciosamente a 'multi-tenant', y si el usuario clicaba
+    //   Guardar sin darse cuenta MATERIALIZABA el default incorrecto y apagaba
+    //   el catálogo (publishManifest → false). Ahora dejamos preset=undefined
+    //   en el form; la UI muestra ambos radios sin marca + un banner
+    //   "Elige el tipo antes de guardar". `saveWorkspace` rechaza el commit
+    //   si el user no eligió.
+    const presetInStore = ws.preset === 'linked-home' || ws.preset === 'multi-tenant'
+      ? ws.preset
+      : undefined
+    // Marcamos el estado "legacy sin preset" para que el UI diferencie entre
+    // "el user eligió multi-tenant" y "nadie ha elegido". Vive en el cfg como
+    // un flag ad-hoc que jamás se envía al server.
+    presetMissingAtLoad.value = !presetInStore
+
     cfg.value = JSON.parse(JSON.stringify({
       id: ws.id,
       name: ws.name,
       repoPath: ws.repoPath,
+      // `gitRemote` legacy también puede estar vacío en localStorage — el
+      // repo REAL tiene su remoto de git; lo completamos abajo desde el
+      // endpoint /status del server tras la carga inicial.
       gitRemote: ws.gitRemote || '',
       contentRoot: ws.contentRoot,
       useGit: ws.useGit !== false,
-      preset: (ws.preset || 'multi-tenant') as WorkspacePreset,
+      preset: presetInStore as WorkspacePreset | undefined,
       s3: ws.s3
         ? {
             ...ws.s3,
@@ -152,6 +178,23 @@ export function useWorkspaceForm(opts: UseWorkspaceFormOpts): WorkspaceForm {
     })()
   }
 
+  /**
+   * Completa campos que no viven en localStorage pero SÍ existen en la máquina
+   * (el remoto real de git, leído por `git remote get-url origin`). El
+   * WorkspaceSettings.vue lo llama después del load inicial, pasándole el
+   * WorkspaceStatus que ya trajo del endpoint. NO sobreescribe si el usuario ya
+   * tipeó algo desde la carga (respeta la dirty-ness del form).
+   */
+  function hydrateGitRemoteFromServer(remoteUrl: string | null | undefined) {
+    if (!cfg.value) return
+    // Solo hidratamos si el campo está VACÍO. Si el user tipeó algo tras el
+    // load, lo respetamos.
+    if (cfg.value.gitRemote && cfg.value.gitRemote.trim()) return
+    if (remoteUrl && remoteUrl.trim()) {
+      cfg.value.gitRemote = remoteUrl.trim()
+    }
+  }
+
   function onPresetChange(next: WorkspacePreset) {
     if (!cfg.value) return
     cfg.value.preset = next
@@ -163,24 +206,42 @@ export function useWorkspaceForm(opts: UseWorkspaceFormOpts): WorkspaceForm {
     if (cfg.value?.s3) cfg.value.s3.publishManifestUserSet = true
   }
 
+  /**
+   * Verifica que el editor pueda acceder al bucket S3 configurado. Funciona
+   * en ambos modos:
+   *   • `explicit`: usa el par accessKeyId+secretAccessKey del form (los
+   *     valida antes de llamar al HeadBucket).
+   *   • `system` (default): omite las creds explícitas → el server usa la
+   *     cadena por defecto (~/.aws/credentials, AWS_* env, SSO). Permite al
+   *     usuario confirmar que su config existente le sirve SIN tener que
+   *     tipear nada.
+   * En ambos casos exige que haya bucket + region.
+   */
   async function verifyS3Credentials() {
     if (!cfg.value?.s3) return
-    const ak = s3Creds.value.accessKeyId.trim()
-    const sk = s3Creds.value.secretAccessKey.trim()
-    if (!ak || !sk) {
-      s3VerifyState.value = 'fail'
-      s3VerifyError.value = t('workspace.s3CredsBothRequired')
-      return
-    }
     if (!cfg.value.s3.bucket) {
       s3VerifyState.value = 'fail'
       s3VerifyError.value = t('workspace.s3VerifyNeedsBucket')
       return
     }
+    const isExplicit = cfg.value.s3.credentialsMode === 'explicit'
+    let creds: { accessKeyId: string; secretAccessKey: string } | undefined
+    if (isExplicit) {
+      const ak = s3Creds.value.accessKeyId.trim()
+      const sk = s3Creds.value.secretAccessKey.trim()
+      if (!ak || !sk) {
+        s3VerifyState.value = 'fail'
+        s3VerifyError.value = t('workspace.s3CredsBothRequired')
+        return
+      }
+      creds = { accessKeyId: ak, secretAccessKey: sk }
+    }
     s3VerifyState.value = 'busy'
     s3VerifyError.value = null
     try {
-      const r = await s3Api.headBucket(cfg.value.s3.bucket, cfg.value.s3.region || 'us-east-1', { accessKeyId: ak, secretAccessKey: sk })
+      // Sin `creds`, s3Api.headBucket omite el body de credentials → el server
+      // cae a la cadena por defecto (comportamiento histórico).
+      const r = await s3Api.headBucket(cfg.value.s3.bucket, cfg.value.s3.region || 'us-east-1', creds)
       if (r.ok) { s3VerifyState.value = 'ok' }
       else { s3VerifyState.value = 'fail'; s3VerifyError.value = r.error || t('workspace.s3VerifyFailedGeneric') }
     } catch (e: any) {
@@ -212,6 +273,13 @@ export function useWorkspaceForm(opts: UseWorkspaceFormOpts): WorkspaceForm {
 
   async function saveWorkspace(): Promise<{ ok: boolean; error?: string }> {
     if (!cfg.value) return { ok: false, error: 'No hay workspace cargado.' }
+    // GUARD CRÍTICO: si el workspace se cargó SIN preset (legacy) y el usuario
+    // NO lo eligió, abortar el guardado. Sin esto sobreescribíamos preset a
+    // 'multi-tenant' + apagábamos el catálogo silenciosamente.
+    if (presetMissingAtLoad.value && !cfg.value.preset) {
+      wsError.value = t('workspace.presetRequiredBeforeSave')
+      return { ok: false, error: wsError.value }
+    }
     wsBusy.value = true
     wsError.value = null
     const wsId = cfg.value.id
@@ -306,8 +374,9 @@ export function useWorkspaceForm(opts: UseWorkspaceFormOpts): WorkspaceForm {
     gitCreds, gitCredsHasStored, gitCredsDirty, gitShowToken, gitVerifyState, gitVerifyError,
     onGitCredsInput, verifyGitCredentials,
     onPresetChange, onPublishManifestToggle,
-    loadWorkspace, saveWorkspace,
+    loadWorkspace, hydrateGitRemoteFromServer, saveWorkspace,
     wsBusy, wsError,
+    presetMissingAtLoad,
   }
 }
 

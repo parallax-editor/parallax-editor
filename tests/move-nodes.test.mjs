@@ -127,5 +127,23 @@ mod.moveNodes(
 )
 assert.equal(mod.undoCount() - before6, 1, 'un solo pushUndo por batch')
 
+// 7) Empty-layer drop — el flujo que Daniela reportó ("no puedo mover varios
+//    seleccionados a otra capa"). Mover un batch a un layer sin hijos debe
+//    insertar los nodos en orden. La UI (LayersPanel.onEmptyDrop) parsea el
+//    prefijo `MULTI:` del dataTransfer; aquí probamos el store directamente
+//    con el batch ya extraído.
+mod.state.site = makeSite()
+mod.state.site.sections[1].layers.push({ elements: [] }) // layer vacío en section 1
+const emptyLayerDst = 'sections.1.layers.1.elements'
+mod.moveNodes(
+  ['sections.0.layers.0.elements.0', 'sections.0.layers.0.elements.1'],
+  emptyLayerDst,
+  0,
+)
+const emptyDstArr = mod.getAtPath(emptyLayerDst)
+assert.deepEqual(emptyDstArr.map((n) => n.id), ['A', 'B'], 'batch cae en layer vacío en orden')
+const srcAfterEmpty = mod.getAtPath('sections.0.layers.0.elements')
+assert.deepEqual(srcAfterEmpty.map((n) => n.id), ['C', 'D'], 'source original quedó con los restantes')
+
 console.log('✓ moveNodes multi-drag OK')
 await rm(tmp, { recursive: true, force: true }).catch(() => {})

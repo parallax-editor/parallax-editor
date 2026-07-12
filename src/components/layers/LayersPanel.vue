@@ -162,6 +162,32 @@ function onEmptyDrop(e: DragEvent, targetArrayPath: string) {
   ;(e.currentTarget as HTMLElement)?.classList.remove('drop-hover')
   const src = e.dataTransfer?.getData('text/plain')
   if (!src) return
+  // Multi-drag (Bloque C3): mismo parseo que `onMove`. Un batch multi
+  // arrastrado a un layer VACÍO debe entrar como grupo — el path original
+  // NO cabe en `moveNode(src, …)` porque `src` sería el string "MULTI:[…]".
+  // Sin este caso Daniela veía que arrastrar varios seleccionados a otro
+  // layer sin hijos "no hacía nada".
+  if (src.startsWith('MULTI:')) {
+    try {
+      const paths = JSON.parse(src.slice('MULTI:'.length))
+      if (Array.isArray(paths) && paths.length >= 2) {
+        // Un layer vacío solo acepta ELEMENTOS. Filtramos el batch a paths
+        // de nivel elemento (6 segmentos) — cualquier sección/layer del set
+        // se ignora, moveNodes también aborta si los niveles no calzan con
+        // el destino. Es una salvaguarda de UX: no rompemos el drop entero.
+        const elementPaths = paths.filter((p: unknown) => typeof p === 'string' && p.split('.').length === 6)
+        if (elementPaths.length >= 2) {
+          moveNodes(elementPaths, targetArrayPath, 0)
+          return
+        }
+        if (elementPaths.length === 1) {
+          moveNode(elementPaths[0], targetArrayPath, 0)
+          return
+        }
+      }
+    } catch { /* dataTransfer corrupto → cae al single */ }
+    return
+  }
   // Only accept element-level sources (their path has at least 5 parts:
   // sections.N.layers.M.elements.K). moveNode rejects mismatches anyway,
   // but bailing here avoids a spurious pushUndo on an obvious no-op.

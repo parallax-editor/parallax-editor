@@ -46,6 +46,8 @@ export default {
     activationError: 'No se pudo activar el workspace.',
     hostRejected: 'El host rechazó el workspace.',
     hostRejectedConfig: 'El host rechazó la configuración.',
+    presetRequiredBeforeSave: 'Este workspace no tiene tipo asignado. Elige "Sitio público con home" o "Sitios privados por URL" antes de guardar — de lo contrario podrías apagar accidentalmente el catálogo público del sitio.',
+    presetMissingWarning: 'Este workspace se creó antes de la opción "tipo de workspace". Elige uno para evitar que Guardar cambie la publicación por accidente.',
     nameField: 'Nombre',
     namePlaceholder: 'Eventos',
     nameWsField: 'Nombre del workspace',

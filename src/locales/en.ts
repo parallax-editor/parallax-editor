@@ -46,6 +46,8 @@ export default {
     activationError: 'Could not activate the workspace.',
     hostRejected: 'The host rejected the workspace.',
     hostRejectedConfig: 'The host rejected the configuration.',
+    presetRequiredBeforeSave: 'This workspace has no type assigned. Pick "Public site with home" or "Private sites by URL" before saving — otherwise you could accidentally turn off the site catalog.',
+    presetMissingWarning: 'This workspace was created before the "workspace type" option. Pick one to avoid Save changing publishing behaviour by accident.',
     nameField: 'Name',
     namePlaceholder: 'Events',
     nameWsField: 'Workspace name',

@@ -50,6 +50,13 @@ async function refreshStatus() {
   statusLoading.value = true
   try {
     status.value = await workspaceApi.status(workspaceId.value)
+    // Un workspace legacy (creado antes del feature preset) tenía gitRemote
+    // vacío en localStorage — el server SÍ lo conoce leyendo `git remote
+    // get-url origin` del repo real. Hidratamos el campo aquí para no
+    // engañar al usuario con "sin remoto" cuando el repo sí lo tiene.
+    if (status.value?.ok) {
+      form.hydrateGitRemoteFromServer(status.value.git?.remoteUrl)
+    }
   } catch {
     status.value = null
   } finally {
@@ -193,6 +200,17 @@ function goBack() { router.push('/') }
     </nav>
 
     <div v-if="form.wsError.value" class="ws-err" data-test="wsSettings-error">{{ form.wsError.value }}</div>
+    <!-- Banner de aviso: workspace legacy sin preset. Amarillo (warn) para
+         diferenciarlo de un error rojo. Guardar queda deshabilitado hasta que
+         el usuario elija un preset (belt & suspenders con el guard del
+         composable en saveWorkspace). -->
+    <div
+      v-if="form.presetMissingAtLoad.value && !form.cfg.value?.preset"
+      class="ws-warn"
+      data-test="wsSettings-preset-warning"
+    >
+      ⚠️ {{ t('workspace.presetMissingWarning') }}
+    </div>
 
     <!-- ── TAB: GENERAL ────────────────────────────────────────────────── -->
     <section v-if="tab === 'general' && form.cfg.value" class="tab-body">
@@ -322,11 +340,16 @@ function goBack() { router.push('/') }
             <input v-model="form.s3Creds.value.secretAccessKey" :type="form.s3ShowSecret.value ? 'text' : 'password'" data-test="wsSettings-s3-secret" :placeholder="t('workspace.s3SecretAccessKeyPlaceholder')" autocomplete="off" spellcheck="false" @input="form.onS3CredsInput" />
             <button class="aux-btn" type="button" @click="form.s3ShowSecret.value = !form.s3ShowSecret.value">{{ form.s3ShowSecret.value ? t('workspace.s3HideSecret') : t('workspace.s3ShowSecret') }}</button>
           </div>
-          <div class="verify-row">
-            <button type="button" class="aux-btn" data-test="wsSettings-s3-verify" :disabled="form.s3VerifyState.value === 'busy'" @click="form.verifyS3Credentials">{{ form.s3VerifyState.value === 'busy' ? t('workspace.s3VerifyBusy') : t('workspace.s3VerifyCta') }}</button>
-            <span v-if="form.s3VerifyState.value === 'ok'" class="verify-ok">✓ {{ t('workspace.s3VerifyOk') }}</span>
-            <span v-else-if="form.s3VerifyState.value === 'fail'" class="verify-fail">✗ {{ form.s3VerifyError.value || t('workspace.s3VerifyFailedGeneric') }}</span>
-          </div>
+        </div>
+
+        <!-- Botón Verificar acceso: ahora SIEMPRE visible dentro del grupo de
+             credenciales (system o explicit). En system prueba la cadena por
+             defecto del servidor; en explicit exige que el user tipee creds
+             primero. Ambos casos requieren bucket configurado. -->
+        <div class="verify-row" v-if="form.cfg.value.s3.enabled">
+          <button type="button" class="aux-btn" data-test="wsSettings-s3-verify" :disabled="form.s3VerifyState.value === 'busy' || !form.cfg.value.s3.bucket" @click="form.verifyS3Credentials">{{ form.s3VerifyState.value === 'busy' ? t('workspace.s3VerifyBusy') : t('workspace.s3VerifyCta') }}</button>
+          <span v-if="form.s3VerifyState.value === 'ok'" class="verify-ok">✓ {{ t('workspace.s3VerifyOk') }}</span>
+          <span v-else-if="form.s3VerifyState.value === 'fail'" class="verify-fail">✗ {{ form.s3VerifyError.value || t('workspace.s3VerifyFailedGeneric') }}</span>
         </div>
       </div>
     </section>
@@ -394,7 +417,14 @@ function goBack() { router.push('/') }
       <button class="danger-btn" type="button" data-test="wsSettings-delete" @click="onDelete">{{ t('workspace.removeBtn') }}</button>
       <div class="spacer" />
       <button class="ghost-btn" type="button" @click="goBack">{{ t('common.cancel') }}</button>
-      <button class="primary-btn" type="button" data-test="wsSettings-save" :disabled="form.wsBusy.value" @click="onSave">
+      <button
+        class="primary-btn"
+        type="button"
+        data-test="wsSettings-save"
+        :disabled="form.wsBusy.value || (form.presetMissingAtLoad.value && !form.cfg.value?.preset)"
+        :title="form.presetMissingAtLoad.value && !form.cfg.value?.preset ? t('workspace.presetMissingWarning') : undefined"
+        @click="onSave"
+      >
         {{ form.wsBusy.value ? t('workspace.saving') : t('workspace.save') }}
       </button>
     </footer>
@@ -490,7 +520,9 @@ function goBack() { router.push('/') }
 </template>
 
 <style scoped>
-.settings-page { max-width: 800px; margin: 0 auto; padding: 40px 24px 80px; color: #e0e0e0; }
+/* padding-bottom aumentado (140) para dejar espacio bajo el último campo
+   cuando el footer sticky lo tapaba (bug reportado con Secret Access Key). */
+.settings-page { max-width: 800px; margin: 0 auto; padding: 40px 24px 140px; color: #e0e0e0; }
 .page-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid #2a2a2a; }
 .back-btn { background: none; border: none; color: #9ab; font-size: 13px; cursor: pointer; padding: 4px 8px; margin-top: 6px; border-radius: 4px; }
 .back-btn:hover { background: #1a1a1a; color: #fff; }
@@ -529,6 +561,7 @@ function goBack() { router.push('/') }
 .check-row input { width: auto; }
 .ws-hint { font-size: 12px; color: #9a9a9a; background: #232323; border: 1px solid #2e2e2e; border-radius: 8px; padding: 8px 10px; line-height: 1.5; margin: 4px 0; }
 .ws-err { background: #3a1a1a; border: 1px solid #6b2a2a; color: #ff9d9d; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; }
+.ws-warn { background: #2e2916; border: 1px solid #5b4c1e; color: #ffd98a; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; line-height: 1.5; }
 
 .preset-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .preset-card { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border: 1.5px solid #3a3a3a; border-radius: 10px; background: #1f1f1f; cursor: pointer; transition: border-color .15s, background .15s, box-shadow .15s; position: relative; }
@@ -568,7 +601,16 @@ function goBack() { router.push('/') }
 .bucket-opt.active, .bucket-opt:hover { background: var(--accent-soft, #2a2418); color: #fff; }
 .bucket-hint { font-size: 11px; color: #777; }
 
-.page-footer { position: sticky; bottom: 0; display: flex; align-items: center; gap: 10px; padding: 16px 0; margin-top: 40px; background: linear-gradient(180deg, rgba(15,15,15,0) 0%, #0f0f0f 40%); border-top: 1px solid #2a2a2a; }
+/* Footer sticky con backdrop-filter para que el usuario vea que hay
+   contenido debajo (antes ocultaba el último campo sin señal visual).
+   El gradient sigue igual pero ahora + blur = capa clara. */
+.page-footer {
+  position: sticky; bottom: 0; display: flex; align-items: center; gap: 10px;
+  padding: 16px 24px; margin: 40px -24px 0; border-top: 1px solid #2a2a2a;
+  background: rgba(15, 15, 15, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
 .page-footer .spacer { flex: 1; }
 .danger-btn { padding: 9px 16px; border: 1px solid #7a3030; background: #22161a; color: #ffb0b0; border-radius: 8px; cursor: pointer; }
 .danger-btn:hover { background: #5a2020; }
