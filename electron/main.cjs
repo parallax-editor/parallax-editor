@@ -349,8 +349,13 @@ function buildMenu() {
     ],
   }
 
-  // Edición: TODO (incluidos los roles nativos undo/cut/copy/paste/selectAll) se
-  // deshabilita en el home — solo tiene sentido con un sitio abierto.
+  // Edición. OJO (bug #paste-settings): un menu item DESHABILITADO bloquea su
+  // accelerator en TODA la app — con `enabled: wsCaps.inEditor` en los roles
+  // nativos, Cmd+V/C/X/A morían fuera de /edit (no se podía pegar en los
+  // inputs de la pantalla de settings). Los roles nativos operan sobre el
+  // elemento con foco y son inofensivos sin foco → SIEMPRE habilitados.
+  // Undo/redo sí es dual: dentro del editor va al store de Vue (histórico del
+  // documento); fuera, role nativo para que Cmd+Z funcione en cualquier input.
   const editMenu = {
     label: mt('edit'),
     submenu: [
@@ -358,16 +363,23 @@ function buildMenu() {
       // the Vue store. role:'undo' was firing the browser's native undo on
       // the focused input only — masking our store undo entirely when an
       // element was selected (the property panel inputs caught the keystroke).
-      { ...mi(mt('undo'), 'edit.undo', 'CmdOrCtrl+Z'), enabled: wsCaps.inEditor },
-      { ...mi(mt('redo'), 'edit.redo', 'Shift+CmdOrCtrl+Z'), enabled: wsCaps.inEditor },
+      ...(wsCaps.inEditor
+        ? [
+            mi(mt('undo'), 'edit.undo', 'CmdOrCtrl+Z'),
+            mi(mt('redo'), 'edit.redo', 'Shift+CmdOrCtrl+Z'),
+          ]
+        : [
+            { role: 'undo', label: mt('undo') },
+            { role: 'redo', label: mt('redo') },
+          ]),
       { type: 'separator' },
-      { role: 'cut', label: mt('cut'), enabled: wsCaps.inEditor },
-      { role: 'copy', label: mt('copy'), enabled: wsCaps.inEditor },
-      { role: 'paste', label: mt('paste'), enabled: wsCaps.inEditor },
+      { role: 'cut', label: mt('cut') },
+      { role: 'copy', label: mt('copy') },
+      { role: 'paste', label: mt('paste') },
       ed(mt('duplicate'), 'edit.duplicate', 'CmdOrCtrl+D'),
       ed(mt('deleteLbl'), 'edit.delete'),
       { type: 'separator' },
-      { role: 'selectAll', label: mt('selectAll'), enabled: wsCaps.inEditor },
+      { role: 'selectAll', label: mt('selectAll') },
     ],
   }
 
