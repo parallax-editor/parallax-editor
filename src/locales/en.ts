@@ -195,6 +195,8 @@ export default {
   wsSettings: {
     back: 'Back to projects',
     subtitle: 'Configure this workspace and its publishing credentials.',
+    eyebrow: 'Workspace',
+    statusEyebrow: 'Status',
     tabGeneral: 'General',
     tabS3: 'Publishing (S3)',
     tabGit: 'Git authentication',

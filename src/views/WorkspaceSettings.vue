@@ -180,43 +180,75 @@ function goBack() { router.push('/') }
 </script>
 
 <template>
-  <div class="settings-page" data-test="workspace-settings">
-    <header class="page-header">
-      <!-- Fila 1: Back + Title/Subtitle. Los badges ahora viven en una fila
-           debajo para que el título tenga espacio y no se corte con nombres
-           largos (feedback Josh: "muy apretado"). -->
-      <div class="page-header-row">
-        <button class="back-btn" type="button" @click="goBack" data-test="wsSettings-back">← {{ t('wsSettings.back') }}</button>
-        <div class="page-title">
-          <h1>{{ form.cfg.value?.name || workspaceId }}</h1>
-          <p class="page-subtitle">{{ t('wsSettings.subtitle') }}</p>
+  <div class="ws-shell" data-test="workspace-settings">
+    <!-- Back link fijo arriba-izquierda del shell (fuera del frame para que
+         no compita con el nombre del workspace en el sidebar). -->
+    <button class="ws-back" type="button" @click="goBack" data-test="wsSettings-back">
+      <span aria-hidden="true">←</span> {{ t('wsSettings.back') }}
+    </button>
+
+    <!-- Frame de la card: sidebar 260px + panel de contenido. max-width para
+         no estirarse en pantallas anchas, altura calculada del viewport. -->
+    <div class="ws-frame">
+      <!-- ── Sidebar: identidad del workspace + tab rail vertical + estado ── -->
+      <aside class="ws-sidebar">
+        <div class="ws-identity">
+          <p class="ws-eyebrow">{{ t('wsSettings.eyebrow') }}</p>
+          <h1 class="ws-name">{{ form.cfg.value?.name || workspaceId }}</h1>
+          <p class="ws-subtitle">{{ t('wsSettings.subtitle') }}</p>
         </div>
-      </div>
-      <!-- Fila 2: Badges de estado. -->
-      <div class="header-badges" v-if="status?.ok">
-        <span :class="['badge', s3Badge.kind]" data-test="wsSettings-badge-s3">S3 · {{ s3Badge.label }}</span>
-        <span :class="['badge', gitBadge.kind]" data-test="wsSettings-badge-git">Git · {{ gitBadge.label }}</span>
-      </div>
-    </header>
 
-    <nav class="tabs">
-      <button :class="['tab', { active: tab === 'general' }]" @click="tab = 'general'" data-test="wsSettings-tab-general">{{ t('wsSettings.tabGeneral') }}</button>
-      <button :class="['tab', { active: tab === 's3' }]" @click="tab = 's3'" data-test="wsSettings-tab-s3">{{ t('wsSettings.tabS3') }}</button>
-      <button :class="['tab', { active: tab === 'git' }]" @click="tab = 'git'" data-test="wsSettings-tab-git" :disabled="form.cfg.value?.useGit === false">{{ t('wsSettings.tabGit') }}</button>
-    </nav>
+        <nav class="ws-rail" aria-label="Secciones">
+          <button
+            :class="['ws-rail-item', { active: tab === 'general' }]"
+            type="button"
+            data-test="wsSettings-tab-general"
+            @click="tab = 'general'"
+          >
+            <span class="ws-rail-dot" />
+            <span class="ws-rail-label">{{ t('wsSettings.tabGeneral') }}</span>
+          </button>
+          <button
+            :class="['ws-rail-item', { active: tab === 's3' }]"
+            type="button"
+            data-test="wsSettings-tab-s3"
+            @click="tab = 's3'"
+          >
+            <span class="ws-rail-dot" />
+            <span class="ws-rail-label">{{ t('wsSettings.tabS3') }}</span>
+          </button>
+          <button
+            :class="['ws-rail-item', { active: tab === 'git' }]"
+            type="button"
+            data-test="wsSettings-tab-git"
+            :disabled="form.cfg.value?.useGit === false"
+            @click="tab = 'git'"
+          >
+            <span class="ws-rail-dot" />
+            <span class="ws-rail-label">{{ t('wsSettings.tabGit') }}</span>
+          </button>
+        </nav>
 
-    <div v-if="form.wsError.value" class="ws-err" data-test="wsSettings-error">{{ form.wsError.value }}</div>
-    <!-- Banner de aviso: workspace legacy sin preset. Amarillo (warn) para
-         diferenciarlo de un error rojo. Guardar queda deshabilitado hasta que
-         el usuario elija un preset (belt & suspenders con el guard del
-         composable en saveWorkspace). -->
-    <div
-      v-if="form.presetMissingAtLoad.value && !form.cfg.value?.preset"
-      class="ws-warn"
-      data-test="wsSettings-preset-warning"
-    >
-      ⚠️ {{ t('workspace.presetMissingWarning') }}
-    </div>
+        <div class="ws-sidebar-foot" v-if="status?.ok">
+          <p class="ws-eyebrow">{{ t('wsSettings.statusEyebrow') }}</p>
+          <div class="ws-badges">
+            <span :class="['badge', s3Badge.kind]" data-test="wsSettings-badge-s3">S3 · {{ s3Badge.label }}</span>
+            <span :class="['badge', gitBadge.kind]" data-test="wsSettings-badge-git">Git · {{ gitBadge.label }}</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- ── Panel derecho: contenido con scroll propio + footer sticky ── -->
+      <main class="ws-content">
+        <div class="ws-scroll">
+          <div v-if="form.wsError.value" class="ws-err" data-test="wsSettings-error">{{ form.wsError.value }}</div>
+          <div
+            v-if="form.presetMissingAtLoad.value && !form.cfg.value?.preset"
+            class="ws-warn"
+            data-test="wsSettings-preset-warning"
+          >
+            ⚠️ {{ t('workspace.presetMissingWarning') }}
+          </div>
 
     <!-- ── TAB: GENERAL ────────────────────────────────────────────────── -->
     <section v-if="tab === 'general' && form.cfg.value" class="tab-body">
@@ -418,22 +450,27 @@ function goBack() { router.push('/') }
       </div>
     </section>
 
-    <!-- ── Footer con acciones ─────────────────────────────────────────── -->
-    <footer class="page-footer" v-if="form.cfg.value">
-      <button class="danger-btn" type="button" data-test="wsSettings-delete" @click="onDelete">{{ t('workspace.removeBtn') }}</button>
-      <div class="spacer" />
-      <button class="ghost-btn" type="button" @click="goBack">{{ t('common.cancel') }}</button>
-      <button
-        class="primary-btn"
-        type="button"
-        data-test="wsSettings-save"
-        :disabled="form.wsBusy.value || (form.presetMissingAtLoad.value && !form.cfg.value?.preset)"
-        :title="form.presetMissingAtLoad.value && !form.cfg.value?.preset ? t('workspace.presetMissingWarning') : undefined"
-        @click="onSave"
-      >
-        {{ form.wsBusy.value ? t('workspace.saving') : t('workspace.save') }}
-      </button>
-    </footer>
+        </div><!-- /ws-scroll -->
+
+        <!-- ── Footer de acciones: sticky al panel de contenido (no al
+             viewport) — pertenece visualmente a la card. ── -->
+        <footer class="ws-footer" v-if="form.cfg.value">
+          <button class="danger-btn" type="button" data-test="wsSettings-delete" @click="onDelete">{{ t('workspace.removeBtn') }}</button>
+          <div class="spacer" />
+          <button class="ghost-btn" type="button" @click="goBack">{{ t('common.cancel') }}</button>
+          <button
+            class="primary-btn"
+            type="button"
+            data-test="wsSettings-save"
+            :disabled="form.wsBusy.value || (form.presetMissingAtLoad.value && !form.cfg.value?.preset)"
+            :title="form.presetMissingAtLoad.value && !form.cfg.value?.preset ? t('workspace.presetMissingWarning') : undefined"
+            @click="onSave"
+          >
+            {{ form.wsBusy.value ? t('workspace.saving') : t('workspace.save') }}
+          </button>
+        </footer>
+      </main>
+    </div><!-- /ws-frame -->
 
     <!-- Modales de ayuda — reusa las mismas i18n keys que el modal viejo. -->
     <Teleport to="body">
@@ -526,35 +563,131 @@ function goBack() { router.push('/') }
 </template>
 
 <style scoped>
-/* CUARTO INTENT — la causa raíz: `index.html` fija `body { overflow: hidden }`
-   para la app de paneles del editor, así que la pantalla de settings no tenía
-   NINGÚN contenedor scrollable (ni body, ni ella misma). El contenido más allá
-   del viewport quedaba invisible → "el scroll de esto no funciona" (tercera vez).
-   Fix: la propia `.settings-page` se vuelve el scroll container ocupando toda
-   la altura del viewport. El footer sigue FIXED al viewport, y el padding-bottom
-   grande (160px) reserva espacio para que el último campo no quede tapado.
-   Centramos con box interno para conservar el max-width del contenido. */
-.settings-page { height: 100vh; overflow-y: auto; overflow-x: hidden; max-width: 800px; margin: 0 auto; padding: 40px 24px 160px; color: #e0e0e0; box-sizing: border-box; }
-/* Cabecera en 3 bandas verticales para respirar (feedback Josh "muy apretado"):
-   1) botón Volver (con aire), 2) título+subtítulo, 3) badges. */
-.page-header { display: flex; flex-direction: column; gap: 18px; margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid #2a2a2a; }
-.page-header-row { display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
-.back-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #9ab; font-size: 13px; cursor: pointer; padding: 8px 14px; border-radius: 6px; transition: background .15s, color .15s, border-color .15s; }
-.back-btn:hover { background: #232323; color: #fff; border-color: #3a3a3a; }
-.page-title { display: flex; flex-direction: column; gap: 6px; }
-.page-title h1 { font-size: 24px; margin: 0; letter-spacing: -0.01em; }
-.page-subtitle { font-size: 13px; color: #8a8a8a; margin: 0; }
-.header-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+/* ══ Shell de dos columnas (rediseño — feedback Josh: "contenedor horizontal
+   muy apretado, el scroll se ve horrible"). Patrón settings de Stripe/Linear:
+   • .ws-shell ocupa el viewport (el body del editor es overflow:hidden, así
+     que NADA scrollea a nivel de página — el scroll vive DENTRO del panel).
+   • .ws-frame es una card centrada: sidebar fija 260px + contenido flexible.
+   • .ws-scroll es el ÚNICO scroll container → el scrollbar queda pegado al
+     borde del contenido, no flotando en el borde del viewport.
+   • .ws-footer es parte del panel (border-top), no un fixed global. ══ */
+.ws-shell {
+  height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 32px 36px;
+  color: #e0e0e0;
+  background:
+    radial-gradient(1200px 500px at 50% -10%, rgba(90, 110, 160, 0.08), transparent 60%),
+    #101014;
+}
+/* El back se alinea con el borde izquierdo del frame: misma caja de 1060px,
+   pero el botón en sí es inline (no ocupa el ancho completo). */
+.ws-back {
+  width: min(1060px, 100%);
+  margin: 0 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  background: none;
+  border: none;
+  color: #8f9bb0;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 6px 4px;
+  border-radius: 6px;
+  transition: color .15s;
+}
+.ws-back:hover { color: #fff; }
+.ws-frame {
+  width: min(1060px, 100%);
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  background: #17171c;
+  border: 1px solid #26262e;
+  border-radius: 16px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+/* ── Sidebar ── */
+.ws-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 28px 20px 24px;
+  background: rgba(255, 255, 255, 0.02);
+  border-right: 1px solid #26262e;
+  min-width: 0;
+}
+.ws-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #6b6b78;
+  margin: 0 0 8px;
+}
+.ws-identity { padding: 0 6px; }
+.ws-name {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #f2f2f6;
+  margin: 0 0 6px;
+  overflow-wrap: anywhere;
+}
+.ws-subtitle { font-size: 12px; color: #82828e; line-height: 1.5; margin: 0; }
+
+.ws-rail { display: flex; flex-direction: column; gap: 2px; }
+.ws-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: #a2a2b0;
+  font-size: 13.5px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.ws-rail-item:hover:not(:disabled) { background: rgba(255, 255, 255, 0.05); color: #e8e8ee; }
+.ws-rail-item.active { background: rgba(255, 213, 109, 0.1); color: #ffe2a3; }
+.ws-rail-item:disabled { color: #4a4a54; cursor: default; }
+.ws-rail-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; opacity: 0.4; flex: none;
+  transition: opacity .15s;
+}
+.ws-rail-item.active .ws-rail-dot { opacity: 1; background: var(--accent); }
+
+.ws-sidebar-foot { margin-top: auto; padding: 16px 6px 0; border-top: 1px solid #26262e; }
+.ws-badges { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .badge { font-size: 11px; padding: 4px 10px; border-radius: 999px; font-weight: 600; letter-spacing: 0.01em; }
 .badge.ok { background: rgba(88, 190, 105, 0.15); color: #6ad08c; border: 1px solid rgba(88, 190, 105, 0.35); }
 .badge.warn { background: rgba(230, 175, 75, 0.15); color: #ffb663; border: 1px solid rgba(230, 175, 75, 0.35); }
 .badge.off { background: #22221a; color: #888; border: 1px solid #333; }
 
-.tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid #2a2a2a; }
-.tab { background: none; border: none; color: #999; font-size: 14px; padding: 10px 16px; cursor: pointer; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; }
-.tab:hover { color: #ccc; }
-.tab.active { color: #fff; border-bottom-color: var(--accent); }
-.tab:disabled { color: #555; cursor: default; }
+/* ── Panel de contenido ── */
+.ws-content { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.ws-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 32px 36px 40px;
+  scrollbar-gutter: stable;
+}
 
 .tab-body { display: flex; flex-direction: column; gap: 24px; }
 .field-group { background: #1c1c1c; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 8px; }
@@ -564,8 +697,10 @@ function goBack() { router.push('/') }
 .link-btn:hover { color: var(--accent-hover); }
 
 .field-label { display: block; font-size: 13px; color: #bbb; margin: 12px 0 6px; }
-.settings-page input:not([type=checkbox]):not([type=radio]),
-.settings-page select { width: 100%; padding: 10px 12px; border: 1px solid #555; border-radius: 6px; background: #101010; color: #e0e0e0; font-size: 14px; box-sizing: border-box; }
+.ws-shell input:not([type=checkbox]):not([type=radio]),
+.ws-shell select { width: 100%; padding: 10px 12px; border: 1px solid #3a3a44; border-radius: 8px; background: #101014; color: #e0e0e0; font-size: 14px; box-sizing: border-box; transition: border-color .15s; }
+.ws-shell input:not([type=checkbox]):not([type=radio]):focus,
+.ws-shell select:focus { outline: none; border-color: var(--accent); }
 .row-with-btn { display: flex; gap: 8px; align-items: center; }
 .row-with-btn.tight { margin-top: 6px; }
 .row-with-btn input { flex: 1; }
@@ -616,26 +751,16 @@ function goBack() { router.push('/') }
 .bucket-opt.active, .bucket-opt:hover { background: var(--accent-soft, #2a2418); color: #fff; }
 .bucket-hint { font-size: 11px; color: #777; }
 
-/* Footer FIXED (no sticky) — pegado al bottom del viewport, ancho igual al
-   `.settings-page`, y el contenido del body reserva 160px de padding-bottom.
-   Con sticky el footer participaba del flow y su margen impedía scrollear
-   hasta ver el último input; con fixed queda fuera del flow y jamás tapa. */
-.page-footer {
-  position: fixed; left: 0; right: 0; bottom: 0;
+/* Footer del panel: hermano de .ws-scroll dentro de .ws-content (flex column)
+   → siempre visible, jamás tapa contenido (el scroll es del hermano). */
+.ws-footer {
+  flex: none;
   display: flex; align-items: center; gap: 10px;
-  padding: 16px 24px; border-top: 1px solid #2a2a2a;
-  background: rgba(15, 15, 15, 0.92);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  z-index: 50;
+  padding: 16px 36px;
+  border-top: 1px solid #26262e;
+  background: rgba(255, 255, 255, 0.02);
 }
-/* Contenido del footer alineado a la caja de 800px del body para que los
-   botones no queden pegados a los bordes del viewport en pantallas anchas. */
-.page-footer > * { max-width: none; }
-.page-footer::before, .page-footer::after { content: ''; flex: 1 1 auto; }
-.page-footer::before { max-width: calc((100% - 800px) / 2); }
-.page-footer::after { max-width: calc((100% - 800px) / 2); }
-.page-footer .spacer { flex: 1; }
+.ws-footer .spacer { flex: 1; }
 .danger-btn { padding: 9px 16px; border: 1px solid #7a3030; background: #22161a; color: #ffb0b0; border-radius: 8px; cursor: pointer; }
 .danger-btn:hover { background: #5a2020; }
 .ghost-btn { padding: 9px 16px; border: 1px solid #444; background: #1a1a1a; color: #ddd; border-radius: 8px; cursor: pointer; }
