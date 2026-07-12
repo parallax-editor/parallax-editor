@@ -16,7 +16,12 @@ const router = useRouter()
 const electron = useElectron()
 const dialog = useDialog()
 const { t } = useI18n()
-const LANDING = 'http://parallax-engine.s3-website-us-east-1.amazonaws.com'
+// Landing PÚBLICO (GitHub Pages) — lo que abren "Descargas" y "Guía" del menú.
+// El chequeo de versiones sigue leyendo del S3 de releases: `versions.json` lo
+// genera `yarn release` junto a los .dmg y NO existe en Pages (solo publica
+// `landing/`). Son dos superficies distintas a propósito.
+const LANDING = 'https://parallax-editor.github.io/parallax-editor'
+const UPDATES_BASE = 'http://parallax-engine.s3-website-us-east-1.amazonaws.com'
 
 let disposeIpc: (() => void) | null = null
 let disposeBus: (() => void) | null = null
@@ -45,7 +50,7 @@ onMounted(() => {
       window.open(`${LANDING}/editor.html`, '_blank')
     } else if (action === 'app.checkUpdates') {
       try {
-        const list = await fetch(`${LANDING}/versions.json`).then((r) => r.json())
+        const list = await fetch(`${UPDATES_BASE}/versions.json`).then((r) => r.json())
         const latest = Array.isArray(list) && list[0]?.version
         if (latest && latest !== APP_VERSION) {
           await dialog.alert({
