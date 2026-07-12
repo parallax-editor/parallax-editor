@@ -41,6 +41,11 @@ import {
   liveStorageKey,
   type DeviceMode,
 } from '../composables/usePreviewSite'
+// Remap de `vw`/`vh` a `px` cuando el usuario simula un móvil dentro de la
+// ventana real. Sin esto, el engine seguiría midiendo `vw` contra
+// window.innerWidth (grande) y los textos con `clamp(…,9vw,…)` desbordan por
+// los bordes del frame 390.
+import { remapSiteViewportUnits } from '../composables/useDeviceUnitRemap'
 
 // ── Project identity from the query string ────────────────────────────────
 // `type` es el id del workspace — CUALQUIERA, no solo eventos/site (antes esto
@@ -167,18 +172,69 @@ function onFadeEnd() {
   fadeOut.value = false
 }
 
-// The engine-ready render copy: shared asset-prefix + active-view resolution,
-// NO artboard vh-remap (full real viewport). state stays canonical in the
-// editor tab — this tab only ever holds throwaway copies.
+// ── Device toggle propio de la Vista en vivo ─────────────────────────────
+// Antes SÓLO se hereda del editor por `applyPayload`. Ahora hay UI para
+// cambiarlo directamente aquí — así puedes tener el editor en Desktop y ver
+// en vivo cómo se rendería en Móvil sin salir de esta pestaña.
+//
+// Cuando el usuario elige Móvil, envolvemos <ParallaxSite> en un frame
+// simulado 390×844 (el mismo tamaño lógico del artboard móvil del editor)
+// centrado en la pantalla, con un fondo neutro alrededor. El engine sigue
+// pintando `mode="prod"` como siempre; el frame es puramente visual — como el
+// simulador de Xcode o el modo mobile de Chrome DevTools. `vh`/`vw` resuelven
+// naturalmente contra ese contenedor (ancho controlado por CSS).
+const MOBILE_W = 390
+const MOBILE_H = 844
+// Overlay de controles: auto-hide 2s después del último mousemove para que la
+// Vista en vivo se sienta como el sitio real. Reaparece con cualquier movimiento.
+const controlsVisible = ref(true)
+let hideTimer: ReturnType<typeof setTimeout> | null = null
+function bumpControls() {
+  controlsVisible.value = true
+  if (hideTimer) clearTimeout(hideTimer)
+  hideTimer = setTimeout(() => { controlsVisible.value = false }, 2000)
+}
+function setDevice(m: DeviceMode) {
+  deviceMode.value = m
+  bumpControls()
+}
+// Estilo del contenedor del engine. En desktop: no aplicamos nada (el mundo
+// ocupa la ventana). En mobile: ancho fijo 390 y `min-height:844`, centrado
+// horizontalmente. `overflow:visible` para no cortar posibles secciones más
+// altas — el usuario scrollea dentro de la ventana como en el móvil real.
+const stageStyle = computed<Record<string, string>>(() => {
+  if (deviceMode.value !== 'mobile') return {}
+  return {
+    width: `${MOBILE_W}px`,
+    maxWidth: `${MOBILE_W}px`,
+    minHeight: `${MOBILE_H}px`,
+    margin: '0 auto',
+    boxShadow: '0 0 0 1px rgba(255,255,255,.08), 0 20px 60px rgba(0,0,0,.35)',
+    background: '#fff',
+    // Radio de 24px que evoca la esquina de un iPhone sin caer en el "chrome
+    // completo" con notch etc. — sobrio pero claro.
+    borderRadius: '24px',
+    overflow: 'hidden',
+  }
+})
+// The engine-ready render copy: shared asset-prefix + active-view resolution.
+// En modo mobile-sim adicionalmente remapeamos `vw`/`vh` a `px` contra
+// 390×844 (el frame simulado), así el engine se comporta como si estuviera en
+// un móvil real dentro de una ventana grande. En desktop NO se remapea —
+// resuelven contra el viewport real como en el sitio publicado.
 const previewSite = computed(() => {
   if (!rawSite.value) return null
   try {
-    return buildPreviewSite(
+    const base = buildPreviewSite(
       rawSite.value,
       validType ? projectType : null,
       currentSlug.value,
       deviceMode.value,
     )
+    if (deviceMode.value === 'mobile' && base) {
+      return remapSiteViewportUnits(base, { width: MOBILE_W, height: MOBILE_H })
+    }
+    return base
   } catch (e: any) {
     errorMsg.value = e?.message || String(e)
     return null
@@ -264,6 +320,11 @@ onMounted(() => {
   // (the editor only writes localStorage on open, not per-edit) and the sole
   // live path when BroadcastChannel is unavailable.
   window.addEventListener('storage', onStorage)
+  // Controles auto-hide: cualquier interacción del mouse los revela + resetea
+  // el timer. En touch (iPad demo) no hay mousemove pero el tap también
+  // dispara mousemove sintético en la mayoría de navegadores → cubre casos.
+  window.addEventListener('mousemove', bumpControls)
+  bumpControls() // visibles al arranque para que el usuario los descubra
   if (rawSite.value === null) {
     errorMsg.value = t('live.waitingForData')
   }
@@ -276,27 +337,63 @@ onBeforeUnmount(() => {
     channel = null
   }
   window.removeEventListener('storage', onStorage)
+  window.removeEventListener('mousemove', bumpControls)
+  if (hideTimer) clearTimeout(hideTimer)
 })
 </script>
 
 <template>
-  <!-- Full real viewport, NO editor chrome. -->
-  <div class="live-root" data-test="live-root">
+  <!-- Full real viewport, NO editor chrome. En móvil envolvemos el engine en
+       un "frame" 390×844 centrado; el fondo alrededor es la ventana real. -->
+  <div
+    class="live-root"
+    :class="{ 'is-mobile-sim': deviceMode === 'mobile' }"
+    data-test="live-root"
+  >
     <!-- Botón Volver: aparece tras navegar a otro sitio (link.site). -->
     <button v-if="backStack.length" class="live-back" type="button" @click="goBack" data-test="live-back">
       {{ t('live.backBtn') }}
     </button>
 
-    <!-- Mundo ENTRANTE: siempre <ParallaxSite> normal en flujo, viewport completo
-         (sizing correcto garantizado). Al navegar (link.site) emite `navigate`. -->
-    <ParallaxSite
-      v-if="previewSite"
-      :key="nonce"
-      :site="previewSite"
-      :components="components"
-      mode="prod"
-      @navigate="go"
-    />
+    <!-- Barra flotante de controles (Ver como: 🖥 / 📱). Auto-hide 2s.
+         Reaparece con mousemove. Copia el mismo copy del toolbar del editor
+         para no confundir al usuario. -->
+    <div
+      class="live-controls"
+      :class="{ 'is-visible': controlsVisible }"
+      data-test="live-controls"
+      aria-label="Vista"
+    >
+      <span class="live-controls-label">{{ t('toolbar.previewViewingAs') }}</span>
+      <button
+        type="button"
+        class="live-device-btn"
+        :class="{ active: deviceMode === 'desktop' }"
+        data-test="live-device-desktop"
+        @click="setDevice('desktop')"
+      >&#x1F4BB; <span class="live-device-lbl">{{ t('toolbar.desktop') }}</span></button>
+      <button
+        type="button"
+        class="live-device-btn"
+        :class="{ active: deviceMode === 'mobile' }"
+        data-test="live-device-mobile"
+        @click="setDevice('mobile')"
+      >&#x1F4F1; <span class="live-device-lbl">{{ t('toolbar.mobile') }}</span></button>
+    </div>
+
+    <!-- Contenedor del engine. Si es mobile, aplicamos ancho fijo + centrado y
+         encajamos el <ParallaxSite> adentro, así `vw`/`vh` resuelven contra el
+         frame (no contra la ventana real) y ves EXACTAMENTE el layout móvil. -->
+    <div class="live-stage" :style="stageStyle">
+      <ParallaxSite
+        v-if="previewSite"
+        :key="nonce"
+        :site="previewSite"
+        :components="components"
+        mode="prod"
+        @navigate="go"
+      />
+    </div>
 
     <!-- Mundo SALIENTE: overlay fijo que se desvanece encima y se desmonta. -->
     <div
@@ -404,4 +501,72 @@ body,
   overflow: hidden;
 }
 .live-fade.is-out { opacity: 0; }
+
+/* ── Simulador móvil ─────────────────────────────────────────────────────
+   En modo mobile, el fondo detrás del frame 390×844 se pinta oscuro para que
+   el frame blanco resalte como una "pantalla" flotante. Padding vertical
+   generoso: si la composición es más alta que 844, el usuario scrollea la
+   ventana real y el frame se mueve con él (natural). */
+.live-root.is-mobile-sim {
+  min-height: 100vh;
+  padding: 32px 0;
+  background: #1a1a1a;
+}
+.live-root.is-mobile-sim :deep(body) { background: #1a1a1a; }
+
+/* ── Overlay de controles (Bloque C5) ───────────────────────────────────
+   Barra chica flotante top-center. Fade in/out con la clase `is-visible`.
+   Elevada por encima del engine (mismo stacking que .live-back). El
+   backdrop-filter le da profundidad sin ocupar visualmente. */
+.live-controls {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 12px;
+  background: rgba(20, 20, 20, 0.78);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  font: 600 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+.live-controls.is-visible { opacity: 1; pointer-events: auto; }
+.live-controls-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #b4b4b4;
+  margin-right: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.live-device-btn {
+  background: transparent;
+  color: #d6d6d6;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 600 12px inherit;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.live-device-btn:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.live-device-btn.active {
+  background: rgba(255, 213, 109, 0.16);
+  color: #ffe2a3;
+  border-color: rgba(255, 213, 109, 0.4);
+}
+.live-device-lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
 </style>
