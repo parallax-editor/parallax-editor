@@ -226,6 +226,7 @@ export default {
     device: 'Device',
     desktop: 'Desktop',
     mobile: 'Mobile',
+    previewViewingAs: 'View as:',
     preview: 'Preview',
     grid: 'Grid',
     guides: 'Guides',

@@ -27,6 +27,11 @@ import { usePublishReadiness } from '../../composables/usePublishReadiness'
 import { activeWorkspace } from '../../stores/workspaces'
 import { useRouter } from 'vue-router'
 
+// Modo Preview → aplica el label ampliado al toggle de dispositivo para que
+// no se pierda entre los iconitos. En Edit el toggle sigue como estaba
+// (iconos discretos) para no ocupar espacio horizontal en la barra.
+const isPreview = computed(() => state.previewMode === 'preview')
+
 const dialog = useDialog()
 const { t } = useI18n()
 import MobileSizeControl from './MobileSizeControl.vue'
@@ -276,19 +281,25 @@ async function onEnableIndependent() {
 
       <span class="separator" />
 
-      <div class="row-group">
+      <div class="row-group device-group" :class="{ 'preview-hint': isPreview }">
+        <!-- Cuando el usuario está en modo Preview el toggle de dispositivo
+             puede pasar desapercibido y el reporte real fue: "no encuentro
+             cómo previsualizar en mobile o desktop". Un label textual delante
+             del toggle en Preview lo hace obvio sin tocar la geometría del
+             botón (así el hit-target no cambia entre modos). -->
+        <span v-if="isPreview" class="device-hint" data-test="device-hint">{{ t('toolbar.previewViewingAs') }}</span>
         <button
           :class="['device-btn', { active: state.deviceMode === 'desktop' }]"
           @click="state.deviceMode = 'desktop'"
           :title="isIndependent ? t('toolbar.editDesktopTitle') : t('toolbar.desktop')"
           data-test="device-desktop"
-        >&#x1F4BB;</button>
+        >&#x1F4BB;<span v-if="isPreview" class="device-btn-label">{{ t('toolbar.desktop') }}</span></button>
         <button
           :class="['device-btn', { active: state.deviceMode === 'mobile' }]"
           @click="state.deviceMode = 'mobile'"
           :title="isIndependent ? t('toolbar.editMobileTitle') : t('toolbar.mobile')"
           data-test="device-mobile"
-        >&#x1F4F1;</button>
+        >&#x1F4F1;<span v-if="isPreview" class="device-btn-label">{{ t('toolbar.mobile') }}</span></button>
 
         <!-- Tamaño del lienzo móvil configurable (#90). Solo afecta a móvil;
              se habilita cuando el dispositivo activo es Móvil. -->
@@ -474,4 +485,10 @@ async function onEnableIndependent() {
 .save-btn:disabled { opacity: 0.4; cursor: default; }
 .tool-btn.publish-blocked { opacity: 0.6; border-color: rgba(230, 175, 75, 0.5); color: #ffb663; }
 .tool-btn.publish-blocked:hover { background: rgba(230, 175, 75, 0.1); }
+/* Device toggle — modo Preview: labels textuales alrededor del icono para
+   que el toggle sea obvio (feedback de Daniela). En Edit el icono solo,
+   como antes. */
+.device-group.preview-hint .device-btn { padding: 4px 10px; gap: 6px; display: inline-flex; align-items: center; }
+.device-btn-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.device-hint { font-size: 11px; color: #999; margin-right: 6px; }
 </style>

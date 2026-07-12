@@ -228,6 +228,7 @@ export default {
     device: 'Dispositivo',
     desktop: 'Escritorio',
     mobile: 'Móvil',
+    previewViewingAs: 'Ver como:',
     preview: 'Vista previa',
     grid: 'Cuadrícula',
     guides: 'Guías',

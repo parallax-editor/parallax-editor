@@ -42,10 +42,13 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  // Plain click = single select. `additive` (Ctrl on Win/Linux, Cmd on mac)
-  // = toggle this node into the tree multi-selection (TASK #94). The parent
-  // routes to setTreeSelection vs toggleTreeSelection.
-  select: [additive: boolean]
+  // Modo de selección al clicar la fila:
+  //   • 'set'    → single select (colapsa la multi-selección).
+  //   • 'toggle' → Cmd/Ctrl+click: agrega o quita este nodo (TASK #94).
+  //   • 'range'  → Shift+click: selecciona todo lo visible entre el ancla
+  //                (último seleccionado) y este nodo — Finder-style.
+  //   El parent enruta a setTreeSelection / toggleTreeSelection / setTreeSelectionRange.
+  select: [mode: 'set' | 'toggle' | 'range']
   // Cross-parent move: (sourcePath, targetArrayPath, toIndex). toIndex is the
   // slot to insert AT (before the dropped-on row, or after if dropped on its
   // lower half).
@@ -163,7 +166,18 @@ function onDragStart(e: DragEvent) {
     return
   }
   if (props.dragArrayPath !== undefined && props.dragIndex !== undefined) {
-    e.dataTransfer?.setData('text/plain', sourcePath())
+    const src = sourcePath()
+    // Multi-drag (Bloque C3): si el nodo arrastrado es parte de la
+    // multi-selección, empaquetamos TODOS los paths del set con el prefijo
+    // `MULTI:` + JSON. El parent (`LayersPanel`) parsea el dataTransfer y
+    // llama a moveNodes en el store. Los tests de un solo nodo NO se ven
+    // afectados: sin prefijo el drop path sigue por `moveNode` singular.
+    const paths = state.selectedPaths || []
+    if (paths.length >= 2 && paths.includes(src)) {
+      e.dataTransfer?.setData('text/plain', `MULTI:${JSON.stringify(paths)}`)
+    } else {
+      e.dataTransfer?.setData('text/plain', src)
+    }
     e.dataTransfer!.effectAllowed = 'move'
   }
 }
@@ -190,7 +204,7 @@ function onDrop(e: DragEvent) {
   const edge = dropEdge.value
   dropEdge.value = null
   if (!src || props.dragArrayPath === undefined || props.dragIndex === undefined) {
-    emit('select', false)
+    emit('select', 'set')
     return
   }
   const toIndex = edge === 'after' ? props.dragIndex + 1 : props.dragIndex
@@ -214,10 +228,15 @@ function onToggleCollapse(e: MouseEvent) {
 
 function onRowClick(e: MouseEvent) {
   if (renaming.value) return
-  // Ctrl (Win/Linux) or Cmd (mac) → additive multi-select toggle. metaKey is
-  // Cmd on mac; ctrlKey is Ctrl elsewhere (and also Ctrl on mac, which mac
-  // users expect to behave like Cmd here too).
-  emit('select', e.metaKey || e.ctrlKey)
+  // Convención Finder de macOS unificada con el canvas:
+  //   Shift          → range (extiende desde el ancla hasta este nodo)
+  //   Cmd / Ctrl     → toggle individual (agrega/quita este nodo del set)
+  //   plain click    → single select (colapsa toda multi-selección)
+  // Shift tiene precedencia sobre Cmd cuando ambos vienen (misma prioridad que
+  // Finder). El parent decide cómo materializar cada modo.
+  if (e.shiftKey) emit('select', 'range')
+  else if (e.metaKey || e.ctrlKey) emit('select', 'toggle')
+  else emit('select', 'set')
 }
 </script>
 

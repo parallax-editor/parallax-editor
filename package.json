@@ -23,7 +23,7 @@
     "dist:dir": "node scripts/ensure-x64-esbuild.mjs && yarn build && yarn build:server && electron-builder --dir --x64",
     "dist:mac": "node scripts/ensure-x64-esbuild.mjs && yarn build && yarn build:server && electron-builder --mac --x64 --arm64",
     "release": "node scripts/release.mjs",
-    "test": "node tests/editor.test.mjs && node tests/git-pathspec.test.mjs && node tests/editor-helpers.test.mjs && node tests/workspaces-preset.test.mjs && node tests/secrets-electron.test.mjs && node tests/secrets-session-fallback.test.mjs && node tests/s3-credentials-flow.test.mjs && node tests/git-pat-flow.test.mjs && node tests/git-askpass-and-scrub.test.mjs",
+    "test": "node tests/editor.test.mjs && node tests/git-pathspec.test.mjs && node tests/editor-helpers.test.mjs && node tests/workspaces-preset.test.mjs && node tests/secrets-electron.test.mjs && node tests/secrets-session-fallback.test.mjs && node tests/s3-credentials-flow.test.mjs && node tests/git-pat-flow.test.mjs && node tests/git-askpass-and-scrub.test.mjs && node tests/selection-range.test.mjs && node tests/move-nodes.test.mjs",
     "test:e2e": "node e2e/harness.cjs --suite=editor",
     "test:e2e:save": "node e2e/suites/save-reflect.cjs",
     "test:e2e:matrix": "node e2e/suites/engine-matrix.cjs",

@@ -153,34 +153,40 @@ export function handleCanvasClick(e: MouseEvent, _canvasEl: HTMLElement) {
   // pasteboard preserves the current multi-selection (a missed shift-click
   // shouldn't nuke the group). The ONLY way to select an off-board element is
   // via the CAPAS tree.
+  // Modificador de multi-selección — feedback Daniela: canvas usaba SOLO Shift;
+  // capas usaba Cmd/Ctrl. Ahora ambos flujos aceptan Cmd/Ctrl (estándar macOS
+  // Finder) Y Shift (muscle-memory heredada). El comportamiento es idéntico:
+  // toggle individual del elemento.
+  const isToggleMod = (ev: MouseEvent) => ev.metaKey || ev.ctrlKey || ev.shiftKey
+
   if (!pointInArtboard(e.clientX, e.clientY)) {
-    if (!e.shiftKey) setCanvasSelection(null)
+    if (!isToggleMod(e)) setCanvasSelection(null)
     return
   }
 
   const parallaxEl = elementAtPoint(e.clientX, e.clientY)
   if (!parallaxEl) {
-    // Click on empty pasteboard. A plain click clears everything; a SHIFT
+    // Click on empty pasteboard. A plain click clears everything; a toggle-mod
     // click on nothing preserves the existing multi-selection (so a missed
-    // shift-click doesn't nuke the group).
-    if (!e.shiftKey) setCanvasSelection(null)
+    // multi-select click doesn't nuke the group).
+    if (!isToggleMod(e)) setCanvasSelection(null)
     return
   }
 
   const id = parallaxEl.getAttribute('data-parallax-id')
   if (!id) {
-    if (!e.shiftKey) setCanvasSelection(null)
+    if (!isToggleMod(e)) setCanvasSelection(null)
     return
   }
 
   const path = findElementPath(state.site, id)
   if (!path) {
-    if (!e.shiftKey) setCanvasSelection(null)
+    if (!isToggleMod(e)) setCanvasSelection(null)
     return
   }
-  // SHIFT+click → toggle this element in/out of the multi-selection (GAP5).
-  // Plain click → single select (collapses any multi-selection). Both keep
-  // `selectedPath` as the primary so PROPIEDADES/CAPAS are unchanged.
-  if (e.shiftKey) toggleCanvasSelection(path)
+  // Cmd/Ctrl/Shift + click → toggle this element in/out of the multi-selection
+  // (GAP5). Plain click → single select (collapses any multi-selection). Both
+  // keep `selectedPath` as the primary so PROPIEDADES/CAPAS are unchanged.
+  if (isToggleMod(e)) toggleCanvasSelection(path)
   else setCanvasSelection(path)
 }
