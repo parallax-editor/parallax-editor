@@ -705,7 +705,7 @@ function onCanvasDrop(e: DragEvent) {
   overflow: hidden;
   position: relative;
   cursor: default;
-  background: #1a1a1a;
+  background: #101014;
 }
 .cursor-hand { cursor: grab; }
 .cursor-hand:active { cursor: grabbing; }

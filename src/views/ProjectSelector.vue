@@ -1507,8 +1507,15 @@ async function createWorkspace() {
 </template>
 
 <style scoped>
-.selector { height: 100vh; height: 100dvh; overflow-y: auto; padding: 56px 24px 80px; }
-.selector > * { max-width: 760px; margin-left: auto; margin-right: auto; }
+/* Dashboard ancho (1120px) — antes 760px: con el grid de cards el selector
+   aprovecha la pantalla en vez de dejar dos mares de negro a los lados. */
+.selector {
+  height: 100vh; height: 100dvh; overflow-y: auto; padding: 48px 32px 80px;
+  background:
+    radial-gradient(1200px 500px at 50% -10%, rgba(90, 110, 160, 0.08), transparent 60%),
+    #101014;
+}
+.selector > * { max-width: 1120px; margin-left: auto; margin-right: auto; }
 
 .hero {
   margin-bottom: 22px;
@@ -1555,7 +1562,7 @@ async function createWorkspace() {
 
 /* Search bar */
 .search-bar {
-  display: flex; align-items: center; gap: 8px; background: #1c1c1c; border: 1px solid #313131;
+  display: flex; align-items: center; gap: 8px; background: #17171c; border: 1px solid #2a2a32;
   border-radius: 10px; padding: 0 12px; margin-bottom: 36px; transition: border-color 0.15s;
 }
 .search-bar:focus-within { border-color: #3b82f6; }
@@ -1578,7 +1585,9 @@ async function createWorkspace() {
 .empty { color: #777; font-size: 13px; padding: 6px 2px; }
 .empty strong { color: #aaa; font-weight: 600; }
 .no-results { color: #777; font-size: 13px; padding: 6px 2px; font-style: italic; }
-.cards { display: flex; flex-direction: column; gap: 8px; }
+/* Grid de cards con preview grande (ProjectCard vertical). auto-fill mantiene
+   el tamaño de card estable aunque haya pocas. */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
 
 /* Modals (shared) */
 .create-backdrop { position: fixed; inset: 0; z-index: 100001; background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; padding: 24px; }

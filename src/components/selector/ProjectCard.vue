@@ -80,6 +80,8 @@ function formatEdited(ms: number): string {
     @keydown.enter.prevent="!deleting && emit('open')"
     @keydown.space.prevent="!deleting && emit('open')"
   >
+    <!-- Preview grande arriba (16:10) — dashboard estilo Figma/Framer.
+         El OG image del sitio es el preview natural; fallback letra. -->
     <div class="thumb">
       <img
         v-if="!imgFailed"
@@ -138,24 +140,26 @@ function formatEdited(ms: number): string {
 </template>
 
 <style scoped>
+/* Card VERTICAL con preview grande (16:10) — el selector pasó de "lista de
+   filas" a un grid de dashboard (feedback Josh: diseño apretado y monótono). */
 .project-card {
   display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 10px 12px;
-  background: #232323;
-  border: 1px solid #2e2e2e;
-  border-radius: 10px;
+  flex-direction: column;
+  background: #1c1c22;
+  border: 1px solid #2a2a32;
+  border-radius: 14px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  overflow: hidden;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
   position: relative;
 }
 .project-card:hover {
-  background: #2b2b2b;
-  border-color: #3d3d3d;
+  border-color: #3d3d48;
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
 }
 .project-card:active {
-  transform: translateY(1px);
+  transform: translateY(0);
 }
 .project-card:focus-visible {
   outline: 2px solid #3b82f6;
@@ -163,43 +167,45 @@ function formatEdited(ms: number): string {
 }
 
 .thumb {
-  flex: 0 0 auto;
-  width: 56px;
-  height: 56px;
-  border-radius: 8px;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  background: #14141a;
+  border-bottom: 1px solid #26262e;
   overflow: hidden;
-  background: #1a1a1a;
-  border: 1px solid #333;
 }
 .thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+  transition: transform 0.25s ease;
 }
+.project-card:hover .thumb img { transform: scale(1.03); }
 .thumb-fallback {
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 44px;
   font-weight: 700;
-  color: #6b7280;
-  background: linear-gradient(135deg, #2a2a2a, #1c1c1c);
+  color: #4b5563;
+  background:
+    radial-gradient(320px 160px at 50% 0%, rgba(120, 130, 170, 0.12), transparent 70%),
+    linear-gradient(135deg, #23232b, #17171d);
 }
 
 .info {
-  flex: 1 1 auto;
-  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
+  padding: 12px 14px 13px;
+  min-width: 0;
 }
 .project-title {
   font-weight: 600;
-  font-size: 14px;
-  color: #ececec;
+  font-size: 13.5px;
+  color: #ececf1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -211,16 +217,16 @@ function formatEdited(ms: number): string {
   min-width: 0;
 }
 .edited {
-  font-size: 12px;
-  color: #8a8a8a;
+  font-size: 11.5px;
+  color: #82828e;
   white-space: nowrap;
 }
 .slug-chip {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
+  font-size: 10.5px;
   color: #7fa8d6;
-  background: #1a1a1a;
-  border: 1px solid #2c2c2c;
+  background: #14141a;
+  border: 1px solid #2a2a32;
   padding: 1px 7px;
   border-radius: 999px;
   white-space: nowrap;
@@ -228,41 +234,45 @@ function formatEdited(ms: number): string {
   text-overflow: ellipsis;
 }
 
+/* Acciones como overlay flotante sobre la esquina del preview (hover). */
 .project-actions {
-  flex: 0 0 auto;
+  position: absolute;
+  top: 8px;
+  right: 8px;
   display: flex;
   align-items: center;
   gap: 6px;
   opacity: 0;
   transition: opacity 0.12s;
 }
-/* Reveal actions on hover/focus; keep them reachable for keyboard users. */
 .project-card:hover .project-actions,
 .project-card:focus-within .project-actions {
   opacity: 1;
 }
 .project-actions .act {
-  background: #2e2e2e;
-  border: 1px solid #3a3a3a;
-  color: #b9b9b9;
+  background: rgba(18, 18, 24, 0.85);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #c9c9d2;
   cursor: pointer;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 8px;
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .project-actions .act:hover {
-  background: #3a3a3a;
+  background: rgba(45, 45, 55, 0.95);
   color: #fff;
 }
 .project-actions .danger:hover {
-  background: #3a2020;
+  background: rgba(70, 25, 25, 0.95);
   color: #ff7676;
-  border-color: #5a2a2a;
+  border-color: rgba(160, 60, 60, 0.6);
 }
 
 @media (max-width: 520px) {

@@ -413,7 +413,7 @@ function onEmptyDrop(e: DragEvent, targetArrayPath: string) {
 </template>
 
 <style scoped>
-.layers-panel { background: #1e1e1e; font-size: 13px; position: relative; height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.layers-panel { background: #17171c; font-size: 13px; position: relative; height: 100%; display: flex; flex-direction: column; min-height: 0; }
 .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; border-bottom: 1px solid #333; flex-shrink: 0; }
 .panel-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 .header-actions { display: flex; gap: 4px; }

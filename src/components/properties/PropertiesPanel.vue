@@ -2802,7 +2802,7 @@ function openAnimHelp(section: string | null = null) {
 </template>
 
 <style scoped>
-.properties-panel { background: #1e1e1e; font-size: 13px; display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.properties-panel { background: #17171c; font-size: 13px; display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .panel-header { padding: 10px 12px; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; border-bottom: 1px solid #333; flex-shrink: 0; }
 .panel-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 .prop-unknown-note { font-size: 11px; color: #c98a3a; line-height: 1.4; padding: 4px 0 8px; }

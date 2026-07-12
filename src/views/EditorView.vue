@@ -465,11 +465,11 @@ watch(
    axis; align-self:stretch + min-height:0 + height:100% guarantees the panel
    root resolves to the body's height (so its .panel-body overflow triggers). */
 .panel-left {
-  flex: 0 0 240px; width: 240px; border-right: 1px solid #333;
+  flex: 0 0 240px; width: 240px; border-right: 1px solid #26262e;
   overflow: hidden; align-self: stretch; height: 100%; min-height: 0;
 }
 .panel-right {
-  flex: 0 0 280px; width: 280px; border-left: 1px solid #333;
+  flex: 0 0 280px; width: 280px; border-left: 1px solid #26262e;
   overflow: hidden; align-self: stretch; height: 100%; min-height: 0;
 }
 .canvas-area { flex: 1 1 0; display: flex; flex-direction: column; position: relative; overflow: hidden; min-height: 0; min-width: 0; }
@@ -479,7 +479,7 @@ watch(
    the header/footer scroll away and create a double scrollbar (same class
    of bug fixed for CAPAS/PROPIEDADES). overflow:hidden + min-height:0 give
    the child a bounded height to scroll within. */
-.bottom-panel { height: 240px; border-top: 1px solid #333; overflow: hidden; flex-shrink: 0; min-height: 0; display: flex; }
+.bottom-panel { height: 240px; border-top: 1px solid #26262e; overflow: hidden; flex-shrink: 0; min-height: 0; display: flex; }
 .bottom-panel > * { flex: 1 1 0; min-height: 0; }
 
 /* ─── Resizable panel grab handles (TASK #84) ──────────────────────────────

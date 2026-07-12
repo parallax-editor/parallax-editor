@@ -431,9 +431,9 @@ async function onEnableIndependent() {
 /* position+z-index so toolbar dropdowns (size menu, etc.) paint ABOVE the
    canvas and its guides/selection overlay (a later sibling that would otherwise
    cover a dropdown opening down into the canvas — Image #65). */
-.toolbar { display: flex; flex-direction: column; background: #252525; border-bottom: 1px solid #333; font-size: 13px; flex-shrink: 0; position: relative; z-index: 100; }
+.toolbar { display: flex; flex-direction: column; background: #1e1e24; border-bottom: 1px solid #26262e; font-size: 13px; flex-shrink: 0; position: relative; z-index: 100; }
 .toolbar-row { display: flex; align-items: center; gap: 8px; padding: 0 12px; min-height: 40px; }
-.toolbar-row-top { justify-content: space-between; border-bottom: 1px solid #2f2f2f; }
+.toolbar-row-top { justify-content: space-between; border-bottom: 1px solid #26262e; }
 .toolbar-row-tools { flex-wrap: wrap; padding-top: 6px; padding-bottom: 6px; row-gap: 6px; }
 .row-group { display: flex; align-items: center; gap: 8px; }
 .row-group.actions { gap: 8px; }
