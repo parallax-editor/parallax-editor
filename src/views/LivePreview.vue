@@ -185,18 +185,38 @@ function onFadeEnd() {
 // naturalmente contra ese contenedor (ancho controlado por CSS).
 const MOBILE_W = 390
 const MOBILE_H = 844
-// Overlay de controles: auto-hide 2s después del último mousemove para que la
-// Vista en vivo se sienta como el sitio real. Reaparece con cualquier movimiento.
+// Overlay de controles — feedback Josh (2ª iteración): con el mousemove global
+// el escondido era "de suerte" porque CUALQUIER movimiento del mouse (que en
+// una vista previa pasa todo el tiempo) reseteaba el timer y los dejaba
+// visibles casi siempre. Rediseño estilo controles de video en fullscreen:
+//   • Estado por defecto: OCULTOS.
+//   • Reveal INTENCIONAL: hover strip transparente pegado al top del viewport
+//     (48px de alto, ancho completo). Pasar el mouse por ahí los muestra.
+//   • Se mantienen visibles mientras el mouse esté sobre el strip O sobre la
+//     barra (mouseenter/leave abajo). Al salir, timer corto (600ms) y ocultar.
+//   • Discovery inicial: al montar los mostramos 2.5s para que el usuario los
+//     descubra; después se ocultan y ya funcionan a demanda.
 const controlsVisible = ref(true)
 let hideTimer: ReturnType<typeof setTimeout> | null = null
-function bumpControls() {
-  controlsVisible.value = true
+let inHotZone = false
+function scheduleHide(delay: number) {
   if (hideTimer) clearTimeout(hideTimer)
-  hideTimer = setTimeout(() => { controlsVisible.value = false }, 2000)
+  hideTimer = setTimeout(() => {
+    if (!inHotZone) controlsVisible.value = false
+  }, delay)
+}
+function onHotZoneEnter() {
+  inHotZone = true
+  controlsVisible.value = true
+  if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
+}
+function onHotZoneLeave() {
+  inHotZone = false
+  scheduleHide(600)
 }
 function setDevice(m: DeviceMode) {
   deviceMode.value = m
-  bumpControls()
+  // No forzamos visibilidad extra: el usuario ya está encima de la barra.
 }
 // Estilo del contenedor del engine. En desktop: no aplicamos nada (el mundo
 // ocupa la ventana). En mobile: ancho fijo 390 y `min-height:844`, centrado
@@ -320,11 +340,10 @@ onMounted(() => {
   // (the editor only writes localStorage on open, not per-edit) and the sole
   // live path when BroadcastChannel is unavailable.
   window.addEventListener('storage', onStorage)
-  // Controles auto-hide: cualquier interacción del mouse los revela + resetea
-  // el timer. En touch (iPad demo) no hay mousemove pero el tap también
-  // dispara mousemove sintético en la mayoría de navegadores → cubre casos.
-  window.addEventListener('mousemove', bumpControls)
-  bumpControls() // visibles al arranque para que el usuario los descubra
+  // Discovery inicial: visibles 2.5s al montar y luego se ocultan. Después
+  // los revela el hot-zone del borde superior (v-on en la template).
+  controlsVisible.value = true
+  scheduleHide(2500)
   if (rawSite.value === null) {
     errorMsg.value = t('live.waitingForData')
   }
@@ -337,7 +356,6 @@ onBeforeUnmount(() => {
     channel = null
   }
   window.removeEventListener('storage', onStorage)
-  window.removeEventListener('mousemove', bumpControls)
   if (hideTimer) clearTimeout(hideTimer)
 })
 </script>
@@ -355,14 +373,26 @@ onBeforeUnmount(() => {
       {{ t('live.backBtn') }}
     </button>
 
-    <!-- Barra flotante de controles (Ver como: 🖥 / 📱). Auto-hide 2s.
-         Reaparece con mousemove. Copia el mismo copy del toolbar del editor
-         para no confundir al usuario. -->
+    <!-- Hot-zone: banda invisible pegada al borde superior. Al entrar el
+         mouse aquí, se revela la barra; al salir (y no estar sobre la barra),
+         se oculta a los 600ms. Es la ÚNICA manera de mostrarlos después del
+         discovery inicial → nunca aparecen por movimiento accidental. -->
+    <div
+      class="live-controls-hotzone"
+      data-test="live-controls-hotzone"
+      @mouseenter="onHotZoneEnter"
+      @mouseleave="onHotZoneLeave"
+    />
+
+    <!-- Barra flotante de controles (Ver como: 🖥 / 📱). Reveal por hot-zone
+         del borde superior. Copia el mismo copy del toolbar del editor. -->
     <div
       class="live-controls"
       :class="{ 'is-visible': controlsVisible }"
       data-test="live-controls"
       aria-label="Vista"
+      @mouseenter="onHotZoneEnter"
+      @mouseleave="onHotZoneLeave"
     >
       <span class="live-controls-label">{{ t('toolbar.previewViewingAs') }}</span>
       <button
@@ -513,6 +543,21 @@ body,
   background: #1a1a1a;
 }
 .live-root.is-mobile-sim :deep(body) { background: #1a1a1a; }
+
+/* Hot-zone del borde superior: invisible, ancho completo, 48px de alto.
+   Detecta mouseenter/leave para revelar/ocultar la barra a demanda. z-index
+   ligeramente por debajo de la barra para que hover-through-controls funcione
+   sin flicker. pointer-events auto para que reciba el hover. */
+.live-controls-hotzone {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  z-index: 2147482999;
+  pointer-events: auto;
+  background: transparent;
+}
 
 /* ── Overlay de controles (Bloque C5) ───────────────────────────────────
    Barra chica flotante top-center. Fade in/out con la clase `is-visible`.
