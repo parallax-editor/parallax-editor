@@ -182,11 +182,17 @@ function goBack() { router.push('/') }
 <template>
   <div class="settings-page" data-test="workspace-settings">
     <header class="page-header">
-      <button class="back-btn" type="button" @click="goBack" data-test="wsSettings-back">← {{ t('wsSettings.back') }}</button>
-      <div class="page-title">
-        <h1>{{ form.cfg.value?.name || workspaceId }}</h1>
-        <p class="page-subtitle">{{ t('wsSettings.subtitle') }}</p>
+      <!-- Fila 1: Back + Title/Subtitle. Los badges ahora viven en una fila
+           debajo para que el título tenga espacio y no se corte con nombres
+           largos (feedback Josh: "muy apretado"). -->
+      <div class="page-header-row">
+        <button class="back-btn" type="button" @click="goBack" data-test="wsSettings-back">← {{ t('wsSettings.back') }}</button>
+        <div class="page-title">
+          <h1>{{ form.cfg.value?.name || workspaceId }}</h1>
+          <p class="page-subtitle">{{ t('wsSettings.subtitle') }}</p>
+        </div>
       </div>
+      <!-- Fila 2: Badges de estado. -->
       <div class="header-badges" v-if="status?.ok">
         <span :class="['badge', s3Badge.kind]" data-test="wsSettings-badge-s3">S3 · {{ s3Badge.label }}</span>
         <span :class="['badge', gitBadge.kind]" data-test="wsSettings-badge-git">Git · {{ gitBadge.label }}</span>
@@ -520,19 +526,25 @@ function goBack() { router.push('/') }
 </template>
 
 <style scoped>
-/* Footer FIXED al bottom del viewport (no sticky) para que jamás ocupe
-   flow del body y por lo tanto jamás tape el último campo. El padding-bottom
-   del body compensa el alto real del footer + margen visual. Este es el
-   tercer intento del scroll — sticky+padding no bastaba porque el footer
-   participaba del flow y su margen empujaba el contenido. */
-.settings-page { max-width: 800px; margin: 0 auto; padding: 40px 24px 160px; color: #e0e0e0; }
-.page-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid #2a2a2a; }
-.back-btn { background: none; border: none; color: #9ab; font-size: 13px; cursor: pointer; padding: 4px 8px; margin-top: 6px; border-radius: 4px; }
-.back-btn:hover { background: #1a1a1a; color: #fff; }
-.page-title { flex: 1; }
-.page-title h1 { font-size: 22px; margin: 0 0 4px; }
+/* CUARTO INTENT — la causa raíz: `index.html` fija `body { overflow: hidden }`
+   para la app de paneles del editor, así que la pantalla de settings no tenía
+   NINGÚN contenedor scrollable (ni body, ni ella misma). El contenido más allá
+   del viewport quedaba invisible → "el scroll de esto no funciona" (tercera vez).
+   Fix: la propia `.settings-page` se vuelve el scroll container ocupando toda
+   la altura del viewport. El footer sigue FIXED al viewport, y el padding-bottom
+   grande (160px) reserva espacio para que el último campo no quede tapado.
+   Centramos con box interno para conservar el max-width del contenido. */
+.settings-page { height: 100vh; overflow-y: auto; overflow-x: hidden; max-width: 800px; margin: 0 auto; padding: 40px 24px 160px; color: #e0e0e0; box-sizing: border-box; }
+/* Cabecera en 3 bandas verticales para respirar (feedback Josh "muy apretado"):
+   1) botón Volver (con aire), 2) título+subtítulo, 3) badges. */
+.page-header { display: flex; flex-direction: column; gap: 18px; margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid #2a2a2a; }
+.page-header-row { display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
+.back-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #9ab; font-size: 13px; cursor: pointer; padding: 8px 14px; border-radius: 6px; transition: background .15s, color .15s, border-color .15s; }
+.back-btn:hover { background: #232323; color: #fff; border-color: #3a3a3a; }
+.page-title { display: flex; flex-direction: column; gap: 6px; }
+.page-title h1 { font-size: 24px; margin: 0; letter-spacing: -0.01em; }
 .page-subtitle { font-size: 13px; color: #8a8a8a; margin: 0; }
-.header-badges { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.header-badges { display: flex; gap: 8px; flex-wrap: wrap; }
 .badge { font-size: 11px; padding: 4px 10px; border-radius: 999px; font-weight: 600; letter-spacing: 0.01em; }
 .badge.ok { background: rgba(88, 190, 105, 0.15); color: #6ad08c; border: 1px solid rgba(88, 190, 105, 0.35); }
 .badge.warn { background: rgba(230, 175, 75, 0.15); color: #ffb663; border: 1px solid rgba(230, 175, 75, 0.35); }
