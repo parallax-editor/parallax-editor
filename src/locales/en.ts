@@ -80,7 +80,7 @@ export default {
     s3RegionPlaceholder: 'us-east-1',
     s3Manifest: 'Keep catalog manifest (manifest.json)',
     s3ManifestHelp: 'Catalog manifest',
-    s3ManifestHelpText: 'Generates and maintains **&lt;contentRoot&gt;/manifest.json** with the workspace project list, for public catalogs.\n\n» Turn it off in private workspaces (e.g. invitations) to avoid exposing the project list.',
+    s3ManifestHelpText: 'Generates and maintains **<contentRoot>/manifest.json** with the workspace project list, for public catalogs.\n\n» Turn it off in private workspaces (e.g. invitations) to avoid exposing the project list.',
     removeBtn: 'Remove workspace',
     removeConfirmTitle: 'Remove workspace',
     removeConfirmMessage: 'Remove this workspace from the list? (Does not delete files on disk.)',

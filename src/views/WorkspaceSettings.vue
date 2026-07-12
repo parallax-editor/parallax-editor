@@ -520,9 +520,12 @@ function goBack() { router.push('/') }
 </template>
 
 <style scoped>
-/* padding-bottom aumentado (140) para dejar espacio bajo el último campo
-   cuando el footer sticky lo tapaba (bug reportado con Secret Access Key). */
-.settings-page { max-width: 800px; margin: 0 auto; padding: 40px 24px 140px; color: #e0e0e0; }
+/* Footer FIXED al bottom del viewport (no sticky) para que jamás ocupe
+   flow del body y por lo tanto jamás tape el último campo. El padding-bottom
+   del body compensa el alto real del footer + margen visual. Este es el
+   tercer intento del scroll — sticky+padding no bastaba porque el footer
+   participaba del flow y su margen empujaba el contenido. */
+.settings-page { max-width: 800px; margin: 0 auto; padding: 40px 24px 160px; color: #e0e0e0; }
 .page-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid #2a2a2a; }
 .back-btn { background: none; border: none; color: #9ab; font-size: 13px; cursor: pointer; padding: 4px 8px; margin-top: 6px; border-radius: 4px; }
 .back-btn:hover { background: #1a1a1a; color: #fff; }
@@ -601,16 +604,25 @@ function goBack() { router.push('/') }
 .bucket-opt.active, .bucket-opt:hover { background: var(--accent-soft, #2a2418); color: #fff; }
 .bucket-hint { font-size: 11px; color: #777; }
 
-/* Footer sticky con backdrop-filter para que el usuario vea que hay
-   contenido debajo (antes ocultaba el último campo sin señal visual).
-   El gradient sigue igual pero ahora + blur = capa clara. */
+/* Footer FIXED (no sticky) — pegado al bottom del viewport, ancho igual al
+   `.settings-page`, y el contenido del body reserva 160px de padding-bottom.
+   Con sticky el footer participaba del flow y su margen impedía scrollear
+   hasta ver el último input; con fixed queda fuera del flow y jamás tapa. */
 .page-footer {
-  position: sticky; bottom: 0; display: flex; align-items: center; gap: 10px;
-  padding: 16px 24px; margin: 40px -24px 0; border-top: 1px solid #2a2a2a;
-  background: rgba(15, 15, 15, 0.85);
+  position: fixed; left: 0; right: 0; bottom: 0;
+  display: flex; align-items: center; gap: 10px;
+  padding: 16px 24px; border-top: 1px solid #2a2a2a;
+  background: rgba(15, 15, 15, 0.92);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+  z-index: 50;
 }
+/* Contenido del footer alineado a la caja de 800px del body para que los
+   botones no queden pegados a los bordes del viewport en pantallas anchas. */
+.page-footer > * { max-width: none; }
+.page-footer::before, .page-footer::after { content: ''; flex: 1 1 auto; }
+.page-footer::before { max-width: calc((100% - 800px) / 2); }
+.page-footer::after { max-width: calc((100% - 800px) / 2); }
 .page-footer .spacer { flex: 1; }
 .danger-btn { padding: 9px 16px; border: 1px solid #7a3030; background: #22161a; color: #ffb0b0; border-radius: 8px; cursor: pointer; }
 .danger-btn:hover { background: #5a2020; }

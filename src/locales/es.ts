@@ -80,7 +80,7 @@ export default {
     s3RegionPlaceholder: 'us-east-1',
     s3Manifest: 'Mantener manifiesto del catálogo (manifest.json)',
     s3ManifestHelp: 'Manifiesto del catálogo',
-    s3ManifestHelpText: 'Genera y mantiene **&lt;contentRoot&gt;/manifest.json** con la lista de proyectos del workspace, para catálogos públicos.\n\n» Apágalo en workspaces privados (por ejemplo invitaciones) para no exponer la lista de proyectos.',
+    s3ManifestHelpText: 'Genera y mantiene **<contentRoot>/manifest.json** con la lista de proyectos del workspace, para catálogos públicos.\n\n» Apágalo en workspaces privados (por ejemplo invitaciones) para no exponer la lista de proyectos.',
     removeBtn: 'Quitar workspace',
     removeConfirmTitle: 'Quitar workspace',
     removeConfirmMessage: '¿Quitar este workspace de la lista? (No borra archivos en disco.)',
