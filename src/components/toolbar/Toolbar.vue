@@ -332,6 +332,17 @@ async function onEnableIndependent() {
           <button class="zoom-label" @click="fit" :title="t('toolbar.zoomFit')" :aria-label="t('toolbar.zoomFitAria')">{{ zoomPercent }}%</button>
           <button class="zoom-btn" @click="zoomIn" :title="t('toolbar.zoomIn')" :aria-label="t('toolbar.zoomInAria')">+</button>
         </div>
+        <!-- Rescate explícito: si el usuario paneó tanto que la mesa quedó
+             fuera de vista (cuadrícula infinita), este botón la re-centra.
+             La misma acción vivía solo en el click del "%" y Cmd+0 —
+             indescubrible cuando estás perdido (feedback Josh). -->
+        <button
+          class="tool-btn center-artboard-btn"
+          data-test="center-artboard"
+          :title="t('toolbar.centerArtboard')"
+          :aria-label="t('toolbar.centerArtboardAria')"
+          @click="fit"
+        >⌖ <span class="center-artboard-lbl">{{ t('toolbar.centerArtboardShort') }}</span></button>
       </div>
 
       <span class="separator" />
@@ -440,6 +451,8 @@ async function onEnableIndependent() {
 .project-name { font-weight: 600; }
 .dirty-dot { color: #f90; font-size: 18px; }
 .tool-btn { background: #333; border: 1px solid #444; color: #ccc; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: background .12s ease, border-color .12s ease; }
+.center-artboard-btn { display: inline-flex; align-items: center; gap: 5px; }
+.center-artboard-btn .center-artboard-lbl { font-size: 11px; }
 .tool-btn:hover:not(:disabled) { background: #444; }
 .tool-btn:disabled { opacity: 0.4; cursor: default; }
 .tool-btn.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
