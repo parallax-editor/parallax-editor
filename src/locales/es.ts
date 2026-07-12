@@ -190,6 +190,26 @@ export default {
     doctorGitAuthOkSsh: 'Llaves SSH detectadas en ~/.ssh — el push funciona para remotos SSH.',
     doctorGitAuthOkHelper: 'Credential helper: ',
   },
+  // Pantalla dedicada de settings (`WorkspaceSettings.vue`).
+  wsSettings: {
+    back: 'Volver a proyectos',
+    subtitle: 'Configura este workspace y sus credenciales de publicación.',
+    tabGeneral: 'General',
+    tabS3: 'Publicación (S3)',
+    tabGit: 'Autenticación Git',
+    gitRemoteLabel: 'Remoto detectado',
+    badgeS3Off: 'no habilitado',
+    badgeS3Missing: 'faltan credenciales',
+    badgeS3Keychain: 'llavero del Mac',
+    badgeS3System: 'cadena del sistema',
+    badgeGitOff: 'sin control de versiones',
+    badgeGitPatMissing: 'PAT sin configurar',
+    badgeGitPatOnSsh: 'PAT sobre SSH — no funcionará',
+    badgeGitKeychain: 'llavero del Mac',
+    badgeGitSystem: 'auth del sistema',
+    // Menú nativo
+    menuOpen: 'Configurar workspace…',
+  },
   toolbar: {
     save: 'Guardar',
     saving: 'Guardando…',

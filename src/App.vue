@@ -31,6 +31,14 @@ onMounted(() => {
     if (action === 'edit.redo') { storeRedo(); return }
     if (action === 'file.new' || action === 'file.open') {
       router.push('/')
+    } else if (action === 'window.workspaceSettings') {
+      // Ventana → Configurar workspace. Preferimos el activo; si no hay
+      // (arranque en la pestaña de LivePreview, por ejemplo), volvemos al
+      // selector para que elija uno. Nunca navegamos a un id vacío que
+      // rompería la vista.
+      const active = activeWorkspace.value
+      if (active) router.push(`/workspace/${active.id}/settings`)
+      else router.push('/')
     } else if (action === 'help.downloads') {
       window.open(LANDING, '_blank')
     } else if (action === 'help.guide') {

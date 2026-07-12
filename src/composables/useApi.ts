@@ -308,6 +308,25 @@ export const workspaceApi = {
   // Is the host's global git user.name/email set? Drives the setup banner.
   gitConfigStatus: () =>
     api<{ configured: boolean; name: string; email: string }>('/git/config-status'),
+  // Estado que el HOST ve de un workspace ya activado. Alimenta la pantalla
+  // dedicada de settings (`WorkspaceSettings.vue`) y el badge del toolbar del
+  // editor para que "no puedo publicar" tenga una razón concreta antes de que
+  // el usuario clique. NO valida credenciales de red (eso sigue en el server
+  // solo bajo demanda con headBucket / validatePat) — este endpoint es puro
+  // resumen de configuración + estado del remoto git.
+  status: (id: string) =>
+    api<WorkspaceStatus>(`/workspaces/${encodeURIComponent(id)}/status`),
+}
+
+// Payload de `workspaceApi.status`. Refleja únicamente lo que el server puede
+// saber sin credenciales — el flag "hay secreto guardado" lo completa el
+// cliente contra el SecretsBus (Keychain), NO pasa por HTTP.
+export interface WorkspaceStatus {
+  ok: boolean
+  workspace: { id: string; name: string; preset: 'linked-home' | 'multi-tenant'; useGit: boolean }
+  s3: { enabled: boolean; bucket: string; region: string; credentialsMode: 'system' | 'explicit'; publishManifest: boolean }
+  git: { useGit: boolean; authMode: 'system' | 'pat'; remoteUrl: string | null; remoteIsHttps: boolean; provider: 'github' | 'gitlab' | 'bitbucket' | null }
+  error?: string
 }
 
 export interface Diagnostics {

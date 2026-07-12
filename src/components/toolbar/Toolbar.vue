@@ -19,6 +19,13 @@ import { openLivePreview } from '../../composables/useLivePreview'
 import { claudeApi, gitApi } from '../../composables/useApi'
 import { useDialog } from '../../composables/useDialog'
 import { useI18n } from 'vue-i18n'
+// Publish-readiness (Bloque B): calcula si el botón Publicar debería estar
+// disabled porque faltan credenciales configuradas para el workspace activo.
+// El resultado del composable es reactivo — se refresca al cambiar de
+// workspace o al volver de la pantalla de settings.
+import { usePublishReadiness } from '../../composables/usePublishReadiness'
+import { activeWorkspace } from '../../stores/workspaces'
+import { useRouter } from 'vue-router'
 
 const dialog = useDialog()
 const { t } = useI18n()
@@ -36,17 +43,30 @@ const claudeTitle = computed(() =>
 )
 
 // ── Publicar (git) button state ──────────────────────────────────────────────
-// El botón "Publicar" de la barra SIEMPRE abre el panel (es útil para ver los
-// commits y cuándo se publicó por última vez); nunca se deshabilita. El badge
-// (N) solo informa cuántos commits locales hay por subir. La ACCIÓN de publicar
-// vive dentro del panel y se deshabilita sola cuando no hay nada que publicar.
-// gitAhead se refresca tras cada guardado (state.gitLogNonce en EditorView.save).
+// Comportamiento actualizado (v0.2.0):
+//   • Si el workspace declaró credenciales explícitas Y no hay secreto guardado
+//     en el Keychain → el botón se DESHABILITA con tooltip diagnóstico y click
+//     lleva a /workspace/:id/settings?tab=s3 (o git). Bloqueo temprano — evita
+//     que el panel Publicar se abra en vano y confunda.
+//   • Si todo está OK, el botón sigue abriendo el panel normalmente.
+// Antes se abría siempre y el usuario descubría el error DESPUÉS de pulsar.
 const gitAhead = ref(0)
-const publishTitle = computed(() =>
-  gitAhead.value > 0
+const router = useRouter()
+const publishReady = usePublishReadiness()
+const publishTitle = computed(() => {
+  if (publishReady.blockedReason.value) return publishReady.blockedReason.value
+  return gitAhead.value > 0
     ? `Ver commits y publicar (${gitAhead.value} pendiente${gitAhead.value === 1 ? '' : 's'})`
-    : 'Ver commits y la última publicación',
-)
+    : 'Ver commits y la última publicación'
+})
+function onPublishClick() {
+  if (publishReady.blockedReason.value) {
+    const ws = activeWorkspace.value
+    if (ws) router.push(`/workspace/${ws.id}/settings?tab=${publishReady.suggestedTab.value}`)
+    return
+  }
+  emit('toggle-git')
+}
 
 async function refreshGitStatus() {
   if (!state.projectType) return
@@ -205,10 +225,11 @@ async function onEnableIndependent() {
         >Claude</button>
         <button
           class="tool-btn"
+          :class="{ 'publish-blocked': publishReady.blockedReason.value }"
           data-test="toggle-git"
-          @click="emit('toggle-git')"
+          @click="onPublishClick"
           :title="publishTitle"
-        >{{ t('toolbar.publish') }}{{ gitAhead > 0 ? ` (${gitAhead})` : '' }}</button>
+        >{{ t('toolbar.publish') }}{{ publishReady.blockedReason.value ? ' 🔒' : (gitAhead > 0 ? ` (${gitAhead})` : '') }}</button>
         <button class="save-btn" data-test="save" @click="emit('save')" :disabled="!isDirty" :title="t('toolbar.save') + ' (Cmd+S)'">{{ t('toolbar.save') }}</button>
       </div>
     </div>
@@ -451,4 +472,6 @@ async function onEnableIndependent() {
 .save-btn:active:not(:disabled) { background: var(--accent); }
 .save-btn:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 1px; }
 .save-btn:disabled { opacity: 0.4; cursor: default; }
+.tool-btn.publish-blocked { opacity: 0.6; border-color: rgba(230, 175, 75, 0.5); color: #ffb663; }
+.tool-btn.publish-blocked:hover { background: rgba(230, 175, 75, 0.1); }
 </style>

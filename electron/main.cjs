@@ -263,6 +263,7 @@ const MENU_STRINGS = {
     fullscreen: 'Pantalla completa',
     window: 'Ventana', winClaude: 'Asistente Claude', winResources: 'Recursos',
     winSite: 'Sitio', winTheme: 'Tema',
+    wsConfigure: 'Configurar workspace…',
     language: 'Idioma', langSpanish: 'Español', langEnglish: 'Inglés',
     help: 'Ayuda', helpDiag: 'Diagnóstico…', helpGuide: 'Guía de uso',
     helpDownloads: 'Versión / Descargas',
@@ -287,6 +288,7 @@ const MENU_STRINGS = {
     fullscreen: 'Full screen',
     window: 'Window', winClaude: 'Claude assistant', winResources: 'Resources',
     winSite: 'Site', winTheme: 'Theme',
+    wsConfigure: 'Configure workspace…',
     language: 'Language', langSpanish: 'Spanish', langEnglish: 'English',
     help: 'Help', helpDiag: 'Diagnostics…', helpGuide: 'User guide',
     helpDownloads: 'Version / Downloads',
@@ -438,6 +440,12 @@ function buildMenu() {
       ed(mt('winResources'), 'window.resources'),
       ed(mt('winSite'), 'window.site'),
       ed(mt('winTheme'), 'window.theme'),
+      { type: 'separator' },
+      // Configurar workspace — accesible SIEMPRE (incluso en el selector),
+      // porque el usuario puede querer ajustar creds sin abrir un proyecto.
+      // El renderer resuelve "qué workspace configurar" con `activeWorkspace`
+      // del store y navega a `/workspace/:id/settings`.
+      mi(mt('wsConfigure'), 'window.workspaceSettings'),
       { type: 'separator' },
       { label: mt('language'), submenu: [
         langItem('es', mt('langSpanish')),

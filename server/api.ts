@@ -3,7 +3,7 @@ import type { Server as HttpServer } from 'http'
 import { createReadStream, existsSync } from 'fs'
 import { extname } from 'path'
 import { listProjects, readProject, writeProject, createProject, duplicateProject, getRepoPath, getContentRelPath, getAssetPath, saveProjectAsset, assetKindFromMime, listProjectAssets, deleteProjectAsset, contentSignature } from './projects'
-import { gitLog, gitShow, gitCommit, gitPush, gitPull, gitPendingCommits, gitOriginRecent, gitAheadCount, gitConfigStatus, gitClone, gitRestoreSnapshot, validatePat } from './git'
+import { gitLog, gitShow, gitCommit, gitPush, gitPull, gitPendingCommits, gitOriginRecent, gitAheadCount, gitConfigStatus, gitClone, gitRestoreSnapshot, validatePat, getRemoteUrl } from './git'
 import { runClaude, cancelClaude, isClaudeAvailable } from './claude'
 import { setupWatcher, addWatchPath } from './watcher'
 import { loadComponentRegistry, formatComponentCatalogForPrompt } from './components'
@@ -178,6 +178,59 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
           return json(res, { ok: true, workspace: result.workspace })
         }
         return json(res, { ok: false, error: result.error }, 400)
+      }
+
+      // ─── Workspace publish readiness (nueva pantalla settings) ────────
+      // GET /api/workspaces/:id/status → resumen del estado que el server ve
+      // (S3 auth mode + Git auth mode + Git remote HTTPS). El CLIENTE completa
+      // con "hay secreto guardado en el keychain?" antes de decidir si el
+      // botón Publicar del toolbar va habilitado. Un endpoint separado (en
+      // vez de meter esto en /activate) mantiene ambos flujos independientes:
+      // /activate cachea la config y arma el watcher; /status es idempotente,
+      // solo lee, y no toca ni el cache ni el filesystem del usuario.
+      const wsStatusMatch = url.match(/^\/api\/workspaces\/([^/]+)\/status$/)
+      if (wsStatusMatch && method === 'GET') {
+        const wsId = wsStatusMatch[1]
+        const ws = resolveWorkspace(wsId)
+        if (!ws) return json(res, { ok: false, error: 'Workspace desconocido' }, 404)
+        const s3Mode = ws.s3?.credentialsMode || 'system'
+        const s3Enabled = !!ws.s3?.enabled
+        const s3Bucket = ws.s3?.bucket || ''
+        const useGit = ws.useGit !== false
+        const gitMode = ws.git?.authMode || 'system'
+        // ¿El remoto del repo es HTTPS? Lo miramos con getRemoteUrl para que
+        // la UI pueda advertir "SSH + PAT no combinan" sin esperar al push.
+        let gitRemoteUrl: string | null = null
+        let gitRemoteIsHttps = false
+        if (useGit) {
+          try {
+            gitRemoteUrl = getRemoteUrl(ws.repoPath)
+            gitRemoteIsHttps = !!(gitRemoteUrl && /^https?:\/\//i.test(gitRemoteUrl))
+          } catch { /* sin remoto → null, no crash */ }
+        }
+        return json(res, {
+          ok: true,
+          workspace: {
+            id: ws.id,
+            name: ws.name,
+            preset: ws.preset || 'multi-tenant',
+            useGit,
+          },
+          s3: {
+            enabled: s3Enabled,
+            bucket: s3Bucket,
+            region: ws.s3?.region || 'us-east-1',
+            credentialsMode: s3Mode,
+            publishManifest: !!ws.s3?.publishManifest,
+          },
+          git: {
+            useGit,
+            authMode: gitMode,
+            remoteUrl: gitRemoteUrl,
+            remoteIsHttps: gitRemoteIsHttps,
+            provider: ws.git?.provider || null,
+          },
+        })
       }
 
       // ─── Folder picker (macOS Finder) ────────────────

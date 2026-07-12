@@ -810,7 +810,7 @@ async function createWorkspace() {
             :data-test="`workspace-gear-${w.id}`"
             :aria-label="t('workspace.gearAria')"
             :title="t('workspace.gearTitle')"
-            @click="openConfig(w.id)"
+            @click="router.push(`/workspace/${w.id}/settings`)"
           >&#9881;</button>
         </div>
         <button class="ws-new" type="button" data-test="workspace-new" @click="openNewWs">{{ t('workspace.new') }}</button>
