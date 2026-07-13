@@ -41,7 +41,7 @@
     "ws": "^8.21.0"
   },
   "devDependencies": {
-    "@parallax-editor/parallax-engine": "^0.2.4",
+    "@parallax-editor/parallax-engine": "^0.2.6",
     "@types/ws": "^8.5.12",
     "@vitejs/plugin-vue": "^6.0.7",
     "electron": "^43.1.0",
