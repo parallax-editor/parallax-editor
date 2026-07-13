@@ -127,6 +127,14 @@ alarming "downloaded from Internet — are you sure?" prompt the first
 time — that one is harmless: right-click the `.app` → **Open** once
 to confirm and it won't ask again.
 
+**Cutting a release** (maintainer): `yarn release [patch|minor|major]`
+bumps `package.json`, builds both DMGs, tags the commit, and creates
+a GitHub Release with the artifacts attached under stable filenames
+(`Parallax-Editor-arm64.dmg` / `Parallax-Editor-x64.dmg`). The landing
+in `landing/editor.html` points at
+`/releases/latest/download/…` so every release automatically becomes
+the "latest" download without a landing edit.
+
 ## Commands
 
 ```bash
@@ -165,6 +173,30 @@ The editor doesn't ship default workspaces. Pick **any** folder from the
 native folder dialog (`server/fs.ts`). The folder doesn't need to be a
 git repo — uncheck "Use version control" when creating the workspace to
 get plain disk writes + S3 publish only.
+
+Each workspace has two configurable axes:
+
+- **Preset** — `linked-home` (public site with a home + linked sub-sites)
+  or `multi-tenant` (private per-URL sites, like wedding invitations).
+  Drives UI guidance (home pinned card, "new event" vs "new site" copy),
+  the default of `s3.publishManifest`, and a warning before publishing
+  a multi-tenant site without `og:image` (so WhatsApp previews aren't
+  blank).
+- **Credentials** — by default S3 publish and `git push` use your
+  system chain (`~/.aws/credentials` and SSH key / `osxkeychain`). For
+  workspaces with their own AWS user or GitHub token, the gear modal
+  lets you paste them directly:
+  - **S3** — Access Key ID + Secret Access Key, with a built-in IAM
+    policy snippet and a **Verify access** button (issues a HeadBucket).
+  - **Git** — username + Personal Access Token for GitHub / GitLab /
+    Bitbucket, with per-provider instructions and a **Verify access**
+    button (does `git ls-remote --heads` against the upstream).
+
+  Credentials never live in the workspace JSON. They're written to the
+  macOS Keychain via Electron `safeStorage` (`s3:<workspace-id>` /
+  `git:<workspace-id>` keys). In the browser fallback (without
+  Electron) they live in an ephemeral session-only encrypted store.
+  The Doctor screen surfaces which backend is in use.
 
 ## Development & contributing
 

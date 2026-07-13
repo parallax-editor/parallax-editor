@@ -9,8 +9,8 @@
 
 import { writeFileSync } from 'fs'
 import { resolve } from 'path'
-import { resolveWorkspace } from './workspaces'
-import { gitPush, gitCommitPath, gitCommit } from './git'
+import { resolveWorkspace, type S3Credentials, type GitCredentials } from './workspaces'
+import { gitPush, gitCommitPath, gitCommit, type GitAuth } from './git'
 import { getContentRelPath, deleteProject } from './projects'
 import { syncSiteToS3, publishCatalogManifest, deleteSiteFromS3, type SyncResult } from './s3'
 import { writeCatalogManifestFile } from './catalog'
@@ -29,7 +29,21 @@ export interface PublishResult {
   manifest?: number
 }
 
-export async function publishWorkspaceSlug(wsId: string, slug: string): Promise<PublishResult> {
+/**
+ * `credentials` (Fase 3): cuando el workspace está configurado con
+ * `s3.credentialsMode === 'explicit'`, el caller (API) los recibe en el body del
+ * request y los pasa aquí. Quedan reenviados a `s3.ts` para construir un
+ * `S3Client` con creds directas — JAMÁS se guardan en el workspace cache ni en
+ * disco. Cuando `credentialsMode === 'system'` el caller NO los manda y la SDK
+ * usa la cadena por defecto (~/.aws, env, SSO).
+ *
+ * `gitAuth` (Fase 4): análogo a S3 pero para Git. Cuando el workspace está en
+ * `git.authMode === 'pat'`, el editor toma el PAT del Keychain y lo manda en el
+ * body para que el push autentique vía GIT_ASKPASS sin tocar la auth del sistema.
+ * En 'system' el caller no lo manda y `gitPush` cae a SSH/osxkeychain como
+ * siempre.
+ */
+export async function publishWorkspaceSlug(wsId: string, slug: string, credentials?: S3Credentials, gitAuth?: GitCredentials): Promise<PublishResult> {
   const ws = resolveWorkspace(wsId)
   if (!ws) return { ok: false, error: 'Workspace desconocido.' }
   if (!slug) return { ok: false, error: 'Falta el sitio a publicar.' }
@@ -41,24 +55,37 @@ export async function publishWorkspaceSlug(wsId: string, slug: string): Promise<
     return { ok: false, error: 'Este workspace no usa git ni tiene S3: no hay a dónde publicar. Activa S3 en su configuración.' }
   }
 
+  // Mismo contrato que S3: el PAT solo se honra cuando el workspace lo pidió.
+  // Si está en 'system' (o no hay git cfg), forzamos undefined aunque el
+  // cliente mande algo en el body.
+  const gitAuthEffective: GitAuth | undefined =
+    ws.git?.authMode === 'pat' && gitAuth?.username && gitAuth?.token
+      ? { username: gitAuth.username, token: gitAuth.token }
+      : undefined
+
   // 1) Push pending commits first (solo si el workspace usa git). push may
   //    legitimately error if there's no upstream / nothing to push — warning.
   let pushed = false
   let warning: string | undefined
   if (useGit) {
     try {
-      gitPush(ws.repoPath)
+      gitPush(ws.repoPath, gitAuthEffective)
       pushed = true
     } catch (e: any) {
       warning = `No se pudo hacer push: ${e?.message || 'error de git'} (continuo con S3 si aplica).`
     }
   }
 
+  // Las creds explícitas solo aplican cuando el workspace lo pidió. Si está en
+  // 'system' (o no viene el campo), forzamos `undefined` para que la SDK use la
+  // cadena por defecto aunque el cliente, por error, mande algo en el body.
+  const s3Creds = ws.s3?.credentialsMode === 'explicit' ? credentials : undefined
+
   // 2) S3 sync (only if enabled).
   let s3: SyncResult | undefined
   let manifest: number | undefined
   if (ws.s3?.enabled) {
-    s3 = await syncSiteToS3(ws, slug)
+    s3 = await syncSiteToS3(ws, slug, s3Creds)
     if (!s3.ok) {
       return { ok: false, pushed, s3, error: s3.error || 'Falló la sincronización con S3.' }
     }
@@ -67,7 +94,7 @@ export async function publishWorkspaceSlug(wsId: string, slug: string): Promise<
     //     nuevo aparezca en el catálogo sin rebuild. Best-effort: el deploy del
     //     slug ya fue exitoso, así que un fallo aquí es solo un warning.
     if (ws.s3.publishManifest) {
-      const m = await publishCatalogManifest(ws)
+      const m = await publishCatalogManifest(ws, s3Creds)
       if (m.ok) {
         manifest = m.count
       } else {
@@ -85,7 +112,7 @@ export async function publishWorkspaceSlug(wsId: string, slug: string): Promise<
         if (useGit && fileRes.ok && fileRes.changed && fileRes.relPath) {
           gitCommitPath(ws.repoPath, `catalog: actualizar manifest.json`, fileRes.relPath)
           try {
-            gitPush(ws.repoPath)
+            gitPush(ws.repoPath, gitAuthEffective)
           } catch {
             /* push best-effort */
           }
@@ -126,7 +153,7 @@ export async function publishWorkspaceSlug(wsId: string, slug: string): Promise<
     const fecha = new Date(deployedAt).toLocaleDateString('es-ES')
     gitCommitPath(ws.repoPath, `deploy(${slug}): publicado en S3 ${fecha}`, sidecarRel)
     try {
-      gitPush(ws.repoPath)
+      gitPush(ws.repoPath, gitAuthEffective)
     } catch {
       /* push of sidecar best-effort — the deploy already happened */
     }
@@ -157,10 +184,19 @@ export interface DeleteResult {
  *   4) si S3 está habilitado, borra los objetos del slug en S3 y resube el
  *      manifest. Best-effort en push/S3: el borrado local ya ocurrió.
  */
-export async function deleteWorkspaceSlug(wsId: string, slug: string): Promise<DeleteResult> {
+export async function deleteWorkspaceSlug(wsId: string, slug: string, credentials?: S3Credentials, gitAuth?: GitCredentials): Promise<DeleteResult> {
   const ws = resolveWorkspace(wsId)
   if (!ws) return { ok: false, error: 'Workspace desconocido.' }
   if (!slug) return { ok: false, error: 'Falta el proyecto a eliminar.' }
+  // Mismo contrato que `publishWorkspaceSlug`: las creds explícitas solo
+  // aplican si el workspace está en 'explicit'; en 'system' las ignoramos para
+  // que un cliente con bug no pueda forzar creds donde no debería.
+  const s3Creds = ws.s3?.credentialsMode === 'explicit' ? credentials : undefined
+  // PAT analogous: solo aplica cuando el workspace lo pidió.
+  const gitAuthEffective: GitAuth | undefined =
+    ws.git?.authMode === 'pat' && gitAuth?.username && gitAuth?.token
+      ? { username: gitAuth.username, token: gitAuth.token }
+      : undefined
 
   // 1) Borra la carpeta local.
   try {
@@ -189,7 +225,7 @@ export async function deleteWorkspaceSlug(wsId: string, slug: string): Promise<D
       warning = `No se pudo commitear la eliminación: ${e?.message || 'error de git'}`
     }
     try {
-      gitPush(ws.repoPath)
+      gitPush(ws.repoPath, gitAuthEffective)
       pushed = true
     } catch { /* push best-effort */ }
   }
@@ -198,11 +234,11 @@ export async function deleteWorkspaceSlug(wsId: string, slug: string): Promise<D
   let s3deleted: number | undefined
   let manifest: number | undefined
   if (ws.s3?.enabled) {
-    const d = await deleteSiteFromS3(ws, slug)
+    const d = await deleteSiteFromS3(ws, slug, s3Creds)
     if (d.ok) s3deleted = d.deleted
     else warning = warning || `El proyecto se borró localmente, pero no se pudo borrar de S3: ${d.error || ''}`
     if (ws.s3.publishManifest) {
-      const m = await publishCatalogManifest(ws)
+      const m = await publishCatalogManifest(ws, s3Creds)
       if (m.ok) manifest = m.count
     }
   }

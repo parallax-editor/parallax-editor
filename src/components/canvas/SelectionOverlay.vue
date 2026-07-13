@@ -1162,7 +1162,12 @@ function clickThroughSelect(e: MouseEvent, _wasGroup: boolean) {
   if (!id) return
   const path = findElementPath(state.site, id)
   if (!path) return
-  if (e.shiftKey) toggleCanvasSelection(path)
+  // Modificador de multi-selección — SOLO Cmd/Ctrl en canvas. Shift está
+  // reservado para "mantener proporción" durante resize/rotación (líneas
+  // 603, 666, 801, 992, 1001 en este mismo archivo). Antes toggle también
+  // aceptaba Shift → confusión: shift+click en un elemento ya seleccionado
+  // lo deseleccionaba en vez de comportarse como su rol de proporción.
+  if (e.metaKey || e.ctrlKey) toggleCanvasSelection(path)
   else setCanvasSelection(path)
 }
 

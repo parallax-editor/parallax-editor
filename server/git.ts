@@ -1,9 +1,37 @@
 import { execSync, execFileSync } from 'child_process'
-import { existsSync, statSync, accessSync, constants, mkdirSync, writeFileSync, readdirSync, unlinkSync, rmdirSync } from 'fs'
+import { existsSync, statSync, accessSync, constants, mkdirSync, writeFileSync, readdirSync, unlinkSync, rmdirSync, chmodSync } from 'fs'
 import { dirname, isAbsolute, join, resolve, relative } from 'path'
+import { tmpdir } from 'os'
+import { randomBytes } from 'crypto'
 
-function git(args: string, cwd: string): string {
-  return execSync(`git ${args}`, { cwd, encoding: 'utf-8', timeout: 30000 }).trim()
+function git(args: string, cwd: string, env?: NodeJS.ProcessEnv): string {
+  return execSync(`git ${args}`, {
+    cwd,
+    encoding: 'utf-8',
+    timeout: 30000,
+    env: env ? { ...process.env, ...env } : process.env,
+    // Defensa en profundidad: capturamos stderr (no lo herede el proceso
+    // padre). Sin esto, un futuro git con GIT_TRACE u otro helper verboso
+    // podría echar a la consola información del request — incluyendo, en el
+    // peor caso, fragmentos de URL con tokens si alguien algún día construye
+    // un caller que los meta en la URL. Hoy no se da, lo cerramos por defecto.
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim()
+}
+
+/**
+ * Scrub defensivo de un mensaje de error que va a viajar al cliente. Tacha el
+ * token cuando reconocemos un PAT (`ghp_…`, `glpat-…`, `ATBB…`) o cuando el
+ * caller pasa el valor explícito. Idempotente, sin reemplazo si no hay nada.
+ */
+function scrubSecret(msg: string, secret?: string): string {
+  let out = msg
+  if (secret && typeof secret === 'string') out = out.split(secret).join('***')
+  // Patrones públicos: si en el futuro un mensaje filtra un token por accidente,
+  // este redactor lo enmascara como red-team. No falsos positivos en mensajes
+  // normales de git porque estos prefijos son específicos de los PAT.
+  out = out.replace(/\b(ghp_|gho_|ghu_|github_pat_|glpat-|ATBB)[A-Za-z0-9_]{8,}\b/g, '***')
+  return out
 }
 
 /**
@@ -136,15 +164,144 @@ export function gitCommitContent(cwd: string, message: string): string | null {
   }
 }
 
+/**
+ * Detalle del entorno con el que se ejecuta `git push`. Cuando hay PAT,
+ * generamos un script temporal GIT_ASKPASS que escupe el username/token cuando
+ * git lo pide (no quedan en variables de entorno legibles por otros procesos).
+ *
+ * Garantías:
+ *   - Script en `tmpdir()` con nombre random, modo 0700 (solo dueño RW+X).
+ *   - El token VIVE DENTRO DEL SCRIPT en disco — heredoc con `'EOF'` (single
+ *     quotes) para que el shell NO interpole nada del token.
+ *   - El script se borra en `finally` aunque el push tire.
+ *   - Caller PUEDE pasar `env` adicional para flags como `GIT_TERMINAL_PROMPT=0`.
+ */
+export interface GitAuth {
+  username: string
+  token: string
+}
+
+/**
+ * Devuelve el remoto que `git push` va a usar realmente — el upstream de la
+ * rama actual (`@{u}`). Si la rama no tiene upstream, cae a `origin` (igual que
+ * el default de git). Sin esto, validar SIEMPRE `origin` puede engañar al
+ * usuario cuyo upstream apunta a OTRO host: el PAT se inyectaría contra un
+ * remoto que nunca validamos. Devuelve el NOMBRE del remoto + su URL.
+ */
+function effectivePushRemote(cwd: string): { name: string; url: string } | null {
+  // 1) ¿Hay upstream? `git rev-parse --abbrev-ref @{u}` devuelve "<remote>/<branch>".
+  let remoteName: string | null = null
+  try {
+    const ref = git('rev-parse --abbrev-ref --symbolic-full-name @{u}', cwd)
+    // Forma estándar: "remote/branch". Si la rama es algo como
+    // "feature/long/name" partimos por la PRIMERA "/" — es seguro porque
+    // los nombres de remote no contienen "/".
+    const slash = ref.indexOf('/')
+    if (slash > 0) remoteName = ref.slice(0, slash)
+  } catch {
+    /* sin upstream — fallback a origin */
+  }
+  if (!remoteName) remoteName = 'origin'
+  try {
+    const url = git(`remote get-url ${remoteName}`, cwd)
+    return { name: remoteName, url }
+  } catch {
+    return null
+  }
+}
+
+function isHttpsUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url)
+}
+
+function writeAskpassScript(auth: GitAuth): string {
+  // Token y username viven en el script. Lo "escapamos" de forma defensiva:
+  // cualquier `'` se cierra-abre-escapa-reabre. Con eso, ni el shell ni git
+  // pueden romper el quoting. El propio script restringe permisos 0700 ya en
+  // creación.
+  const sqEscape = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
+  const u = sqEscape(auth.username)
+  const t = sqEscape(auth.token)
+  const file = join(tmpdir(), `parallax-askpass-${randomBytes(16).toString('hex')}.sh`)
+  const body = `#!/bin/sh
+# GIT_ASKPASS helper para parallax-editor. Borrado tras el push.
+case "$1" in
+  Username*) printf %s ${u} ;;
+  Password*) printf %s ${t} ;;
+  *)         printf %s ${t} ;;
+esac
+`
+  writeFileSync(file, body, { encoding: 'utf-8', mode: 0o700 })
+  // chmod explícito por si la creación lo ignoró por umask.
+  try { chmodSync(file, 0o700) } catch { /* Windows / FS sin POSIX perms */ }
+  return file
+}
+
 // Push "inteligente" para flujos colaborativos sobre el mismo repo: si el push
 // se rechaza por estar DETRÁS del remoto (el otro colaborador ya pusheó),
 // integramos lo del remoto con un MERGE (no rebase) y reintentamos el push. Si
 // ambos tocaron SITES DISTINTOS, el merge es automático (sin conflicto). Si
 // tocaron el MISMO archivo, el merge falla → lo abortamos y lanzamos un error
 // claro (resolución manual / descartar desde la UI).
-export function gitPush(cwd: string): string {
+//
+// Acepta `auth` opcional (Fase 4): cuando hay PAT, monta GIT_ASKPASS para que
+// `git push` autentique sin tocar la auth del sistema. Sin auth, el comportamiento
+// es idéntico al histórico — la SDK/CLI usa SSH keys, osxkeychain, etc.
+export function gitPush(cwd: string, auth?: GitAuth): string {
+  // Sin auth → camino histórico, sin overhead de askpass.
+  if (!auth) return gitPushInner(cwd)
+
+  // Con auth → validamos que el remoto REAL al que `git push` va a empujar sea
+  // HTTPS. Antes validábamos solo `origin`, lo cual era un agujero si la rama
+  // estaba tracking otro remoto (HTTPS o SSH) — el PAT terminaría aplicándose
+  // a un host que nunca dimos por bueno o se desperdiciaría en una conexión SSH.
+  const remote = effectivePushRemote(cwd)
+  if (!remote) {
+    throw new Error(
+      'No se pudo determinar el remoto de push (¿no hay upstream y origin no existe?). ' +
+        'Configura el upstream con `git push -u <remoto> <rama>` antes de usar el editor para publicar.',
+    )
+  }
+  if (!isHttpsUrl(remote.url)) {
+    throw new Error(
+      `El remoto "${remote.name}" no es HTTPS (es "${remote.url}"). ` +
+        'El Personal Access Token solo aplica a remotos HTTPS — quita el PAT del workspace para usar tu SSH key, ' +
+        `o cambia el remoto con \`git remote set-url ${remote.name} https://…\`.`,
+    )
+  }
+
+  const askpass = writeAskpassScript(auth)
+  const env: NodeJS.ProcessEnv = {
+    GIT_ASKPASS: askpass,
+    // Bloquea TODO prompt interactivo — si el ASKPASS falla por algo, no queremos
+    // que git se quede colgado pidiendo input que nadie puede contestar.
+    GIT_TERMINAL_PROMPT: '0',
+    // Y bloquea también el credential helper del sistema (osxkeychain) para que
+    // no enmascare un PAT incorrecto con uno cacheado del Keychain del usuario.
+    GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_KEY_0: 'credential.helper',
+    GIT_CONFIG_VALUE_0: '',
+  }
   try {
-    return git('push', cwd)
+    return gitPushInner(cwd, env)
+  } catch (e: any) {
+    // Scrub defensivo: si el mensaje accidentalmente contiene el token (no
+    // debería con ASKPASS, pero pagamos el seguro), lo tachamos antes de
+    // dejarlo escapar de aquí. NUNCA reenviamos `e` crudo cuando hubo auth.
+    const scrubbed = scrubSecret((e && e.message) || 'Error al hacer push.', auth.token)
+    const err = new Error(scrubbed)
+    ;(err as any).code = (e && (e as any).code) || undefined
+    throw err
+  } finally {
+    try { unlinkSync(askpass) } catch { /* best-effort */ }
+  }
+}
+
+// Implementación interna del push + auto-merge. Separada para que `gitPush`
+// pueda envolverla con o sin auth sin duplicar la lógica de retry.
+function gitPushInner(cwd: string, env?: NodeJS.ProcessEnv): string {
+  try {
+    return git('push', cwd, env)
   } catch (e: any) {
     const msg = (e && e.message) || ''
     if (/non-fast-forward|\brejected\b|behind|failed to push|fetch first/i.test(msg)) {
@@ -153,17 +310,106 @@ export function gitPush(cwd: string): string {
         // lo LOCAL (el trabajo que se está publicando ahora) → nunca pide resolver
         // a mano. Lo que no choca se mezcla normal. (La versión del otro lado
         // queda en el historial de git, recuperable.)
-        git('pull --no-rebase --no-edit -X ours', cwd)
+        git('pull --no-rebase --no-edit -X ours', cwd, env)
       } catch (mergeErr: any) {
-        try { git('merge --abort', cwd) } catch { /* nada que abortar */ }
+        try { git('merge --abort', cwd, env) } catch { /* nada que abortar */ }
         throw new Error(
           'No se pudo integrar automáticamente con el servidor (conflicto no resoluble, p.ej. archivo borrado de un lado). ' +
             ((mergeErr && mergeErr.message) || ''),
         )
       }
-      return git('push', cwd) // ya integrado → ahora sí
+      return git('push', cwd, env) // ya integrado → ahora sí
     }
     throw e
+  }
+}
+
+/** Para callers fuera de `publish.ts` que quieren validar si el remoto es HTTPS. */
+export function getRemoteUrl(cwd: string): string | null {
+  try {
+    return git('remote get-url origin', cwd)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Valida un PAT contra el `origin` del repo via `git ls-remote --heads`. Si el
+ * remoto responde sin error, el token tiene al menos permisos de lectura (que
+ * implica `Contents: read` en GitHub fine-grained, o `read_repository` en
+ * GitLab). Como `git push` también necesita write, esta validación es necesaria
+ * PERO NO SUFICIENTE — el HeadBucket equivalente para Git no existe.
+ *
+ * Devuelve { ok, error? }. NUNCA filtra el token en el mensaje.
+ */
+export function validatePat(cwd: string, auth: GitAuth): { ok: boolean; error?: string } {
+  // Validamos contra el MISMO remoto al que el push va a ir, no contra origin
+  // a ciegas — ver `effectivePushRemote` arriba para la justificación.
+  const remote = effectivePushRemote(cwd)
+  if (!remote) {
+    return {
+      ok: false,
+      error: 'No se pudo determinar el remoto de push. Configura el upstream y vuelve a intentar.',
+    }
+  }
+  if (!isHttpsUrl(remote.url)) {
+    return {
+      ok: false,
+      error:
+        `El remoto "${remote.name}" no es HTTPS (es "${remote.url}"). Los PAT solo aplican a HTTPS. ` +
+        `Cambia el remoto con \`git remote set-url ${remote.name} https://…\` o quita el PAT.`,
+    }
+  }
+  const askpass = writeAskpassScript(auth)
+  const env: NodeJS.ProcessEnv = {
+    GIT_ASKPASS: askpass,
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_KEY_0: 'credential.helper',
+    GIT_CONFIG_VALUE_0: '',
+  }
+  try {
+    // ls-remote por NOMBRE del remoto efectivo, no por URL — así git aplica el
+    // mismo resolve de credenciales que aplicaría el push real.
+    git(`ls-remote --heads ${remote.name}`, cwd, env)
+    return { ok: true }
+  } catch (e: any) {
+    // El mensaje viene de git stderr (capturado por stdio:'pipe'). Pasa por
+    // el mismo redactor compartido que `gitPush` para que el contrato sea
+    // único: tacha el token explícito + patrones públicos de PAT.
+    const msg = scrubSecret((e && e.message) || 'No se pudo validar el PAT.', auth.token)
+    return { ok: false, error: msg }
+  } finally {
+    try { unlinkSync(askpass) } catch { /* best-effort */ }
+  }
+}
+
+/**
+ * Valida el acceso al remoto con la AUTENTICACIÓN DEL SISTEMA (SSH key,
+ * credential helper) — el equivalente de `validatePat` para `authMode:
+ * 'system'`. `git ls-remote --heads` contra el remoto efectivo de push, con
+ * `GIT_TERMINAL_PROMPT=0` y `BatchMode` de SSH para que un host sin llave
+ * falle con error en vez de colgarse esperando un prompt interactivo.
+ */
+export function validateSystemGitAccess(cwd: string): { ok: boolean; error?: string } {
+  const remote = effectivePushRemote(cwd)
+  if (!remote) {
+    return {
+      ok: false,
+      error: 'No se pudo determinar el remoto de push. Configura el upstream y vuelve a intentar.',
+    }
+  }
+  const env: NodeJS.ProcessEnv = {
+    GIT_TERMINAL_PROMPT: '0',
+    // SSH sin prompts: si la llave no sirve, error inmediato (no password ni
+    // confirmación de host nuevo colgando el request).
+    GIT_SSH_COMMAND: 'ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new',
+  }
+  try {
+    git(`ls-remote --heads ${remote.name}`, cwd, env)
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: (e && e.message) || 'No se pudo acceder al remoto con la autenticación del sistema.' }
   }
 }
 

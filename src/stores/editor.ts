@@ -1155,6 +1155,51 @@ export function setTreeSelection(path: string | null) {
   state.selectedPaths = isTreeNodePath(path) ? [path as string] : []
 }
 
+/**
+ * Shift+click en el árbol de capas → selección de RANGO estilo Finder:
+ * agrega TODOS los nodos del mismo nivel visibles entre el ancla (primary
+ * `selectedPath` previo) y `path` a la multi-selección, preservando lo que ya
+ * hubiera fuera del rango.
+ *
+ * `orderedPaths` es el ORDEN visible plano del árbol (secciones → capas →
+ * elementos ya expandidos) que `LayersPanel` sabe cómo construir. Restringimos
+ * el rango a nodos del MISMO nivel jerárquico que el ancla — Finder selecciona
+ * archivos, no la mezcla de archivos y carpetas cerradas; en un árbol esto
+ * quiere decir "todos los hermanos entre A y B", que suele ser lo que el
+ * usuario espera.
+ *
+ * Si no hay ancla previa (o el ancla es de otro nivel), degradamos a un
+ * single-select del `path` — mismo comportamiento defensivo que Finder.
+ */
+export function setTreeSelectionRange(path: string, orderedPaths: string[]) {
+  if (!isTreeNodePath(path)) return
+  const anchor = state.selectedPath
+  const sameLevel = (a: string, b: string) => a.split('.').length === b.split('.').length
+  if (!anchor || !sameLevel(anchor, path) || !isTreeNodePath(anchor)) {
+    state.selectedPath = path
+    state.selectedPaths = [path]
+    return
+  }
+  // Filtro por mismo nivel del ancla; luego determinamos el intervalo [min..max]
+  // en el orden visible y agregamos esos paths al set existente (unión).
+  const level = anchor.split('.').length
+  const visibleSameLevel = orderedPaths.filter((p) => p.split('.').length === level)
+  const iA = visibleSameLevel.indexOf(anchor)
+  const iB = visibleSameLevel.indexOf(path)
+  if (iA < 0 || iB < 0) {
+    // El path clicado no está en el orden visible (colapsado / oculto) →
+    // caemos a single-select del path.
+    state.selectedPath = path
+    state.selectedPaths = [path]
+    return
+  }
+  const [lo, hi] = iA <= iB ? [iA, iB] : [iB, iA]
+  const range = visibleSameLevel.slice(lo, hi + 1)
+  const merged = Array.from(new Set([...(state.selectedPaths || []), ...range]))
+  state.selectedPaths = merged
+  state.selectedPath = path
+}
+
 // Keep `selectedPaths` consistent whenever `selectedPath` changes by ANY other
 // route (paste, addElement, delete, undo, global select, single tree click…).
 // If the new primary is already part of the multi-set, the set is preserved
@@ -1202,6 +1247,108 @@ function levelOfArrayPath(arrayPath: string): 'section' | 'layer' | 'element' | 
   if (n === 3) return 'layer'
   if (n === 5) return 'element'
   return null
+}
+
+/**
+ * Multi-drag (Bloque C3 del feedback de Daniela): mueve VARIOS nodos del
+ * mismo nivel a un array destino como grupo, preservando su orden relativo.
+ *
+ * Reglas:
+ *   - Todos los `sourcePaths` deben ser del MISMO nivel (el mismo que `targetArrayPath`).
+ *   - Los nodos pueden venir de PARENTS DISTINTOS (p.ej. varios elementos de
+ *     distintos layers arrastrados al mismo destino) — es el uso principal.
+ *   - Un solo `pushUndo()` para todo el batch → un solo Cmd+Z revierte todo.
+ *   - Si algún nodo está bloqueado, se OMITE (con el flash-hint global una vez),
+ *     los demás sí se mueven — así el usuario no pierde progreso.
+ *   - Devuelve el path del nodo "primario" resultante (para que la selección
+ *     siga al grupo movido); null si nada se movió.
+ *
+ * Implementación en dos fases (extraer → insertar) para que el splice de un
+ * nodo NO altere los índices de los siguientes en el mismo parent. Fase 1
+ * agrupa por parent y borra en orden descendente; fase 2 inserta en el
+ * destino en el orden original de `sourcePaths`.
+ */
+export function moveNodes(
+  sourcePaths: string[],
+  targetArrayPath: string,
+  toIndex: number,
+): string | null {
+  if (!state.site) return null
+  const paths = Array.from(new Set(sourcePaths))
+  if (paths.length === 0) return null
+  if (paths.length === 1) return moveNode(paths[0], targetArrayPath, toIndex)
+
+  const dstLevel = levelOfArrayPath(targetArrayPath)
+  if (!dstLevel) return null
+
+  // Valida niveles y agrupa por parent. Descartamos paths inválidos silencioso.
+  type Grouped = { parent: string; indices: number[] }
+  const byParent = new Map<string, number[]>()
+  for (const p of paths) {
+    const parts = p.split('.')
+    if (parts.length < 2) continue
+    const parent = parts.slice(0, -1).join('.')
+    const idx = Number(parts[parts.length - 1])
+    if (!Number.isFinite(idx)) continue
+    if (levelOfArrayPath(parent) !== dstLevel) return null // mezcla de niveles → aborta todo
+    if (!byParent.has(parent)) byParent.set(parent, [])
+    byParent.get(parent)!.push(idx)
+  }
+  if (byParent.size === 0) return null
+
+  // Extrae nodos en el orden original de `sourcePaths` para preservar la
+  // secuencia visible que el usuario ve. Luego, para el splice-out, borramos
+  // por parent en orden DESCENDENTE para que los índices no drifteen.
+  const orderedNodes: any[] = []
+  for (const p of paths) {
+    const parts = p.split('.')
+    const parent = parts.slice(0, -1).join('.')
+    const idx = Number(parts[parts.length - 1])
+    const arr = getAtPath(parent)
+    if (!Array.isArray(arr) || idx < 0 || idx >= arr.length) continue
+    const node = arr[idx]
+    if (node && node.id && state.lockedIds.includes(node.id)) continue // omite bloqueados
+    orderedNodes.push({ node, parent, idx })
+  }
+  const movable = orderedNodes.map((o) => o.node)
+  if (movable.length === 0) {
+    flashPasteHint('Nodos bloqueados — desbloquéalos para moverlos')
+    return null
+  }
+
+  pushUndo()
+
+  // Borra en cada parent en orden descendente de índice.
+  const grouped = new Map<string, number[]>()
+  for (const o of orderedNodes) {
+    if (!grouped.has(o.parent)) grouped.set(o.parent, [])
+    grouped.get(o.parent)!.push(o.idx)
+  }
+  for (const [parent, idxs] of grouped) {
+    const arr = getAtPath(parent)
+    if (!Array.isArray(arr)) continue
+    idxs.sort((a, b) => b - a).forEach((i) => arr.splice(i, 1))
+  }
+
+  // Recalcula el toIndex si el destino fue afectado por un splice previo.
+  const dstArr = getAtPath(targetArrayPath)
+  if (!Array.isArray(dstArr)) return null
+  let insertAt = Math.max(0, Math.min(toIndex, dstArr.length))
+  // Si el target coincidía con algún parent origen, hay que restar los splices
+  // hechos ANTES de `insertAt` en ese mismo array — un ajuste conservador es
+  // clampar a la nueva length después de los splices.
+  insertAt = Math.max(0, Math.min(insertAt, dstArr.length))
+  dstArr.splice(insertAt, 0, ...movable)
+
+  // Devuelve el path resultante del primer nodo movido para "seguir la
+  // selección". Actualizamos también selectedPaths con las nuevas posiciones
+  // para que el highlight del grupo persista visualmente.
+  const newPaths: string[] = []
+  for (let i = 0; i < movable.length; i++) newPaths.push(`${targetArrayPath}.${insertAt + i}`)
+  state.selectedPaths = newPaths
+  state.selectedPath = newPaths[0]
+  markDirty()
+  return newPaths[0]
 }
 
 export function moveNode(
@@ -1963,36 +2110,12 @@ export const VIEWPORTS = {
   },
 }
 
-// Device presets surfaced in the toolbar size dropdown (#90). CSS-viewport
-// sizes, portrait for phones/tablets. Values are 2026-current.
-export interface MobilePreset {
-  id: string
-  label: string
-  width: number
-  height: number
-}
-export const MOBILE_PRESETS: MobilePreset[] = [
-  { id: 'iphone-16-pro-max', label: 'iPhone 16 Pro Max', width: 440, height: 956 },
-  { id: 'iphone-16-plus', label: 'iPhone 16 Plus', width: 430, height: 932 },
-  { id: 'iphone-16-pro', label: 'iPhone 16 Pro', width: 402, height: 874 },
-  { id: 'iphone-16', label: 'iPhone 16 / 15', width: 393, height: 852 },
-  { id: 'iphone-se', label: 'iPhone SE', width: 375, height: 667 },
-  { id: 'galaxy-s24-ultra', label: 'Galaxy S24 Ultra', width: 384, height: 824 },
-  { id: 'galaxy-s25', label: 'Galaxy S25', width: 360, height: 800 },
-  { id: 'galaxy-a', label: 'Galaxy A', width: 412, height: 915 },
-  { id: 'pixel-8', label: 'Pixel 8', width: 412, height: 915 },
-]
-export const DESKTOP_PRESETS: MobilePreset[] = [
-  { id: 'pc-fhd', label: 'PC Full HD', width: 1920, height: 1080 },
-  { id: 'pc-hd', label: 'PC HD', width: 1366, height: 768 },
-  { id: 'pc-qhd', label: 'PC 2K', width: 2560, height: 1440 },
-  { id: 'mac-air', label: 'MacBook Air', width: 1470, height: 956 },
-  { id: 'mac-pro-14', label: 'MacBook Pro 14"', width: 1512, height: 982 },
-  { id: 'imac', label: 'iMac / Mac', width: 1440, height: 900 },
-  { id: 'ipad-pro-13', label: 'iPad Pro 13"', width: 1032, height: 1376 },
-  { id: 'ipad-pro-11', label: 'iPad Pro 11"', width: 834, height: 1194 },
-  { id: 'ipad', label: 'iPad / iPad Air', width: 820, height: 1180 },
-]
+// Device presets surfaced in the toolbar size dropdown (#90). Moved to
+// `constants/devicePresets.ts` (pure module, no store deps) so LivePreview's
+// device menu can import them without dragging this store into its bundle.
+// Re-exported here to keep existing imports working.
+export type { MobilePreset } from '../constants/devicePresets'
+export { MOBILE_PRESETS, DESKTOP_PRESETS } from '../constants/devicePresets'
 
 // Update an artboard size reactively + persist it. Dimensions are clamped.
 export function setMobileViewport(width: number, height: number) {

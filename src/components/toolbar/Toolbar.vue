@@ -19,6 +19,18 @@ import { openLivePreview } from '../../composables/useLivePreview'
 import { claudeApi, gitApi } from '../../composables/useApi'
 import { useDialog } from '../../composables/useDialog'
 import { useI18n } from 'vue-i18n'
+// Publish-readiness (Bloque B): calcula si el botón Publicar debería estar
+// disabled porque faltan credenciales configuradas para el workspace activo.
+// El resultado del composable es reactivo — se refresca al cambiar de
+// workspace o al volver de la pantalla de settings.
+import { usePublishReadiness } from '../../composables/usePublishReadiness'
+import { activeWorkspace } from '../../stores/workspaces'
+import { useRouter } from 'vue-router'
+
+// Modo Preview → aplica el label ampliado al toggle de dispositivo para que
+// no se pierda entre los iconitos. En Edit el toggle sigue como estaba
+// (iconos discretos) para no ocupar espacio horizontal en la barra.
+const isPreview = computed(() => state.previewMode === 'preview')
 
 const dialog = useDialog()
 const { t } = useI18n()
@@ -36,17 +48,30 @@ const claudeTitle = computed(() =>
 )
 
 // ── Publicar (git) button state ──────────────────────────────────────────────
-// El botón "Publicar" de la barra SIEMPRE abre el panel (es útil para ver los
-// commits y cuándo se publicó por última vez); nunca se deshabilita. El badge
-// (N) solo informa cuántos commits locales hay por subir. La ACCIÓN de publicar
-// vive dentro del panel y se deshabilita sola cuando no hay nada que publicar.
-// gitAhead se refresca tras cada guardado (state.gitLogNonce en EditorView.save).
+// Comportamiento actualizado (v0.2.0):
+//   • Si el workspace declaró credenciales explícitas Y no hay secreto guardado
+//     en el Keychain → el botón se DESHABILITA con tooltip diagnóstico y click
+//     lleva a /workspace/:id/settings?tab=s3 (o git). Bloqueo temprano — evita
+//     que el panel Publicar se abra en vano y confunda.
+//   • Si todo está OK, el botón sigue abriendo el panel normalmente.
+// Antes se abría siempre y el usuario descubría el error DESPUÉS de pulsar.
 const gitAhead = ref(0)
-const publishTitle = computed(() =>
-  gitAhead.value > 0
+const router = useRouter()
+const publishReady = usePublishReadiness()
+const publishTitle = computed(() => {
+  if (publishReady.blockedReason.value) return publishReady.blockedReason.value
+  return gitAhead.value > 0
     ? `Ver commits y publicar (${gitAhead.value} pendiente${gitAhead.value === 1 ? '' : 's'})`
-    : 'Ver commits y la última publicación',
-)
+    : 'Ver commits y la última publicación'
+})
+function onPublishClick() {
+  if (publishReady.blockedReason.value) {
+    const ws = activeWorkspace.value
+    if (ws) router.push(`/workspace/${ws.id}/settings?tab=${publishReady.suggestedTab.value}`)
+    return
+  }
+  emit('toggle-git')
+}
 
 async function refreshGitStatus() {
   if (!state.projectType) return
@@ -205,10 +230,11 @@ async function onEnableIndependent() {
         >Claude</button>
         <button
           class="tool-btn"
+          :class="{ 'publish-blocked': publishReady.blockedReason.value }"
           data-test="toggle-git"
-          @click="emit('toggle-git')"
+          @click="onPublishClick"
           :title="publishTitle"
-        >{{ t('toolbar.publish') }}{{ gitAhead > 0 ? ` (${gitAhead})` : '' }}</button>
+        >{{ t('toolbar.publish') }}{{ publishReady.blockedReason.value ? ' 🔒' : (gitAhead > 0 ? ` (${gitAhead})` : '') }}</button>
         <button class="save-btn" data-test="save" @click="emit('save')" :disabled="!isDirty" :title="t('toolbar.save') + ' (Cmd+S)'">{{ t('toolbar.save') }}</button>
       </div>
     </div>
@@ -255,19 +281,25 @@ async function onEnableIndependent() {
 
       <span class="separator" />
 
-      <div class="row-group">
+      <div class="row-group device-group" :class="{ 'preview-hint': isPreview }">
+        <!-- Cuando el usuario está en modo Preview el toggle de dispositivo
+             puede pasar desapercibido y el reporte real fue: "no encuentro
+             cómo previsualizar en mobile o desktop". Un label textual delante
+             del toggle en Preview lo hace obvio sin tocar la geometría del
+             botón (así el hit-target no cambia entre modos). -->
+        <span v-if="isPreview" class="device-hint" data-test="device-hint">{{ t('toolbar.previewViewingAs') }}</span>
         <button
           :class="['device-btn', { active: state.deviceMode === 'desktop' }]"
           @click="state.deviceMode = 'desktop'"
           :title="isIndependent ? t('toolbar.editDesktopTitle') : t('toolbar.desktop')"
           data-test="device-desktop"
-        >&#x1F4BB;</button>
+        >&#x1F4BB;<span v-if="isPreview" class="device-btn-label">{{ t('toolbar.desktop') }}</span></button>
         <button
           :class="['device-btn', { active: state.deviceMode === 'mobile' }]"
           @click="state.deviceMode = 'mobile'"
           :title="isIndependent ? t('toolbar.editMobileTitle') : t('toolbar.mobile')"
           data-test="device-mobile"
-        >&#x1F4F1;</button>
+        >&#x1F4F1;<span v-if="isPreview" class="device-btn-label">{{ t('toolbar.mobile') }}</span></button>
 
         <!-- Tamaño del lienzo móvil configurable (#90). Solo afecta a móvil;
              se habilita cuando el dispositivo activo es Móvil. -->
@@ -300,6 +332,17 @@ async function onEnableIndependent() {
           <button class="zoom-label" @click="fit" :title="t('toolbar.zoomFit')" :aria-label="t('toolbar.zoomFitAria')">{{ zoomPercent }}%</button>
           <button class="zoom-btn" @click="zoomIn" :title="t('toolbar.zoomIn')" :aria-label="t('toolbar.zoomInAria')">+</button>
         </div>
+        <!-- Rescate explícito: si el usuario paneó tanto que la mesa quedó
+             fuera de vista (cuadrícula infinita), este botón la re-centra.
+             La misma acción vivía solo en el click del "%" y Cmd+0 —
+             indescubrible cuando estás perdido (feedback Josh). -->
+        <button
+          class="tool-btn center-artboard-btn"
+          data-test="center-artboard"
+          :title="t('toolbar.centerArtboard')"
+          :aria-label="t('toolbar.centerArtboardAria')"
+          @click="fit"
+        >⌖ <span class="center-artboard-lbl">{{ t('toolbar.centerArtboardShort') }}</span></button>
       </div>
 
       <span class="separator" />
@@ -399,15 +442,17 @@ async function onEnableIndependent() {
 /* position+z-index so toolbar dropdowns (size menu, etc.) paint ABOVE the
    canvas and its guides/selection overlay (a later sibling that would otherwise
    cover a dropdown opening down into the canvas — Image #65). */
-.toolbar { display: flex; flex-direction: column; background: #252525; border-bottom: 1px solid #333; font-size: 13px; flex-shrink: 0; position: relative; z-index: 100; }
+.toolbar { display: flex; flex-direction: column; background: #1e1e24; border-bottom: 1px solid #26262e; font-size: 13px; flex-shrink: 0; position: relative; z-index: 100; }
 .toolbar-row { display: flex; align-items: center; gap: 8px; padding: 0 12px; min-height: 40px; }
-.toolbar-row-top { justify-content: space-between; border-bottom: 1px solid #2f2f2f; }
+.toolbar-row-top { justify-content: space-between; border-bottom: 1px solid #26262e; }
 .toolbar-row-tools { flex-wrap: wrap; padding-top: 6px; padding-bottom: 6px; row-gap: 6px; }
 .row-group { display: flex; align-items: center; gap: 8px; }
 .row-group.actions { gap: 8px; }
 .project-name { font-weight: 600; }
 .dirty-dot { color: #f90; font-size: 18px; }
 .tool-btn { background: #333; border: 1px solid #444; color: #ccc; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: background .12s ease, border-color .12s ease; }
+.center-artboard-btn { display: inline-flex; align-items: center; gap: 5px; }
+.center-artboard-btn .center-artboard-lbl { font-size: 11px; }
 .tool-btn:hover:not(:disabled) { background: #444; }
 .tool-btn:disabled { opacity: 0.4; cursor: default; }
 .tool-btn.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
@@ -417,8 +462,11 @@ async function onEnableIndependent() {
 .icon-btn { display: inline-flex; align-items: center; gap: 6px; }
 .icon-btn svg { display: block; }
 .tool-label { font-size: 12px; font-weight: 600; }
-.device-btn { background: none; border: none; font-size: 16px; cursor: pointer; opacity: 0.5; padding: 2px 4px; }
-.device-btn.active { opacity: 1; }
+/* color explícito: un <button> sin color usa el negro del user-agent y los
+   labels ESCRITORIO/MÓVIL (modo Preview) quedaban ilegibles sobre el toolbar
+   oscuro. */
+.device-btn { background: none; border: none; font-size: 16px; cursor: pointer; opacity: 0.5; padding: 2px 4px; color: #d6d6d6; }
+.device-btn.active { opacity: 1; color: #fff; }
 .view-badge { font-size: 11px; font-weight: 600; border-radius: 4px; padding: 3px 8px; cursor: pointer; border: 1px solid #444; }
 .view-badge-shared { background: #2a2a2a; color: #aaa; }
 .view-badge-shared:hover { background: #383838; color: #ddd; }
@@ -451,4 +499,12 @@ async function onEnableIndependent() {
 .save-btn:active:not(:disabled) { background: var(--accent); }
 .save-btn:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 1px; }
 .save-btn:disabled { opacity: 0.4; cursor: default; }
+.tool-btn.publish-blocked { opacity: 0.6; border-color: rgba(230, 175, 75, 0.5); color: #ffb663; }
+.tool-btn.publish-blocked:hover { background: rgba(230, 175, 75, 0.1); }
+/* Device toggle — modo Preview: labels textuales alrededor del icono para
+   que el toggle sea obvio (feedback de Daniela). En Edit el icono solo,
+   como antes. */
+.device-group.preview-hint .device-btn { padding: 4px 10px; gap: 6px; display: inline-flex; align-items: center; }
+.device-btn-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.device-hint { font-size: 11px; color: #999; margin-right: 6px; }
 </style>

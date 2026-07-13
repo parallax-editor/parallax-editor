@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
-import { diagnosticsApi, type Diagnostics } from '../../composables/useApi'
+import { diagnosticsApi, type Diagnostics, type SecretsBackend } from '../../composables/useApi'
 import { useElectron } from '../../composables/useElectron'
+import { useSecrets } from '../../composables/useSecrets'
+import { activeWorkspace } from '../../stores/workspaces'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -19,16 +21,47 @@ const { t } = useI18n()
 const ONBOARDED_KEY = 'parallax-editor:onboarded'
 
 const electron = useElectron()
+const secrets = useSecrets()
 const open = ref(false)
 const loading = ref(false)
 const diag = ref<Diagnostics | null>(null)
 const showDetails = ref(false)
 const autoStart = ref(false)
+// Backend del SecretsBus: 'safeStorage' (Keychain), 'session' (efímero), null
+// (no hay forma de cifrar — secretos no disponibles). Lo resolvemos al cargar
+// la pantalla para que el badge sea consistente con el estado real.
+const secretsBackend = ref<SecretsBackend>(null)
 let disposeMenu: (() => void) | null = null
 
 const gitOk = computed(() => !!diag.value?.git?.configured)
 const claudeOk = computed(() => !!diag.value?.claude?.available)
 const awsOk = computed(() => !!diag.value?.aws?.configured)
+// Git auth detection (Fase 4): solo aplica si git CLI está OK Y el workspace
+// activo usa git. Si no hay helper ni SSH key Y el workspace está en
+// authMode:'system', el push va a colgar pidiendo password — warning.
+const gitAuthAvail = computed(() => !!diag.value?.gitAuth?.available)
+const gitAuthHelper = computed(() => diag.value?.gitAuth?.credentialHelper || null)
+const gitAuthHasSsh = computed(() => !!diag.value?.gitAuth?.hasSshKey)
+const showGitAuthWarning = computed(() => {
+  if (!gitOk.value) return false
+  const ws = activeWorkspace.value
+  if (!ws || ws.useGit === false) return false
+  if (ws.git?.authMode === 'pat') return false // ya tiene PAT — no advertimos
+  return !gitAuthAvail.value
+})
+// Preset del workspace activo: solo se muestra cuando hay uno seleccionado.
+// Default 'multi-tenant' por back-compat (workspaces existentes en localStorage
+// que no traen preset). null cuando no hay workspace activo.
+const activePreset = computed(() => {
+  const ws = activeWorkspace.value
+  if (!ws) return null
+  return ws.preset || 'multi-tenant'
+})
+const presetExplain = computed(() => {
+  if (activePreset.value === 'linked-home') return t('workspace.diagPresetLinkedHome')
+  if (activePreset.value === 'multi-tenant') return t('workspace.diagPresetMultiTenant')
+  return null
+})
 // Nada bloquea: git, claude y aws son OPCIONALES (workspaces solo-disco/S3 no
 // necesitan git; el editor funciona sin Claude/AWS). El doctor SIEMPRE se cierra.
 
@@ -42,6 +75,13 @@ async function load() {
     loading.value = false
   }
   if (electron.isElectron) autoStart.value = await electron.getAutoStart()
+  // SecretsBus backend (best-effort; cualquier fallo deja null y la fila marca
+  // "no disponible" — el usuario no pierde acceso al resto del diagnóstico).
+  try {
+    secretsBackend.value = await secrets.backend()
+  } catch {
+    secretsBackend.value = null
+  }
 }
 
 async function show() {
@@ -127,6 +167,52 @@ function statusClass(ok: boolean, optional = false) {
             <div v-else class="detail">
               {{ t('doctor.awsDetailMissing') }} <strong>{{ t('doctor.awsPublishToS3') }}</strong>{{ t('doctor.awsCanUseWithout') }}
             </div>
+          </div>
+        </div>
+
+        <!-- Git auth chain (Fase 4): solo aparece como warning cuando git CLI
+             está OK pero no detectamos ni helper ni SSH key, Y el workspace
+             activo usa git en modo 'system'. -->
+        <div
+          v-if="showGitAuthWarning"
+          class="check warn"
+          data-test="doctor-git-auth"
+        >
+          <span class="dot" />
+          <div class="body">
+            <div class="title">{{ t('workspace.doctorGitAuthMissingTitle') }}</div>
+            <div class="detail">{{ t('workspace.doctorGitAuthMissingBody') }}</div>
+          </div>
+        </div>
+
+        <!-- SecretsBus backend (Fase 2). safeStorage → ok; session → warn
+             (los secretos no persisten entre reinicios); null → bad (no podemos
+             cifrar nada → S3 y Git con creds explícitas no funcionarán). -->
+        <div
+          class="check"
+          :class="secretsBackend === 'safeStorage' ? 'ok' : secretsBackend === 'session' ? 'warn' : 'bad'"
+          data-test="doctor-secrets"
+        >
+          <span class="dot" />
+          <div class="body">
+            <div class="title">{{ t('doctor.secretsTitle') }}</div>
+            <div v-if="secretsBackend === 'safeStorage'" class="detail">{{ t('doctor.secretsSafeStorage') }}</div>
+            <div v-else-if="secretsBackend === 'session'" class="detail">{{ t('doctor.secretsSession') }}</div>
+            <div v-else class="detail">{{ t('doctor.secretsUnavailable') }}</div>
+          </div>
+        </div>
+
+        <!-- Preset del workspace activo (informativo) — solo aparece si hay un
+             workspace seleccionado, para no confundir en el primer arranque. -->
+        <div
+          v-if="presetExplain"
+          class="check ok"
+          data-test="doctor-preset"
+        >
+          <span class="dot" />
+          <div class="body">
+            <div class="title">{{ t('workspace.diagPresetRow') }}: <code>{{ activePreset }}</code></div>
+            <div class="detail">{{ presetExplain }}</div>
           </div>
         </div>
       </div>

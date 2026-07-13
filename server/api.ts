@@ -3,7 +3,7 @@ import type { Server as HttpServer } from 'http'
 import { createReadStream, existsSync } from 'fs'
 import { extname } from 'path'
 import { listProjects, readProject, writeProject, createProject, duplicateProject, getRepoPath, getContentRelPath, getAssetPath, saveProjectAsset, assetKindFromMime, listProjectAssets, deleteProjectAsset, contentSignature } from './projects'
-import { gitLog, gitShow, gitCommit, gitPush, gitPull, gitPendingCommits, gitOriginRecent, gitAheadCount, gitConfigStatus, gitClone, gitRestoreSnapshot } from './git'
+import { gitLog, gitShow, gitCommit, gitPush, gitPull, gitPendingCommits, gitOriginRecent, gitAheadCount, gitConfigStatus, gitClone, gitRestoreSnapshot, validatePat, validateSystemGitAccess, getRemoteUrl } from './git'
 import { runClaude, cancelClaude, isClaudeAvailable } from './claude'
 import { setupWatcher, addWatchPath } from './watcher'
 import { loadComponentRegistry, formatComponentCatalogForPrompt } from './components'
@@ -11,9 +11,46 @@ import { bundleWorkspaceComponent } from './sfcBundler'
 import { getDiagnostics } from './diagnostics'
 import { activateWorkspace, resolveWorkspace, defaultWorkspaces } from './workspaces'
 import { pickFolder } from './fs'
-import { listBuckets, createBucket, readDeploySidecar } from './s3'
+import { listBuckets, createBucket, headBucket, readDeploySidecar } from './s3'
 import { publishWorkspaceSlug, deleteWorkspaceSlug } from './publish'
 import { writeCatalogManifestFile } from './catalog'
+import type { S3Credentials, GitCredentials } from './workspaces'
+
+/**
+ * Extrae y valida un par de credenciales S3 del body de un request HTTP local.
+ * Devuelve undefined cuando no vienen (camino feliz para `credentialsMode:'system'`).
+ * Cualquier shape inválido lo trata como AUSENCIA — preferimos un publish que
+ * falle por "no hay creds" a uno que rompa por interpretar mal el body.
+ *
+ * Estas creds NUNCA se guardan: viven solo durante este request y se descartan
+ * con el response. El cliente las re-envía cada vez (las saca de su SecretsBus).
+ */
+function parseS3Credentials(body: any): S3Credentials | undefined {
+  if (!body || typeof body !== 'object') return undefined
+  const raw = (body as any).credentials
+  if (!raw || typeof raw !== 'object') return undefined
+  const accessKeyId = typeof raw.accessKeyId === 'string' ? raw.accessKeyId.trim() : ''
+  const secretAccessKey = typeof raw.secretAccessKey === 'string' ? raw.secretAccessKey.trim() : ''
+  if (!accessKeyId || !secretAccessKey) return undefined
+  // Defensa muy básica de tamaño — un AKIA real son ~20 chars, una secret ~40.
+  // Si llega algo descomunal preferimos no propagarlo al SDK.
+  if (accessKeyId.length > 256 || secretAccessKey.length > 256) return undefined
+  return { accessKeyId, secretAccessKey }
+}
+
+/** Análogo a `parseS3Credentials` para el PAT de Git (Fase 4). */
+function parseGitCredentials(body: any): GitCredentials | undefined {
+  if (!body || typeof body !== 'object') return undefined
+  const raw = (body as any).gitAuth
+  if (!raw || typeof raw !== 'object') return undefined
+  const username = typeof raw.username === 'string' ? raw.username.trim() : ''
+  const token = typeof raw.token === 'string' ? raw.token.trim() : ''
+  if (!username || !token) return undefined
+  // PATs típicos: 40 chars (GitHub classic) o ~100 (fine-grained). Damos margen
+  // amplio. Por defensa contra payloads enormes, cortamos en 1024.
+  if (username.length > 256 || token.length > 1024) return undefined
+  return { username, token }
+}
 
 const MIME: Record<string, string> = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
@@ -143,6 +180,59 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
         return json(res, { ok: false, error: result.error }, 400)
       }
 
+      // ─── Workspace publish readiness (nueva pantalla settings) ────────
+      // GET /api/workspaces/:id/status → resumen del estado que el server ve
+      // (S3 auth mode + Git auth mode + Git remote HTTPS). El CLIENTE completa
+      // con "hay secreto guardado en el keychain?" antes de decidir si el
+      // botón Publicar del toolbar va habilitado. Un endpoint separado (en
+      // vez de meter esto en /activate) mantiene ambos flujos independientes:
+      // /activate cachea la config y arma el watcher; /status es idempotente,
+      // solo lee, y no toca ni el cache ni el filesystem del usuario.
+      const wsStatusMatch = url.match(/^\/api\/workspaces\/([^/]+)\/status$/)
+      if (wsStatusMatch && method === 'GET') {
+        const wsId = wsStatusMatch[1]
+        const ws = resolveWorkspace(wsId)
+        if (!ws) return json(res, { ok: false, error: 'Workspace desconocido' }, 404)
+        const s3Mode = ws.s3?.credentialsMode || 'system'
+        const s3Enabled = !!ws.s3?.enabled
+        const s3Bucket = ws.s3?.bucket || ''
+        const useGit = ws.useGit !== false
+        const gitMode = ws.git?.authMode || 'system'
+        // ¿El remoto del repo es HTTPS? Lo miramos con getRemoteUrl para que
+        // la UI pueda advertir "SSH + PAT no combinan" sin esperar al push.
+        let gitRemoteUrl: string | null = null
+        let gitRemoteIsHttps = false
+        if (useGit) {
+          try {
+            gitRemoteUrl = getRemoteUrl(ws.repoPath)
+            gitRemoteIsHttps = !!(gitRemoteUrl && /^https?:\/\//i.test(gitRemoteUrl))
+          } catch { /* sin remoto → null, no crash */ }
+        }
+        return json(res, {
+          ok: true,
+          workspace: {
+            id: ws.id,
+            name: ws.name,
+            preset: ws.preset || 'multi-tenant',
+            useGit,
+          },
+          s3: {
+            enabled: s3Enabled,
+            bucket: s3Bucket,
+            region: ws.s3?.region || 'us-east-1',
+            credentialsMode: s3Mode,
+            publishManifest: !!ws.s3?.publishManifest,
+          },
+          git: {
+            useGit,
+            authMode: gitMode,
+            remoteUrl: gitRemoteUrl,
+            remoteIsHttps: gitRemoteIsHttps,
+            provider: ws.git?.provider || null,
+          },
+        })
+      }
+
       // ─── Folder picker (macOS Finder) ────────────────
       // POST /api/fs/pick-folder → osascript `choose folder`, returns the POSIX
       // absolute path. Cancel → { ok:true, canceled:true }.
@@ -175,12 +265,49 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
       }
 
       // ─── S3 buckets (Fase 3) ─────────────────────────
+      // listBuckets se mantiene como GET (la mayoría de los usos vienen del
+      // combobox del modal y usan la cadena del sistema). Para listar con creds
+      // explícitas usamos POST /api/s3/buckets/explicit (body { region,
+      // credentials }) — endpoint separado para no forzar a TODO el flow a
+      // pasar por POST.
       if (url === '/api/s3/buckets' && method === 'GET') {
         return json(res, await listBuckets())
       }
+      if (url === '/api/s3/buckets/explicit' && method === 'POST') {
+        const body = await parseBody(req)
+        const region = String(body?.region || 'us-east-1')
+        return json(res, await listBuckets(region, parseS3Credentials(body)))
+      }
       if (url === '/api/s3/bucket' && method === 'POST') {
-        const { name, region } = await parseBody(req)
-        return json(res, await createBucket(String(name || ''), String(region || 'us-east-1')))
+        // Intencionalmente sin gate por workspace `credentialsMode`: este
+        // endpoint se usa desde el modal MIENTRAS el usuario está configurando
+        // el workspace — todavía no hay un workspace activo en modo 'explicit'
+        // contra el cual contrastar. Si el cliente manda creds, las usamos;
+        // si no, la cadena del sistema. La asimetría con publish/delete es
+        // por construcción.
+        const body = await parseBody(req)
+        return json(
+          res,
+          await createBucket(
+            String(body?.name || ''),
+            String(body?.region || 'us-east-1'),
+            parseS3Credentials(body),
+          ),
+        )
+      }
+      // POST /api/s3/head-bucket { bucket, region, credentials? } → smoke test
+      // del bucket + creds. Lo usa el botón "Verificar" del modal del workspace
+      // para fallar antes de Publicar si las credenciales explícitas no sirven.
+      if (url === '/api/s3/head-bucket' && method === 'POST') {
+        const body = await parseBody(req)
+        return json(
+          res,
+          await headBucket(
+            String(body?.bucket || ''),
+            String(body?.region || 'us-east-1'),
+            parseS3Credentials(body),
+          ),
+        )
       }
 
       // ─── Asset serving ───────────────────────────────
@@ -272,7 +399,13 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
           // pushea la eliminación (acotada), borra los objetos del slug en S3
           // (si está habilitado) y resube el manifest. Antes solo borraba local
           // → el sitio publicado quedaba vivo en S3.
-          return json(res, await deleteWorkspaceSlug(type, slug))
+          //
+          // Fase 3: aceptamos `credentials` en el body (back-compat: si no
+          // viene, S3 usa la cadena del sistema). Para DELETE el body es
+          // estándar HTTP raro pero válido — la SDK lo respeta.
+          // Fase 4: además `gitAuth` para el push del commit de eliminación.
+          const body = await parseBody(req).catch(() => ({}))
+          return json(res, await deleteWorkspaceSlug(type, slug, parseS3Credentials(body), parseGitCredentials(body)))
         }
       }
 
@@ -510,10 +643,48 @@ export function createHandler(opts: CreateHandlerOptions = {}) {
       // POST /api/publish/:workspaceId/:slug. Pushes pending commits, then (if
       // the workspace has S3 enabled) syncs ONLY this slug's content dir to S3
       // and writes/commits/pushes a .deploy.json sidecar. Scoped to the slug.
+      // POST /api/git/validate-pat { workspaceId, username, token } → ls-remote
+      // contra el origin del workspace con GIT_ASKPASS inyectado. ok=true si el
+      // remoto responde a las creds, false si rechaza. SOLO HTTPS.
+      if (url === '/api/git/validate-pat' && method === 'POST') {
+        const body = await parseBody(req).catch(() => ({}))
+        const wsId = String(body?.workspaceId || '')
+        const ws = resolveWorkspace(wsId)
+        if (!ws) return json(res, { ok: false, error: 'Workspace desconocido' }, 404)
+        const auth = parseGitCredentials(body)
+        if (!auth) return json(res, { ok: false, error: 'Faltan username/token.' })
+        try {
+          const r = validatePat(ws.repoPath, auth)
+          return json(res, r, r.ok ? 200 : 200) // siempre 200; el ok dice el resultado
+        } catch (e: any) {
+          return json(res, { ok: false, error: e?.message || 'No se pudo validar el PAT.' })
+        }
+      }
+
+      // POST /api/git/verify-access { workspaceId } → ls-remote con la auth
+      // del SISTEMA (SSH key / credential helper). El "Verificar acceso" de la
+      // tab Git en modo `system` — paridad con el botón de S3 en modo system.
+      if (url === '/api/git/verify-access' && method === 'POST') {
+        const body = await parseBody(req).catch(() => ({}))
+        const wsId = String(body?.workspaceId || '')
+        const ws = resolveWorkspace(wsId)
+        if (!ws) return json(res, { ok: false, error: 'Workspace desconocido' }, 404)
+        try {
+          const r = validateSystemGitAccess(ws.repoPath)
+          return json(res, r)
+        } catch (e: any) {
+          return json(res, { ok: false, error: e?.message || 'No se pudo verificar el acceso.' })
+        }
+      }
+
       const pubmatch = url.match(/^\/api\/publish\/([^/]+)\/([^/]+)$/)
       if (pubmatch && method === 'POST') {
         const [, wsId, slug] = pubmatch
-        const r = await publishWorkspaceSlug(wsId, slug)
+        // Body opcional: `credentials` (S3) y `gitAuth` (PAT). Ambos sólo se
+        // honran cuando el workspace está en el modo correspondiente; ver
+        // gating en publish.ts.
+        const body = await parseBody(req).catch(() => ({}))
+        const r = await publishWorkspaceSlug(wsId, slug, parseS3Credentials(body), parseGitCredentials(body))
         return json(res, r, r.ok ? 200 : 400)
       }
 

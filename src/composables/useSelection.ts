@@ -149,38 +149,49 @@ export function handleCanvasClick(e: MouseEvent, _canvasEl: HTMLElement) {
   // TASK #112: gate by the artboard (`.preview-frame`) rect BEFORE the
   // geometric hit-test. A click on the pasteboard (outside the mesa) clears
   // the selection and selects nothing — even if an off-board element's box
-  // extends under the cursor. A plain click clears; a SHIFT click on the
-  // pasteboard preserves the current multi-selection (a missed shift-click
+  // extends under the cursor. A plain click clears; a modifier-click on the
+  // pasteboard preserves the current multi-selection (a missed modifier click
   // shouldn't nuke the group). The ONLY way to select an off-board element is
   // via the CAPAS tree.
+  //
+  // Modificador de multi-selección — feedback Josh (iteración post-C2):
+  // el CANVAS solo acepta Cmd/Ctrl (estándar macOS). Antes también aceptaba
+  // Shift pero confundía porque Shift en el canvas YA tiene otro rol
+  // (mantener proporción al resize/rotar durante un drag). El árbol de capas
+  // sigue usando Shift para range-select porque ahí sí tiene un orden lineal
+  // claro; en el canvas geométrico "range" no aplica.
+  const isToggleMod = (ev: MouseEvent) => ev.metaKey || ev.ctrlKey
+
   if (!pointInArtboard(e.clientX, e.clientY)) {
-    if (!e.shiftKey) setCanvasSelection(null)
+    if (!isToggleMod(e)) setCanvasSelection(null)
     return
   }
 
   const parallaxEl = elementAtPoint(e.clientX, e.clientY)
   if (!parallaxEl) {
-    // Click on empty pasteboard. A plain click clears everything; a SHIFT
+    // Click on empty pasteboard. A plain click clears everything; a toggle-mod
     // click on nothing preserves the existing multi-selection (so a missed
-    // shift-click doesn't nuke the group).
-    if (!e.shiftKey) setCanvasSelection(null)
+    // multi-select click doesn't nuke the group).
+    if (!isToggleMod(e)) setCanvasSelection(null)
     return
   }
 
   const id = parallaxEl.getAttribute('data-parallax-id')
   if (!id) {
-    if (!e.shiftKey) setCanvasSelection(null)
+    if (!isToggleMod(e)) setCanvasSelection(null)
     return
   }
 
   const path = findElementPath(state.site, id)
   if (!path) {
-    if (!e.shiftKey) setCanvasSelection(null)
+    if (!isToggleMod(e)) setCanvasSelection(null)
     return
   }
-  // SHIFT+click → toggle this element in/out of the multi-selection (GAP5).
-  // Plain click → single select (collapses any multi-selection). Both keep
-  // `selectedPath` as the primary so PROPIEDADES/CAPAS are unchanged.
-  if (e.shiftKey) toggleCanvasSelection(path)
+  // Cmd/Ctrl + click → toggle this element in/out of the multi-selection
+  // (GAP5). Plain click → single select (collapses any multi-selection). Both
+  // keep `selectedPath` as the primary so PROPIEDADES/CAPAS are unchanged.
+  // Shift NO se usa en el canvas — está reservado para "mantener proporción"
+  // durante resize/rotación de un elemento seleccionado.
+  if (isToggleMod(e)) toggleCanvasSelection(path)
   else setCanvasSelection(path)
 }

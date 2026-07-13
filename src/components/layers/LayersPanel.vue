@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import {
   state,
   moveNode,
+  moveNodes,
   addSection,
   addLayer,
   addElement,
@@ -19,6 +20,7 @@ import {
   isCollapsed,
   setTreeSelection,
   toggleTreeSelection,
+  setTreeSelectionRange,
 } from '../../stores/editor'
 import { usePanelScroll } from '../../composables/usePanelScroll'
 import LayerTreeItem from './LayerTreeItem.vue'
@@ -77,11 +79,44 @@ function isRowPrimary(path: string): boolean {
   return state.selectedPaths.length >= 2 && state.selectedPath === path
 }
 
-// Plain click → single select (clears the multi-set, current behavior).
-// Ctrl/Cmd+click → toggle into the tree multi-selection.
-function selectPath(path: string, additive: boolean) {
-  if (additive) toggleTreeSelection(path)
-  else setTreeSelection(path)
+/**
+ * Orden VISIBLE plano del árbol (secciones → layers → elements, respetando
+ * `isCollapsed`). Es el input para el range-select estilo Finder: sin este
+ * orden el store no puede saber qué está "entre A y B" visualmente.
+ * Recomputado por demanda; no es un ref reactivo porque solo lo necesitamos
+ * al momento del Shift+click (una vez por interacción).
+ */
+function visibleOrderedPaths(): string[] {
+  const out: string[] = []
+  const secs = sections.value || []
+  for (let si = 0; si < secs.length; si++) {
+    const section = secs[si]
+    const secPath = `sections.${si}`
+    out.push(secPath)
+    if (isCollapsed(section?.id, secPath)) continue
+    const layers = section?.layers || []
+    for (let li = 0; li < layers.length; li++) {
+      const layer = layers[li]
+      const layPath = `${secPath}.layers.${li}`
+      out.push(layPath)
+      if (isCollapsed(layer?.id, layPath)) continue
+      const elements = layer?.elements || []
+      for (let ei = 0; ei < elements.length; ei++) {
+        out.push(`${layPath}.elements.${ei}`)
+      }
+    }
+  }
+  return out
+}
+
+// Enruta el clic de fila del árbol al store:
+//   • 'set'    → single select (colapsa la multi-selección)
+//   • 'toggle' → Cmd/Ctrl+click: agrega/quita este nodo
+//   • 'range'  → Shift+click: selecciona todo del mismo nivel entre el ancla y este nodo
+function selectPath(path: string, mode: 'set' | 'toggle' | 'range') {
+  if (mode === 'toggle') { toggleTreeSelection(path); return }
+  if (mode === 'range') { setTreeSelectionRange(path, visibleOrderedPaths()); return }
+  setTreeSelection(path)
 }
 
 // Drag-reorder across parents: a node can be moved within its parent OR into
@@ -89,7 +124,22 @@ function selectPath(path: string, additive: boolean) {
 // section reorder). moveNode validates the level match, preserves the node
 // (ids intact — it's a MOVE), follows the selection, pushes undo + marks dirty,
 // and is view-aware (operates on the active view's tree).
+//
+// Multi-drag (Bloque C3): LayerTreeItem empaqueta `MULTI:<json>` en el
+// dataTransfer cuando el nodo arrastrado es parte de la multi-selección. Al
+// llegar aquí lo detectamos y llamamos a `moveNodes` (plural) del store, que
+// maneja el batch en un solo undo. Fallback a single-move si el prefijo no
+// está presente.
 function onMove(sourcePath: string, targetArrayPath: string, toIndex: number) {
+  if (sourcePath.startsWith('MULTI:')) {
+    try {
+      const paths = JSON.parse(sourcePath.slice('MULTI:'.length))
+      if (Array.isArray(paths) && paths.length >= 2) {
+        moveNodes(paths, targetArrayPath, toIndex)
+        return
+      }
+    } catch { /* dataTransfer corrupto → cae al single */ }
+  }
   moveNode(sourcePath, targetArrayPath, toIndex)
 }
 
@@ -112,6 +162,32 @@ function onEmptyDrop(e: DragEvent, targetArrayPath: string) {
   ;(e.currentTarget as HTMLElement)?.classList.remove('drop-hover')
   const src = e.dataTransfer?.getData('text/plain')
   if (!src) return
+  // Multi-drag (Bloque C3): mismo parseo que `onMove`. Un batch multi
+  // arrastrado a un layer VACÍO debe entrar como grupo — el path original
+  // NO cabe en `moveNode(src, …)` porque `src` sería el string "MULTI:[…]".
+  // Sin este caso Daniela veía que arrastrar varios seleccionados a otro
+  // layer sin hijos "no hacía nada".
+  if (src.startsWith('MULTI:')) {
+    try {
+      const paths = JSON.parse(src.slice('MULTI:'.length))
+      if (Array.isArray(paths) && paths.length >= 2) {
+        // Un layer vacío solo acepta ELEMENTOS. Filtramos el batch a paths
+        // de nivel elemento (6 segmentos) — cualquier sección/layer del set
+        // se ignora, moveNodes también aborta si los niveles no calzan con
+        // el destino. Es una salvaguarda de UX: no rompemos el drop entero.
+        const elementPaths = paths.filter((p: unknown) => typeof p === 'string' && p.split('.').length === 6)
+        if (elementPaths.length >= 2) {
+          moveNodes(elementPaths, targetArrayPath, 0)
+          return
+        }
+        if (elementPaths.length === 1) {
+          moveNode(elementPaths[0], targetArrayPath, 0)
+          return
+        }
+      }
+    } catch { /* dataTransfer corrupto → cae al single */ }
+    return
+  }
   // Only accept element-level sources (their path has at least 5 parts:
   // sections.N.layers.M.elements.K). moveNode rejects mismatches anyway,
   // but bailing here avoids a spurious pushUndo on an obvious no-op.
@@ -337,7 +413,7 @@ function onEmptyDrop(e: DragEvent, targetArrayPath: string) {
 </template>
 
 <style scoped>
-.layers-panel { background: #1e1e1e; font-size: 13px; position: relative; height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.layers-panel { background: #17171c; font-size: 13px; position: relative; height: 100%; display: flex; flex-direction: column; min-height: 0; }
 .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; border-bottom: 1px solid #333; flex-shrink: 0; }
 .panel-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 .header-actions { display: flex; gap: 4px; }

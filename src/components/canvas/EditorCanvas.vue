@@ -42,45 +42,16 @@ import {
 // only rewrite on the NON-overview render path (overview OFF). When overview
 // is ON the engine keeps painting raw `vh` and overview's own fit logic
 // (untouched) handles it exactly as before.
-// Rewrite EVERY viewport-unit token (vw/vh/vmin/vmax) anywhere in a value —
-// including inside clamp()/calc()/min()/max() — to an explicit px length
-// relative to the emulated device artboard. A standalone `"230vh"` and a
-// compound `"clamp(2.6rem, 9vw, 6.5rem)"` are both handled (the anchored regex
-// this replaces only caught standalone values, so vw inside a clamp() fontSize
-// resolved against the real editor window and the title blew up vs the real
-// device). state.site stays canonical; only the throwaway copy is rewritten.
-const VP_UNIT_TOKEN_RE = /([\d.]+)\s*(vw|vh|vmin|vmax)\b/gi
+// Rewrite EVERY viewport-unit token (vw/vh/vmin/vmax) anywhere in a value a
+// px length relative to the emulated device artboard. La lógica pura vive en
+// `useDeviceUnitRemap` (compartida con LivePreview, que la usa cuando simula
+// mobile). Aquí solo la enlazamos al `state.deviceMode` reactivo del store.
+import { remapViewportUnitsFor, remapElementUnitsFor } from '../../composables/useDeviceUnitRemap'
 function remapViewportUnits<T>(value: T): T {
-  if (typeof value !== 'string' || !/(vw|vh|vmin|vmax)/i.test(value)) return value
-  const vp = VIEWPORTS[state.deviceMode]
-  return value.replace(VP_UNIT_TOKEN_RE, (_m, num: string, unit: string) => {
-    const n = parseFloat(num)
-    if (!Number.isFinite(n)) return _m
-    const u = unit.toLowerCase()
-    const basis =
-      u === 'vw' ? vp.width :
-      u === 'vh' ? vp.height :
-      u === 'vmin' ? Math.min(vp.width, vp.height) :
-      Math.max(vp.width, vp.height)
-    return `${(n / 100) * basis}px`
-  }) as unknown as T
+  return remapViewportUnitsFor(value, VIEWPORTS[state.deviceMode])
 }
-// Rewrite the length-bearing string props of one element AND its responsive
-// (mobile/desktop) overrides, so viewport units in fontSize/size resolve
-// against the device artboard like the deployed site does.
 function remapElementUnits(el: any): void {
-  const fix = (obj: any) => {
-    if (!obj || typeof obj !== 'object') return
-    if (typeof obj.fontSize === 'string') obj.fontSize = remapViewportUnits(obj.fontSize)
-    if (obj.size && typeof obj.size === 'object') {
-      if (typeof obj.size.width === 'string') obj.size.width = remapViewportUnits(obj.size.width)
-      if (typeof obj.size.height === 'string') obj.size.height = remapViewportUnits(obj.size.height)
-    }
-  }
-  if (!el || typeof el !== 'object') return
-  fix(el)
-  fix(el.mobile)
-  fix(el.desktop)
+  remapElementUnitsFor(el, VIEWPORTS[state.deviceMode])
 }
 import { useCanvas } from '../../composables/useCanvas'
 import { handleCanvasClick } from '../../composables/useSelection'
@@ -734,7 +705,7 @@ function onCanvasDrop(e: DragEvent) {
   overflow: hidden;
   position: relative;
   cursor: default;
-  background: #1a1a1a;
+  background: #101014;
 }
 .cursor-hand { cursor: grab; }
 .cursor-hand:active { cursor: grabbing; }

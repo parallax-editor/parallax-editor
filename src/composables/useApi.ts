@@ -41,8 +41,16 @@ export const projectsApi = {
       `/projects/${type}/${slug}/duplicate`,
       { method: 'POST', body: JSON.stringify(newSlug ? { newSlug } : {}) },
     ),
-  delete: (type: string, slug: string) =>
-    api(`/projects/${type}/${slug}`, { method: 'DELETE' }),
+  // `credentials` opcional: solo se manda cuando el workspace está en
+  // `credentialsMode:'explicit'`. Cuando ausente, el server cae a la cadena
+  // del sistema. Necesario para borrar de S3 los objetos del slug eliminado.
+  delete: (type: string, slug: string, credentials?: S3Credentials, gitAuth?: GitCredentials) =>
+    api(`/projects/${type}/${slug}`, {
+      method: 'DELETE',
+      body: credentials || gitAuth
+        ? JSON.stringify({ ...(credentials ? { credentials } : {}), ...(gitAuth ? { gitAuth } : {}) })
+        : undefined,
+    }),
   // Upload an image / video / audio / font (picked from anywhere / drag&drop)
   // into the project's content dir (images/ | video/ | audio/ | fonts/, routed
   // server-side by mime, with a filename-extension fallback for fonts whose
@@ -188,6 +196,13 @@ export const gitApi = {
 }
 
 // ─── Workspaces (Fase 2) + S3 (Fase 3) ──────────────────────────────────────
+// `preset` mapea 1:1 con los presets del módulo Nuxt del engine
+// (`@parallax-editor/parallax-engine/nuxt`):
+//   - 'linked-home'  → portafolio público (home + catálogo)
+//   - 'multi-tenant' → invitaciones / eventos privados por URL directa
+// Default es 'multi-tenant' por back-compat.
+export type WorkspacePreset = 'linked-home' | 'multi-tenant'
+
 export interface WorkspaceS3 {
   enabled: boolean
   bucket: string
@@ -195,6 +210,19 @@ export interface WorkspaceS3 {
   region: string
   /** Regenerar+subir el manifest del catálogo al publicar (solo portafolio). */
   publishManifest?: boolean
+  /**
+   * Marca si el usuario tocó `publishManifest` explícitamente desde la UI.
+   * Mientras sea false/undefined, el host aplica el default derivado del
+   * preset (`presetPublishManifestDefault`). Una vez true, respetamos el
+   * valor del usuario aunque cambie el preset.
+   */
+  publishManifestUserSet?: boolean
+  /**
+   * Modo de autenticación con S3 (Fase 3). 'system' (default) usa la cadena de
+   * la SDK; 'explicit' fuerza a que el cliente provea creds por request desde
+   * el SecretsBus. Las credenciales NUNCA viven en este objeto — solo el modo.
+   */
+  credentialsMode?: 'system' | 'explicit'
 }
 export interface Workspace {
   id: string
@@ -212,7 +240,36 @@ export interface Workspace {
    * si no hay S3. El editor nunca ejecuta git en un workspace con useGit=false.
    */
   useGit?: boolean
+  /**
+   * Patrón del workspace. Mapea 1:1 con los presets del módulo Nuxt del engine.
+   * Drives: home pineado en el selector (linked-home), copy "evento" vs
+   * "sitio", default de S3.publishManifest, y warning de og:image al publicar
+   * en multi-tenant. Default 'multi-tenant' por back-compat.
+   */
+  preset?: WorkspacePreset
+  /** Configuración Git por workspace (Fase 4). El token vive en SecretsBus. */
+  git?: WorkspaceGit
 }
+
+/** Configuración Git por workspace (Fase 4). El token NO vive aquí. */
+export interface WorkspaceGit {
+  authMode?: 'system' | 'pat'
+  provider?: 'github' | 'gitlab' | 'bitbucket'
+}
+
+/** PAT que el cliente manda por request cuando authMode === 'pat'. */
+export interface GitCredentials {
+  username: string
+  token: string
+}
+
+/** Default de `publishManifest` derivado del preset (mirror del server-side). */
+export function presetPublishManifestDefault(preset: WorkspacePreset | undefined): boolean {
+  return preset === 'linked-home'
+}
+
+/** Slug reservado para el "home" de un workspace linked-home. */
+export const HOME_SLUG = 'home'
 
 export const workspaceApi = {
   // Host-resolved seed defaults (absolute repoPaths). Used to seed localStorage
@@ -251,25 +308,90 @@ export const workspaceApi = {
   // Is the host's global git user.name/email set? Drives the setup banner.
   gitConfigStatus: () =>
     api<{ configured: boolean; name: string; email: string }>('/git/config-status'),
+  // Estado que el HOST ve de un workspace ya activado. Alimenta la pantalla
+  // dedicada de settings (`WorkspaceSettings.vue`) y el badge del toolbar del
+  // editor para que "no puedo publicar" tenga una razón concreta antes de que
+  // el usuario clique. NO valida credenciales de red (eso sigue en el server
+  // solo bajo demanda con headBucket / validatePat) — este endpoint es puro
+  // resumen de configuración + estado del remoto git.
+  status: (id: string) =>
+    api<WorkspaceStatus>(`/workspaces/${encodeURIComponent(id)}/status`),
+}
+
+// Payload de `workspaceApi.status`. Refleja únicamente lo que el server puede
+// saber sin credenciales — el flag "hay secreto guardado" lo completa el
+// cliente contra el SecretsBus (Keychain), NO pasa por HTTP.
+export interface WorkspaceStatus {
+  ok: boolean
+  workspace: { id: string; name: string; preset: 'linked-home' | 'multi-tenant'; useGit: boolean }
+  s3: { enabled: boolean; bucket: string; region: string; credentialsMode: 'system' | 'explicit'; publishManifest: boolean }
+  git: { useGit: boolean; authMode: 'system' | 'pat'; remoteUrl: string | null; remoteIsHttps: boolean; provider: 'github' | 'gitlab' | 'bitbucket' | null }
+  error?: string
 }
 
 export interface Diagnostics {
   git: { configured: boolean; name: string; email: string }
+  /** Auth-cadena heurística del sistema para git push (Fase 4). */
+  gitAuth?: { available: boolean; credentialHelper: string | null; hasSshKey: boolean }
   claude: { available: boolean }
   aws: { configured: boolean; source: string | null }
   bins: { git: string | null; claude: string | null }
 }
+/** Backend del SecretsBus (Fase 2). Resuelto en cliente — NO viene del host. */
+export type SecretsBackend = 'safeStorage' | 'session' | null
 export const diagnosticsApi = {
   // Environment health (git/claude/aws + resolved binary paths). Drives DoctorView.
   get: () => api<Diagnostics>('/diagnostics'),
 }
 
+export const gitApiExtra = {
+  // POST /api/git/validate-pat → `git ls-remote --heads origin` con ASKPASS.
+  // Devuelve { ok:true } si el remoto acepta el PAT, { ok:false, error } si no.
+  validatePat: (workspaceId: string, gitAuth: GitCredentials) =>
+    api<{ ok: boolean; error?: string }>('/git/validate-pat', {
+      method: 'POST',
+      body: JSON.stringify({ workspaceId, gitAuth }),
+    }),
+  // POST /api/git/verify-access → ls-remote con la auth del SISTEMA (SSH /
+  // credential helper). El "Verificar acceso" del modo `system` de la tab Git.
+  verifySystemAccess: (workspaceId: string) =>
+    api<{ ok: boolean; error?: string }>('/git/verify-access', {
+      method: 'POST',
+      body: JSON.stringify({ workspaceId }),
+    }),
+}
+
+/**
+ * Forma de credenciales S3 explícitas que el cliente puede mandar por request
+ * cuando el workspace está en `credentialsMode:'explicit'`. NO se guardan en
+ * localStorage; se hidratan desde el SecretsBus justo antes de cada fetch.
+ */
+export interface S3Credentials {
+  accessKeyId: string
+  secretAccessKey: string
+}
+
 export const s3Api = {
   buckets: () => api<{ ok: boolean; buckets?: string[]; error?: string }>('/s3/buckets'),
-  createBucket: (name: string, region: string) =>
+  // Variante que acepta credenciales explícitas — la usa el modal del workspace
+  // para listar los buckets con las creds que el usuario está configurando, sin
+  // tocar la cadena del sistema. Mismo shape de respuesta que `buckets()`.
+  bucketsExplicit: (region: string, credentials: S3Credentials) =>
+    api<{ ok: boolean; buckets?: string[]; error?: string }>('/s3/buckets/explicit', {
+      method: 'POST',
+      body: JSON.stringify({ region, credentials }),
+    }),
+  createBucket: (name: string, region: string, credentials?: S3Credentials) =>
     api<{ ok: boolean; bucket?: string; error?: string }>('/s3/bucket', {
       method: 'POST',
-      body: JSON.stringify({ name, region }),
+      body: JSON.stringify(credentials ? { name, region, credentials } : { name, region }),
+    }),
+  // Validación post-Guardar del modal: confirma que (bucket, region, creds)
+  // permiten hacer al menos un HeadBucket. Si falla devuelve { ok:false, error }.
+  headBucket: (bucket: string, region: string, credentials?: S3Credentials) =>
+    api<{ ok: boolean; error?: string }>('/s3/head-bucket', {
+      method: 'POST',
+      body: JSON.stringify(credentials ? { bucket, region, credentials } : { bucket, region }),
     }),
 }
 
@@ -282,10 +404,20 @@ export interface DeploySidecar {
 }
 export const publishApi = {
   // Publish = push + (S3 sync if enabled) + .deploy.json sidecar commit/push.
-  run: (workspaceId: string, slug: string) =>
+  // `credentials` opcional: solo se manda cuando el workspace está en
+  // `credentialsMode:'explicit'`; el caller las saca del SecretsBus justo antes.
+  run: (workspaceId: string, slug: string, credentials?: S3Credentials, gitAuth?: GitCredentials) =>
     api<{ ok: boolean; pushed?: boolean; s3?: any; deployedAt?: string; warning?: string; manifest?: number; error?: string }>(
       `/publish/${encodeURIComponent(workspaceId)}/${encodeURIComponent(slug)}`,
-      { method: 'POST' },
+      {
+        method: 'POST',
+        // Cuando hay creds explícitas las mandamos en el body; sin ellas el
+        // server cae a la cadena del sistema (es lo que el caller decide via
+        // el `credentialsMode` del workspace).
+        body: credentials || gitAuth
+          ? JSON.stringify({ ...(credentials ? { credentials } : {}), ...(gitAuth ? { gitAuth } : {}) })
+          : undefined,
+      },
     ),
   // Read the .deploy.json sidecar so the panel shows the S3 status badge.
   status: (workspaceId: string, slug: string) =>

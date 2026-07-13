@@ -15,6 +15,20 @@
 import { statSync, accessSync, existsSync, mkdirSync, constants } from 'fs'
 import { resolve, isAbsolute } from 'path'
 
+// Preset que describe el "patrón" del workspace. Mapea 1:1 con los presets del
+// módulo Nuxt del engine (`@parallax-editor/parallax-engine/nuxt`):
+//
+//   - `linked-home`  → portafolio público. El slug `home` se renderiza en `/`,
+//                      los demás son sub-sitios enlazables via link.site.
+//                      Catálogo público → `s3.publishManifest` default true.
+//   - `multi-tenant` → invitaciones / eventos por URL directa. Cada slug es un
+//                      sitio aislado. Sin catálogo → publishManifest default
+//                      false; se exige og:image para WhatsApp.
+//
+// Default es `multi-tenant` por back-compat: los workspaces existentes en
+// localStorage no pasan a tener un `home` pineado de la nada.
+export type WorkspacePreset = 'linked-home' | 'multi-tenant'
+
 // S3 publish target for a workspace (Fase 3). All optional / additive.
 export interface WorkspaceS3 {
   enabled: boolean
@@ -27,8 +41,66 @@ export interface WorkspaceS3 {
    * appears in the public site's catalog WITHOUT a rebuild. Only enable for
    * "public catalog" workspaces — keep off for private/per-URL workspaces
    * whose slugs must not be enumerated publicly.
+   *
+   * El default DERIVADO del preset se calcula en `presetPublishManifestDefault()`
+   * abajo, pero solo se aplica cuando el cliente NO ha marcado este campo
+   * explícitamente (ver `publishManifestUserSet`).
    */
   publishManifest?: boolean
+  /**
+   * Marca si el usuario tocó explícitamente `publishManifest` desde la UI.
+   * Cuando es true, respetamos su valor; cuando es false/undefined, aplicamos
+   * el default del preset. Lo necesitamos porque sin él no podemos distinguir
+   * "el usuario quiere off" de "nunca lo tocó".
+   */
+  publishManifestUserSet?: boolean
+  /**
+   * Modo de autenticación con S3:
+   *   - 'system'   → la SDK usa la cadena por defecto (~/.aws, env, SSO). Es el
+   *                  comportamiento histórico y queda como default por back-compat.
+   *   - 'explicit' → el cliente manda accessKeyId/secretAccessKey por request
+   *                  (resueltos en runtime desde el SecretsBus / Keychain del SO).
+   *                  Las credenciales NUNCA se guardan en este objeto ni en el
+   *                  cache del host — solo viajan dentro de un request HTTP local.
+   */
+  credentialsMode?: 'system' | 'explicit'
+}
+
+/**
+ * Forma del par de credenciales que el cliente puede mandar por request al
+ * publicar a S3 cuando `credentialsMode === 'explicit'`. Compartido entre
+ * `s3.ts`, `publish.ts` y la API. NO se persiste en ningún workspace cache.
+ */
+export interface S3Credentials {
+  accessKeyId: string
+  secretAccessKey: string
+}
+
+/**
+ * Configuración de autenticación Git por workspace (Fase 4). Mismo contrato que
+ * S3:
+ *   - 'system' → el editor usa la auth del sistema (SSH key, osxkeychain,
+ *                credential helper que el usuario ya configuró). Default y
+ *                comportamiento histórico.
+ *   - 'pat'    → el editor inyecta un Personal Access Token via GIT_ASKPASS
+ *                solo durante el push. El token vive en el SecretsBus
+ *                (Keychain), nunca aquí.
+ * El `provider` es informativo (drive del help modal con instrucciones por
+ * plataforma); el token funciona igual con cualquier host HTTPS.
+ */
+export interface WorkspaceGit {
+  authMode?: 'system' | 'pat'
+  provider?: 'github' | 'gitlab' | 'bitbucket'
+}
+
+/**
+ * Forma del PAT que el cliente puede mandar por request al hacer push cuando
+ * `git.authMode === 'pat'`. NUNCA se persiste en el workspace cache; viaja
+ * solo en el body del request HTTP local.
+ */
+export interface GitCredentials {
+  username: string
+  token: string
 }
 
 // One workspace as sent by the client. `id` is a stable client-generated key.
@@ -48,6 +120,20 @@ export interface Workspace {
    * uploads to S3 only (no push) — or is disabled if S3 isn't configured.
    */
   useGit?: boolean
+  /**
+   * Patrón del workspace. Drives "home pineado" en el selector, copy ("evento"
+   * vs "sitio"), defaults de S3.publishManifest, y el warning de og:image al
+   * publicar en multi-tenant. Default: `multi-tenant` (back-compat con
+   * workspaces existentes en localStorage que no traen este campo).
+   */
+  preset?: WorkspacePreset
+  /** Configuración de Git por workspace (Fase 4). Opcional / back-compat. */
+  git?: WorkspaceGit
+}
+
+/** Default de `publishManifest` cuando el usuario no lo tocó explícitamente. */
+export function presetPublishManifestDefault(preset: WorkspacePreset | undefined): boolean {
+  return preset === 'linked-home'
 }
 
 // In-memory cache of workspaces the client has activated this process.
@@ -122,15 +208,55 @@ export function activateWorkspace(raw: any): ActivateResult {
     }
   }
 
+  // Preset: enum validado; cualquier valor desconocido cae a 'multi-tenant'
+  // (back-compat con workspaces existentes en localStorage que no traen este
+  // campo y con clientes viejos).
+  const preset: WorkspacePreset =
+    raw.preset === 'linked-home' ? 'linked-home' : 'multi-tenant'
+
   let s3: WorkspaceS3 | undefined
   if (raw.s3 && typeof raw.s3 === 'object') {
+    // publishManifest: prioridad de fuentes para evitar pisar la elección del
+    // usuario en un upgrade silencioso:
+    //   1. Si el cliente marca `publishManifestUserSet:true` → su `publishManifest`
+    //      es la fuente de verdad (incluso si va contra el default del preset).
+    //   2. BACK-COMPAT: si el flag no viene PERO `publishManifest` está
+    //      explícitamente seteado como boolean en el localStorage de un cliente
+    //      legacy (pre-feature), tratamos eso como intención del usuario para
+    //      NO pisar su elección. El upgrade promueve el flag a true.
+    //   3. Si no hay nada del usuario, aplicamos el default DERIVADO del preset.
+    const userSet =
+      raw.s3.publishManifestUserSet === true ||
+      typeof raw.s3.publishManifest === 'boolean'
+    const publishManifest = userSet
+      ? raw.s3.publishManifest === true
+      : presetPublishManifestDefault(preset)
+    // credentialsMode: enum 'system'|'explicit'; cualquier otra cosa o ausencia
+    // cae a 'system' (back-compat).
+    const credentialsMode: 'system' | 'explicit' =
+      raw.s3.credentialsMode === 'explicit' ? 'explicit' : 'system'
     s3 = {
       enabled: raw.s3.enabled === true,
       bucket: typeof raw.s3.bucket === 'string' ? raw.s3.bucket : '',
       prefix: typeof raw.s3.prefix === 'string' ? raw.s3.prefix.replace(/^\/+|\/+$/g, '') : '',
       region: typeof raw.s3.region === 'string' && raw.s3.region ? raw.s3.region : 'us-east-1',
-      publishManifest: raw.s3.publishManifest === true,
+      publishManifest,
+      publishManifestUserSet: userSet,
+      credentialsMode,
     }
+  }
+
+  // git.authMode / provider: validados y cacheados. El token NO viene aquí —
+  // viaja por request en el body cuando aplica. Cualquier intento de colarlo
+  // a través del cache se descarta silenciosamente.
+  let gitCfg: WorkspaceGit | undefined
+  if (raw.git && typeof raw.git === 'object') {
+    const authMode: 'system' | 'pat' = raw.git.authMode === 'pat' ? 'pat' : 'system'
+    const provider =
+      raw.git.provider === 'github' || raw.git.provider === 'gitlab' || raw.git.provider === 'bitbucket'
+        ? raw.git.provider
+        : undefined
+    gitCfg = { authMode, provider }
   }
 
   const ws: Workspace = {
@@ -141,6 +267,8 @@ export function activateWorkspace(raw: any): ActivateResult {
     contentRoot,
     useGit,
     s3,
+    preset,
+    git: gitCfg,
   }
   activated.set(id, ws)
   return { ok: true, workspace: ws }

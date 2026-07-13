@@ -41,6 +41,14 @@ import {
   liveStorageKey,
   type DeviceMode,
 } from '../composables/usePreviewSite'
+// Remap de `vw`/`vh` a `px` cuando el usuario simula un móvil dentro de la
+// ventana real. Sin esto, el engine seguiría midiendo `vw` contra
+// window.innerWidth (grande) y los textos con `clamp(…,9vw,…)` desbordan por
+// los bordes del frame 390.
+import { remapSiteViewportUnits } from '../composables/useDeviceUnitRemap'
+// Presets de tamaños de dispositivo — los MISMOS del dropdown del canvas del
+// editor (módulo puro, sin dependencia del store del editor).
+import { MOBILE_PRESETS, DESKTOP_PRESETS } from '../constants/devicePresets'
 
 // ── Project identity from the query string ────────────────────────────────
 // `type` es el id del workspace — CUALQUIERA, no solo eventos/site (antes esto
@@ -167,18 +175,175 @@ function onFadeEnd() {
   fadeOut.value = false
 }
 
-// The engine-ready render copy: shared asset-prefix + active-view resolution,
-// NO artboard vh-remap (full real viewport). state stays canonical in the
-// editor tab — this tab only ever holds throwaway copies.
+// ── Device toggle propio de la Vista en vivo ─────────────────────────────
+// Antes SÓLO se hereda del editor por `applyPayload`. Ahora hay UI para
+// cambiarlo directamente aquí — así puedes tener el editor en Desktop y ver
+// en vivo cómo se rendería en Móvil sin salir de esta pestaña.
+//
+// Cuando el usuario elige Móvil, envolvemos <ParallaxSite> en un frame
+// simulado (390×844 por defecto — configurable con el menú de tamaños)
+// centrado en la pantalla, con un fondo neutro alrededor. El engine sigue
+// pintando `mode="prod"` como siempre; el frame es puramente visual — como el
+// simulador de Xcode o el modo mobile de Chrome DevTools. `vh`/`vw` resuelven
+// naturalmente contra ese contenedor (ancho controlado por CSS).
+//
+// ── Menú de tamaños (mismos presets del canvas del editor) ──
+// `simMobile` / `simDesktop` guardan el tamaño elegido por modo. En desktop
+// hay además la opción "Ventana actual" (default) = comportamiento histórico:
+// el mundo ocupa la ventana real, sin frame ni remap. Con un preset desktop
+// activo, el frame se encaja con `zoom` CSS si es más ancho que la ventana
+// (Chrome/Electron only — el editor no corre en otros browsers).
+const simMobile = ref({ width: 390, height: 844 })
+const simDesktop = ref<{ width: number; height: number } | null>(null) // null = ventana actual
+const sizeMenuOpen = ref(false)
+const customW = ref(390)
+const customH = ref(844)
+// Ancho real de la ventana (reactivo a resize) para el zoom-to-fit desktop.
+const winW = ref(typeof window !== 'undefined' ? window.innerWidth : 1440)
+function onWinResize() { winW.value = window.innerWidth }
+
+const activeFrame = computed(() =>
+  deviceMode.value === 'mobile' ? simMobile.value : simDesktop.value,
+)
+const presetsForMode = computed(() =>
+  deviceMode.value === 'mobile' ? MOBILE_PRESETS : DESKTOP_PRESETS,
+)
+const activePresetId = computed(() => {
+  const f = activeFrame.value
+  if (!f) return null
+  const match = presetsForMode.value.find((p) => p.width === f.width && p.height === f.height)
+  return match ? match.id : null
+})
+// "Personalizado" activo = hay frame pero no coincide con ningún preset.
+const isCustomSize = computed(() => activeFrame.value !== null && activePresetId.value === null)
+const sizeButtonLabel = computed(() => {
+  const f = activeFrame.value
+  return f ? `${f.width}×${f.height}` : t('live.fitWindow')
+})
+
+const controlsRef = ref<HTMLElement | null>(null)
+function onDocMouseDown(e: MouseEvent) {
+  // Click fuera de la barra (y su desplegable) → cierra el menú y deja que
+  // el auto-hide vuelva a mandar.
+  if (controlsRef.value && !controlsRef.value.contains(e.target as Node)) {
+    sizeMenuOpen.value = false
+    document.removeEventListener('mousedown', onDocMouseDown, true)
+    scheduleHide(600)
+  }
+}
+function toggleSizeMenu() {
+  sizeMenuOpen.value = !sizeMenuOpen.value
+  if (sizeMenuOpen.value) {
+    const f = activeFrame.value
+    customW.value = f?.width ?? (deviceMode.value === 'mobile' ? 390 : 1440)
+    customH.value = f?.height ?? (deviceMode.value === 'mobile' ? 844 : 900)
+    document.addEventListener('mousedown', onDocMouseDown, true)
+  } else {
+    document.removeEventListener('mousedown', onDocMouseDown, true)
+  }
+}
+function pickSizePreset(id: string) {
+  const p = presetsForMode.value.find((x) => x.id === id)
+  if (!p) return
+  applyFrameSize({ width: p.width, height: p.height })
+  sizeMenuOpen.value = false
+}
+function pickFitWindow() {
+  // Solo existe en desktop: vuelve al comportamiento sin frame.
+  simDesktop.value = null
+  sizeMenuOpen.value = false
+}
+function applyCustomSize() {
+  const w = Number(customW.value)
+  const h = Number(customH.value)
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w < 200 || h < 200) return
+  applyFrameSize({ width: Math.round(w), height: Math.round(h) })
+}
+function applyFrameSize(size: { width: number; height: number }) {
+  if (deviceMode.value === 'mobile') simMobile.value = size
+  else simDesktop.value = size
+}
+// Overlay de controles — feedback Josh (2ª iteración): con el mousemove global
+// el escondido era "de suerte" porque CUALQUIER movimiento del mouse (que en
+// una vista previa pasa todo el tiempo) reseteaba el timer y los dejaba
+// visibles casi siempre. Rediseño estilo controles de video en fullscreen:
+//   • Estado por defecto: OCULTOS.
+//   • Reveal INTENCIONAL: hover strip transparente pegado al top del viewport
+//     (48px de alto, ancho completo). Pasar el mouse por ahí los muestra.
+//   • Se mantienen visibles mientras el mouse esté sobre el strip O sobre la
+//     barra (mouseenter/leave abajo). Al salir, timer corto (600ms) y ocultar.
+//   • Discovery inicial: al montar los mostramos 2.5s para que el usuario los
+//     descubra; después se ocultan y ya funcionan a demanda.
+const controlsVisible = ref(true)
+let hideTimer: ReturnType<typeof setTimeout> | null = null
+let inHotZone = false
+function scheduleHide(delay: number) {
+  if (hideTimer) clearTimeout(hideTimer)
+  hideTimer = setTimeout(() => {
+    // Con el menú de tamaños abierto la barra no se oculta jamás (el mouse
+    // puede estar sobre el desplegable, fuera del strip de la barra).
+    if (!inHotZone && !sizeMenuOpen.value) controlsVisible.value = false
+  }, delay)
+}
+function onHotZoneEnter() {
+  inHotZone = true
+  controlsVisible.value = true
+  if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
+}
+function onHotZoneLeave() {
+  inHotZone = false
+  scheduleHide(600)
+}
+function setDevice(m: DeviceMode) {
+  deviceMode.value = m
+  // El menú de tamaños es POR MODO (presets distintos) — se cierra al cambiar.
+  sizeMenuOpen.value = false
+}
+// Estilo del contenedor del engine. Sin frame activo (desktop "Ventana
+// actual"): nada — el mundo ocupa la ventana. Con frame (móvil siempre;
+// desktop con preset): ancho fijo + minHeight del tamaño elegido, centrado.
+// `overflow:hidden` + borderRadius para el look de dispositivo. Si el frame
+// es más ancho que la ventana (p.ej. PC 2K en un laptop), `zoom` lo encaja —
+// el remap vw/vh ya convirtió a px, así que el zoom escala todo uniforme.
+const stageStyle = computed<Record<string, string>>(() => {
+  const f = activeFrame.value
+  if (!f) return {}
+  const isMobile = deviceMode.value === 'mobile'
+  const fit = Math.min(1, (winW.value - 48) / f.width)
+  const style: Record<string, string> = {
+    width: `${f.width}px`,
+    maxWidth: `${f.width}px`,
+    minHeight: `${f.height}px`,
+    margin: '0 auto',
+    boxShadow: '0 0 0 1px rgba(255,255,255,.08), 0 20px 60px rgba(0,0,0,.35)',
+    background: '#fff',
+    // Radio de 24px que evoca la esquina de un teléfono en móvil; en desktop
+    // un radio más sobrio de monitor/ventana.
+    borderRadius: isMobile ? '24px' : '10px',
+    overflow: 'hidden',
+  }
+  if (fit < 1) style.zoom = String(fit)
+  return style
+})
+// The engine-ready render copy: shared asset-prefix + active-view resolution.
+// Con un frame activo (móvil siempre; desktop con preset) remapeamos `vw`/`vh`
+// a `px` contra el tamaño del frame, así el engine se comporta como si ese
+// frame fuera el viewport real. Sin frame (desktop "Ventana actual") NO se
+// remapea — resuelven contra el viewport real como en el sitio publicado.
 const previewSite = computed(() => {
   if (!rawSite.value) return null
   try {
-    return buildPreviewSite(
+    const base = buildPreviewSite(
       rawSite.value,
       validType ? projectType : null,
       currentSlug.value,
       deviceMode.value,
     )
+    const f = activeFrame.value
+    if (f && base) {
+      return remapSiteViewportUnits(base, { width: f.width, height: f.height })
+    }
+    return base
   } catch (e: any) {
     errorMsg.value = e?.message || String(e)
     return null
@@ -237,6 +402,13 @@ function onStorage(e: StorageEvent) {
 
 onMounted(() => {
   document.title = originalSlug ? t('live.titleWithSlug', { slug: originalSlug }) : t('live.title')
+  // Discovery inicial de los controles: visibles 2.5s y luego se ocultan.
+  // Debe armarse ANTES del early-return de "proyecto inválido" — la barra
+  // existe también en la pantalla de espera/error y sin esto quedaba
+  // visible para siempre en esa ruta.
+  controlsVisible.value = true
+  scheduleHide(2500)
+  window.addEventListener('resize', onWinResize)
   if (!validType || !originalSlug) {
     errorMsg.value = t('live.missingProject')
     return
@@ -276,27 +448,150 @@ onBeforeUnmount(() => {
     channel = null
   }
   window.removeEventListener('storage', onStorage)
+  window.removeEventListener('resize', onWinResize)
+  document.removeEventListener('mousedown', onDocMouseDown, true)
+  if (hideTimer) clearTimeout(hideTimer)
 })
 </script>
 
 <template>
-  <!-- Full real viewport, NO editor chrome. -->
-  <div class="live-root" data-test="live-root">
+  <!-- Full real viewport, NO editor chrome. En móvil envolvemos el engine en
+       un "frame" 390×844 centrado; el fondo alrededor es la ventana real. -->
+  <div
+    class="live-root"
+    :class="{ 'is-mobile-sim': deviceMode === 'mobile' }"
+    data-test="live-root"
+  >
     <!-- Botón Volver: aparece tras navegar a otro sitio (link.site). -->
     <button v-if="backStack.length" class="live-back" type="button" @click="goBack" data-test="live-back">
       {{ t('live.backBtn') }}
     </button>
 
-    <!-- Mundo ENTRANTE: siempre <ParallaxSite> normal en flujo, viewport completo
-         (sizing correcto garantizado). Al navegar (link.site) emite `navigate`. -->
-    <ParallaxSite
-      v-if="previewSite"
-      :key="nonce"
-      :site="previewSite"
-      :components="components"
-      mode="prod"
-      @navigate="go"
+    <!-- Hot-zone: banda invisible pegada al borde superior. Al entrar el
+         mouse aquí, se revela la barra; al salir (y no estar sobre la barra),
+         se oculta a los 600ms. Es la ÚNICA manera de mostrarlos después del
+         discovery inicial → nunca aparecen por movimiento accidental. -->
+    <div
+      class="live-controls-hotzone"
+      data-test="live-controls-hotzone"
+      @mouseenter="onHotZoneEnter"
+      @mouseleave="onHotZoneLeave"
     />
+
+    <!-- Barra flotante de controles (Ver como: 🖥 / 📱). Reveal por hot-zone
+         del borde superior. Copia el mismo copy del toolbar del editor. -->
+    <div
+      ref="controlsRef"
+      class="live-controls"
+      :class="{ 'is-visible': controlsVisible }"
+      data-test="live-controls"
+      aria-label="Vista"
+      @mouseenter="onHotZoneEnter"
+      @mouseleave="onHotZoneLeave"
+    >
+      <span class="live-controls-label">{{ t('toolbar.previewViewingAs') }}</span>
+      <button
+        type="button"
+        class="live-device-btn"
+        :class="{ active: deviceMode === 'desktop' }"
+        data-test="live-device-desktop"
+        @click="setDevice('desktop')"
+      >&#x1F4BB; <span class="live-device-lbl">{{ t('toolbar.desktop') }}</span></button>
+      <button
+        type="button"
+        class="live-device-btn"
+        :class="{ active: deviceMode === 'mobile' }"
+        data-test="live-device-mobile"
+        @click="setDevice('mobile')"
+      >&#x1F4F1; <span class="live-device-lbl">{{ t('toolbar.mobile') }}</span></button>
+
+      <span class="live-controls-sep" aria-hidden="true" />
+
+      <!-- Tamaño del dispositivo: mismos presets del canvas del editor. -->
+      <button
+        type="button"
+        class="live-size-btn"
+        :aria-expanded="sizeMenuOpen"
+        data-test="live-size-toggle"
+        @click="toggleSizeMenu"
+      >
+        <span class="live-size-value">{{ sizeButtonLabel }}</span>
+        <span class="live-size-caret" aria-hidden="true">▾</span>
+      </button>
+
+      <!-- Desplegable anclado a la barra (dentro de .live-controls para que
+           el hover lo cuente como "en la barra" y no se auto-oculte). -->
+      <div v-if="sizeMenuOpen" class="live-size-menu" role="menu" data-test="live-size-menu">
+        <div class="lsm-title">{{ deviceMode === 'mobile' ? t('mobileSize.titleMobile') : t('mobileSize.titleDesktop') }}</div>
+        <button
+          v-if="deviceMode === 'desktop'"
+          type="button"
+          :class="['lsm-item', { active: !activeFrame }]"
+          role="menuitemradio"
+          :aria-checked="!activeFrame"
+          data-test="live-size-fit-window"
+          @click="pickFitWindow"
+        >
+          <span class="lsm-check">{{ !activeFrame ? '✓' : '' }}</span>
+          <span class="lsm-label">{{ t('live.fitWindow') }}</span>
+        </button>
+        <button
+          v-for="p in presetsForMode"
+          :key="p.id"
+          type="button"
+          :class="['lsm-item', { active: activePresetId === p.id }]"
+          role="menuitemradio"
+          :aria-checked="activePresetId === p.id"
+          :data-test="`live-size-preset-${p.id}`"
+          @click="pickSizePreset(p.id)"
+        >
+          <span class="lsm-check">{{ activePresetId === p.id ? '✓' : '' }}</span>
+          <span class="lsm-label">{{ p.label }}</span>
+          <span class="lsm-dim">{{ p.width }}×{{ p.height }}</span>
+        </button>
+        <div class="lsm-sep" />
+        <div :class="['lsm-custom', { active: isCustomSize }]">
+          <span class="lsm-check">{{ isCustomSize ? '✓' : '' }}</span>
+          <span class="lsm-label">{{ t('mobileSize.custom') }}</span>
+          <div class="lsm-inputs">
+            <input
+              type="number"
+              v-model.number="customW"
+              min="200"
+              max="3840"
+              :aria-label="t('mobileSize.customWidth')"
+              data-test="live-size-custom-width"
+              @keydown.enter="applyCustomSize"
+            />
+            <span class="lsm-times">×</span>
+            <input
+              type="number"
+              v-model.number="customH"
+              min="200"
+              max="3840"
+              :aria-label="t('mobileSize.customHeight')"
+              data-test="live-size-custom-height"
+              @keydown.enter="applyCustomSize"
+            />
+            <button type="button" class="lsm-apply" data-test="live-size-custom-apply" @click="applyCustomSize">{{ t('mobileSize.apply') }}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Contenedor del engine. Si es mobile, aplicamos ancho fijo + centrado y
+         encajamos el <ParallaxSite> adentro, así `vw`/`vh` resuelven contra el
+         frame (no contra la ventana real) y ves EXACTAMENTE el layout móvil. -->
+    <div class="live-stage" :style="stageStyle">
+      <ParallaxSite
+        v-if="previewSite"
+        :key="nonce"
+        :site="previewSite"
+        :components="components"
+        mode="prod"
+        @navigate="go"
+      />
+    </div>
 
     <!-- Mundo SALIENTE: overlay fijo que se desvanece encima y se desmonta. -->
     <div
@@ -404,4 +699,178 @@ body,
   overflow: hidden;
 }
 .live-fade.is-out { opacity: 0; }
+
+/* ── Simulador móvil ─────────────────────────────────────────────────────
+   En modo mobile, el fondo detrás del frame 390×844 se pinta oscuro para que
+   el frame blanco resalte como una "pantalla" flotante. Padding vertical
+   generoso: si la composición es más alta que 844, el usuario scrollea la
+   ventana real y el frame se mueve con él (natural). */
+.live-root.is-mobile-sim {
+  min-height: 100vh;
+  padding: 32px 0;
+  background: #1a1a1a;
+}
+.live-root.is-mobile-sim :deep(body) { background: #1a1a1a; }
+
+/* Hot-zone del borde superior: invisible, ancho completo, 48px de alto.
+   Detecta mouseenter/leave para revelar/ocultar la barra a demanda. z-index
+   ligeramente por debajo de la barra para que hover-through-controls funcione
+   sin flicker. pointer-events auto para que reciba el hover. */
+.live-controls-hotzone {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  z-index: 2147482999;
+  pointer-events: auto;
+  background: transparent;
+}
+
+/* ── Overlay de controles (Bloque C5) ───────────────────────────────────
+   Barra chica flotante top-center. Fade in/out con la clase `is-visible`.
+   Elevada por encima del engine (mismo stacking que .live-back). El
+   backdrop-filter le da profundidad sin ocupar visualmente. */
+.live-controls {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 12px;
+  background: rgba(20, 20, 20, 0.78);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  font: 600 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+.live-controls.is-visible { opacity: 1; pointer-events: auto; }
+.live-controls-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #b4b4b4;
+  margin-right: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.live-device-btn {
+  background: transparent;
+  color: #d6d6d6;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 600 12px inherit;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.live-device-btn:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.live-device-btn.active {
+  background: rgba(255, 213, 109, 0.16);
+  color: #ffe2a3;
+  border-color: rgba(255, 213, 109, 0.4);
+}
+.live-device-lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* ── Menú de tamaños de dispositivo (mismos presets del canvas) ────────── */
+.live-controls-sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.16);
+  margin: 0 2px;
+  flex: none;
+}
+.live-size-btn {
+  background: transparent;
+  color: #d6d6d6;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 600 12px inherit;
+  transition: background 0.12s, color 0.12s;
+}
+.live-size-btn:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.live-size-value { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+.live-size-caret { font-size: 9px; opacity: 0.8; }
+
+/* Desplegable anclado bajo la barra. Vive DENTRO de .live-controls, así el
+   mouseenter de la barra lo cubre y el auto-hide no lo mata mientras eliges. */
+.live-size-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 252px;
+  background: rgba(24, 24, 28, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  max-height: 70vh;
+  overflow-y: auto;
+  text-align: left;
+}
+.lsm-title { font-size: 11px; color: #8a8a94; padding: 4px 8px 6px; font-weight: 600; }
+.lsm-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: #ccc;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+.lsm-item:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
+.lsm-item.active { color: #fff; }
+.lsm-check { width: 12px; color: var(--accent-strong, #4a9eff); font-size: 12px; flex-shrink: 0; }
+.lsm-label { flex: 1; font-weight: 500; }
+.lsm-dim { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #8a8a94; font-size: 11px; }
+.lsm-sep { height: 1px; background: rgba(255, 255, 255, 0.12); margin: 6px 4px; }
+.lsm-custom { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; flex-wrap: wrap; font-size: 12px; color: #ccc; }
+.lsm-custom.active { color: #fff; }
+.lsm-inputs { display: flex; align-items: center; gap: 4px; width: 100%; margin-top: 6px; padding-left: 20px; }
+.lsm-inputs input {
+  width: 64px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #eee;
+  border-radius: 5px;
+  padding: 3px 6px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.lsm-inputs input:focus { outline: none; border-color: var(--accent-strong, #4a9eff); }
+.lsm-times { color: #8a8a94; }
+.lsm-apply {
+  background: var(--accent, #0066cc);
+  border: none;
+  color: var(--accent-fg, #fff);
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+.lsm-apply:hover { background: var(--accent-hover, #157ae0); }
 </style>

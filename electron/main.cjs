@@ -22,6 +22,7 @@ const { app, BrowserWindow, Menu, dialog, shell, ipcMain, nativeImage, powerMoni
 const path = require('path')
 const fs = require('fs')
 const { fixPath } = require('./path-fix.cjs')
+const secrets = require('./secrets.cjs')
 
 // CRÍTICO: corregir el PATH ANTES de cualquier spawn (el server in-process
 // lanza `claude`/`git`). Idempotente; no-op nocivo en dev.
@@ -262,6 +263,7 @@ const MENU_STRINGS = {
     fullscreen: 'Pantalla completa',
     window: 'Ventana', winClaude: 'Asistente Claude', winResources: 'Recursos',
     winSite: 'Sitio', winTheme: 'Tema',
+    wsConfigure: 'Configurar workspace…',
     language: 'Idioma', langSpanish: 'Español', langEnglish: 'Inglés',
     help: 'Ayuda', helpDiag: 'Diagnóstico…', helpGuide: 'Guía de uso',
     helpDownloads: 'Versión / Descargas',
@@ -286,6 +288,7 @@ const MENU_STRINGS = {
     fullscreen: 'Full screen',
     window: 'Window', winClaude: 'Claude assistant', winResources: 'Resources',
     winSite: 'Site', winTheme: 'Theme',
+    wsConfigure: 'Configure workspace…',
     language: 'Language', langSpanish: 'Spanish', langEnglish: 'English',
     help: 'Help', helpDiag: 'Diagnostics…', helpGuide: 'User guide',
     helpDownloads: 'Version / Downloads',
@@ -346,8 +349,13 @@ function buildMenu() {
     ],
   }
 
-  // Edición: TODO (incluidos los roles nativos undo/cut/copy/paste/selectAll) se
-  // deshabilita en el home — solo tiene sentido con un sitio abierto.
+  // Edición. OJO (bug #paste-settings): un menu item DESHABILITADO bloquea su
+  // accelerator en TODA la app — con `enabled: wsCaps.inEditor` en los roles
+  // nativos, Cmd+V/C/X/A morían fuera de /edit (no se podía pegar en los
+  // inputs de la pantalla de settings). Los roles nativos operan sobre el
+  // elemento con foco y son inofensivos sin foco → SIEMPRE habilitados.
+  // Undo/redo sí es dual: dentro del editor va al store de Vue (histórico del
+  // documento); fuera, role nativo para que Cmd+Z funcione en cualquier input.
   const editMenu = {
     label: mt('edit'),
     submenu: [
@@ -355,16 +363,23 @@ function buildMenu() {
       // the Vue store. role:'undo' was firing the browser's native undo on
       // the focused input only — masking our store undo entirely when an
       // element was selected (the property panel inputs caught the keystroke).
-      { ...mi(mt('undo'), 'edit.undo', 'CmdOrCtrl+Z'), enabled: wsCaps.inEditor },
-      { ...mi(mt('redo'), 'edit.redo', 'Shift+CmdOrCtrl+Z'), enabled: wsCaps.inEditor },
+      ...(wsCaps.inEditor
+        ? [
+            mi(mt('undo'), 'edit.undo', 'CmdOrCtrl+Z'),
+            mi(mt('redo'), 'edit.redo', 'Shift+CmdOrCtrl+Z'),
+          ]
+        : [
+            { role: 'undo', label: mt('undo') },
+            { role: 'redo', label: mt('redo') },
+          ]),
       { type: 'separator' },
-      { role: 'cut', label: mt('cut'), enabled: wsCaps.inEditor },
-      { role: 'copy', label: mt('copy'), enabled: wsCaps.inEditor },
-      { role: 'paste', label: mt('paste'), enabled: wsCaps.inEditor },
+      { role: 'cut', label: mt('cut') },
+      { role: 'copy', label: mt('copy') },
+      { role: 'paste', label: mt('paste') },
       ed(mt('duplicate'), 'edit.duplicate', 'CmdOrCtrl+D'),
       ed(mt('deleteLbl'), 'edit.delete'),
       { type: 'separator' },
-      { role: 'selectAll', label: mt('selectAll'), enabled: wsCaps.inEditor },
+      { role: 'selectAll', label: mt('selectAll') },
     ],
   }
 
@@ -437,6 +452,12 @@ function buildMenu() {
       ed(mt('winResources'), 'window.resources'),
       ed(mt('winSite'), 'window.site'),
       ed(mt('winTheme'), 'window.theme'),
+      { type: 'separator' },
+      // Configurar workspace — accesible SIEMPRE (incluso en el selector),
+      // porque el usuario puede querer ajustar creds sin abrir un proyecto.
+      // El renderer resuelve "qué workspace configurar" con `activeWorkspace`
+      // del store y navega a `/workspace/:id/settings`.
+      mi(mt('wsConfigure'), 'window.workspaceSettings'),
       { type: 'separator' },
       { label: mt('language'), submenu: [
         langItem('es', mt('langSpanish')),
@@ -529,6 +550,17 @@ function registerIpc() {
   ipcMain.on('editor:dirty', (_e, dirty) => {
     editorDirty = !!dirty
   })
+
+  // ── SecretsBus (Fase 2) ────────────────────────────────────────────────────
+  // El renderer NUNCA toca safeStorage directamente — siempre via IPC. Esto
+  // mantiene la frontera: el proceso de render no tiene acceso a `app` ni al
+  // FS, y nadie puede leer/escribir el archivo de secretos saltándose el
+  // validador de keys de electron/secrets.cjs.
+  ipcMain.handle('secrets:set', (_e, key, value) => secrets.setSecret(key, value))
+  ipcMain.handle('secrets:get', (_e, key) => secrets.getSecret(key))
+  ipcMain.handle('secrets:delete', (_e, key) => secrets.deleteSecret(key))
+  ipcMain.handle('secrets:list', () => ({ ok: true, keys: secrets.listKeys() }))
+  ipcMain.handle('secrets:backend', () => ({ ok: true, backend: secrets.backend() }))
 }
 
 // Ícono del Dock en macOS. El ícono de electron-builder SOLO aplica a la app
