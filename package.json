@@ -43,12 +43,12 @@
   "devDependencies": {
     "@parallax-editor/parallax-engine": "^0.2.7",
     "@types/ws": "^8.5.12",
-    "@vitejs/plugin-vue": "^6.0.7",
+    "@vitejs/plugin-vue": "^6.0.8",
     "electron": "^43.1.0",
     "electron-builder": "^26.15.3",
     "playwright-core": "1.61.0",
     "typescript": "~7.0.2",
-    "vite": "^8.1.4"
+    "vite": "^8.1.5"
   },
   "homepage": "https://github.com/parallax-editor/parallax-editor#readme",
   "repository": {
