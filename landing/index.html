@@ -31,7 +31,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="style.css" />
   <!-- Engine CSS (loaded from npm via esm.sh for the live hero render). -->
-  <link rel="stylesheet" href="https://esm.sh/@parallax-editor/parallax-engine@0.2.4/style.css" />
+  <link rel="stylesheet" href="https://esm.sh/@parallax-editor/parallax-engine@0.2.7/style.css" />
   <style>
     /* Live hero container — gives the engine a defined box. The engine's
        `fit="container"` prop (≥0.1.1) handles the rest (sizing, normalization).
@@ -321,7 +321,7 @@
   <script type="module">
     if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       try {
-        const ENGINE_VERSION = '0.2.4';
+        const ENGINE_VERSION = '0.2.7';
         const VUE_VERSION = '3.4.38';
         const [{ createApp, h }, { ParallaxSite }, rawSite] = await Promise.all([
           import(`https://esm.sh/vue@${VUE_VERSION}`),
