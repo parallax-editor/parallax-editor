@@ -122,6 +122,13 @@ electron-builder picks it up automatically. Signing config lives in
 `electron-builder.yml` (`mac.hardenedRuntime` + `notarize`) with the
 Electron entitlements in `build/entitlements.mac*.plist`.
 
+electron-builder notarizes and staples the `.app`, but not the `.dmg`
+wrapper — so the `afterAllArtifactBuild` hook
+(`scripts/notarize-dmg.cjs`) submits each `.dmg` to `notarytool` and
+staples it too, meaning the **downloaded** `.dmg` validates offline
+(`xcrun stapler validate` → worked). This is automatic on every
+`yarn dist:mac` / `yarn release`; no manual step per version.
+
 `yarn dist:dir` does **not** notarize (it produces no `.dmg`), so it
 still works without credentials for a quick local check.
 
