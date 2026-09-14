@@ -1,9 +1,15 @@
 # ─── Empaquetado de la app de escritorio ─────────────────────────────────────
 #
-# Genera un .dmg ad-hoc (SIN firma ni notarización: no requiere cuenta de Apple
-# Developer). El usuario tendrá que abrirlo la primera vez con clic derecho →
-# Abrir (Gatekeeper). El editor está pensado para uso local, no distribución
-# masiva.
+# Genera un .dmg FIRMADO con Developer ID + NOTARIZADO por Apple, listo para
+# distribución fuera del Mac App Store (GitHub Releases + landing) sin el baile
+# de Gatekeeper. Requiere cuenta de Apple Developer:
+#   - Identidad "Developer ID Application" en el Keychain (electron-builder la
+#     toma automáticamente; por eso NO se declara `identity`).
+#   - Credenciales de notarytool por env (NUNCA en el repo):
+#       APPLE_API_KEY=/ruta/AuthKey_XXXX.p8   APPLE_API_KEY_ID=XXXX   APPLE_API_ISSUER=<uuid>
+#     (alternativa Apple ID: APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID)
+# `yarn dist:dir` NO notariza (no genera dmg) → sigue funcionando sin credenciales
+# para validación rápida. `yarn dist:mac` sí firma+notariza y exige las env vars.
 #
 # asar: false — empaqueta los archivos sueltos (sin el archivo único app.asar).
 # Para una app local esto es MÁS robusto: esbuild y fsevents traen binarios
@@ -61,10 +67,18 @@ mac:
   category: public.app-category.developer-tools
   # Ícono de la app (PÆ). Generado con iconutil desde build/icon-1024.png.
   icon: build/icon.icns
-  # Firma ad-hoc (sin identidad de Apple Developer). App interna. El usuario
-  # limpia la cuarentena UNA vez con `xattr -dr com.apple.quarantine
-  # "/Applications/Parallax Editor.app"` y después abre normal. Ver README.
-  identity: null
+  # Firma con Developer ID + Hardened Runtime (obligatorio para notarizar).
+  # Sin `identity`: electron-builder elige la "Developer ID Application" del
+  # Keychain. Entitlements de Electron: allow-jit / allow-unsigned-executable-
+  # memory por el JIT de V8, y disable-library-validation porque con asar:false
+  # los binarios nativos sueltos (esbuild, fsevents) se cargan fuera del bundle.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.inherit.plist
+  # Notarización vía notarytool. Credenciales por env (ver cabecera). Con API
+  # key el Team ID va embebido en el cert, no hace falta pasarlo aparte.
+  notarize: true
   # Descripciones de uso (TCC): macOS las muestra al pedir acceso a estas
   # carpetas protegidas cuando el usuario elige/clona un workspace ahí.
   extendInfo:

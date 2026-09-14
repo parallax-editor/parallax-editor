@@ -12,7 +12,7 @@ yarn test:e2e:matrix # engine render matrix E2E (OFFLINE, self-contained) — se
 yarn test:e2e        # editor E2E (requires `yarn dev` running on :3000)
 yarn electron:dev    # desktop app pointing at the :3000 dev server (needs `yarn editor` running separately)
 yarn dist:dir        # packages the app WITHOUT dmg (fast, for validation) → dist-electron/mac-arm64/
-yarn dist:mac        # builds the ad-hoc .dmg → dist-electron/Parallax Editor-<v>-arm64.dmg
+yarn dist:mac        # builds the signed + notarized .dmg → dist-electron/Parallax-Editor-<arch>.dmg (needs APPLE_API_* env)
 ```
 
 ## E2E (`e2e/`, self-contained)
@@ -59,8 +59,11 @@ packaged mode, `electron/main.cjs` starts the standalone server IN-PROCESS
 - **Doctor screen** (`src/components/doctor/DoctorHost.vue` + `GET /api/diagnostics`,
   `server/diagnostics.ts`) — first launch / "Help → Diagnostics" menu: validates
   git/claude/aws + auto-start toggle.
-- **`electron-builder.yml`** — ad-hoc `.dmg` (unsigned; open with right-click → Open).
-  `asar:false` (loose native binaries = more robust). Only copies production
+- **`electron-builder.yml`** — signed (Developer ID) + notarized `.dmg` (opens
+  with a normal double-click). Needs `APPLE_API_*` env vars + the "Developer ID
+  Application" cert in the Keychain; entitlements in `build/entitlements.mac*.plist`.
+  `asar:false` (loose native binaries = more robust) → `disable-library-validation`
+  entitlement is required so those unsigned-relative-to-bundle binaries load. Only copies production
   `dependencies` → `esbuild`/`chokidar`/`ws` live in dependencies (the bundled server
   requires them at runtime); `parallax-engine` lives in devDependencies (embedded in the bundles).
 - **Packaged Claude context**: the engine's contract is baked into
