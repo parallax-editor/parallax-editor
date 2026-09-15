@@ -104,28 +104,33 @@ yarn dist:dir           # quick validation (no .dmg, ~30s) → dist-electron/mac
 yarn dist:mac           # full build → dist-electron/Parallax-Editor-{x64,arm64}.dmg
 ```
 
-Both `.dmg` files are **ad-hoc unsigned** today. Notarized signing
-(Apple Developer ID + `notarytool`) is on the roadmap — at that point
-the first-open dance below goes away. Until then:
-
-When you open the installed `.app` for the first time, macOS may show:
-
-> **"Parallax Editor" is damaged and can't be opened. You should move it to the Trash.**
-
-That message is misleading — the app isn't damaged. It's Gatekeeper
-refusing an ad-hoc-signed app that the browser tagged with
-`com.apple.quarantine` on download. Clear the flag once and the app
-opens normally afterwards:
+Both `.dmg` files are **signed with a Developer ID and notarized by
+Apple**, so they open with a normal double-click — no quarantine dance,
+no "damaged" warning. This needs an Apple Developer account and
+credentials in the environment when building:
 
 ```bash
-xattr -dr com.apple.quarantine "/Applications/Parallax Editor.app"
+export APPLE_API_KEY=/path/to/AuthKey_XXXXXXXX.p8   # App Store Connect API key (.p8)
+export APPLE_API_KEY_ID=XXXXXXXXXX
+export APPLE_API_ISSUER=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+# (Apple ID alternative: APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID)
 ```
 
-(adjust the path if you moved the `.app` elsewhere). After clearing
-quarantine, double-click as normal. macOS may still show a less
-alarming "downloaded from Internet — are you sure?" prompt the first
-time — that one is harmless: right-click the `.app` → **Open** once
-to confirm and it won't ask again.
+The "Developer ID Application" certificate must be installed in the
+login Keychain (`security find-identity -v -p codesigning`);
+electron-builder picks it up automatically. Signing config lives in
+`electron-builder.yml` (`mac.hardenedRuntime` + `notarize`) with the
+Electron entitlements in `build/entitlements.mac*.plist`.
+
+electron-builder notarizes and staples the `.app`, but not the `.dmg`
+wrapper — so the `afterAllArtifactBuild` hook
+(`scripts/notarize-dmg.cjs`) submits each `.dmg` to `notarytool` and
+staples it too, meaning the **downloaded** `.dmg` validates offline
+(`xcrun stapler validate` → worked). This is automatic on every
+`yarn dist:mac` / `yarn release`; no manual step per version.
+
+`yarn dist:dir` does **not** notarize (it produces no `.dmg`), so it
+still works without credentials for a quick local check.
 
 **Cutting a release** (maintainer): `yarn release [patch|minor|major]`
 bumps `package.json`, builds both DMGs, tags the commit, and creates
