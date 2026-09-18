@@ -2,174 +2,196 @@
   "schemaVersion": "1.1",
   "meta": {
     "title": "Parallax Engine hero",
-    "description": "Live geometric depth-field hero, rendered by parallax-engine itself"
+    "description": "Live hero rendered by parallax-engine itself"
   },
   "sections": [
     {
       "id": "hero",
-      "background": { "type": "color", "value": "transparent" },
+      "background": {
+        "type": "color",
+        "value": "transparent"
+      },
       "layers": [
         {
-          "id": "l-bg",
-          "depth": 0.02,
-          "parallaxMode": [],
+          "id": "layer-back",
+          "depth": -0.6,
+          "parallaxMode": [
+            "mouse"
+          ],
           "elements": [
             {
-              "id": "bg-gradient",
+              "id": "el-back",
               "type": "png",
-              "src": "images/bg-gradient.webp",
-              "position": { "x": 50, "y": 50 },
-              "size": { "width": "120%" },
-              "anchor": "center"
-            }
-          ]
-        },
-        {
-          "id": "l-grid",
-          "depth": 0.08,
-          "blur": 2,
-          "parallaxMode": ["mouse", "gyroscope"],
-          "elements": [
-            {
-              "id": "grid-perspective",
-              "type": "png",
-              "src": "images/grid-perspective.webp",
-              "position": { "x": 50, "y": 50 },
-              "size": { "width": "122%" },
-              "anchor": "center",
-              "opacity": 0.85
-            }
-          ]
-        },
-        {
-          "id": "l-orb1",
-          "depth": 0.15,
-          "blur": 12,
-          "parallaxMode": ["mouse", "gyroscope"],
-          "elements": [
-            {
-              "id": "orb-1",
-              "type": "png",
-              "src": "images/orb-1.webp",
-              "position": { "x": 34, "y": 40 },
-              "size": { "width": "70%" },
-              "anchor": "center",
+              "src": "images/plane-back.svg",
+              "position": {
+                "x": 60,
+                "y": 30
+              },
+              "size": {
+                "width": "65%"
+              },
+              "opacity": 0.85,
               "animations": [
-                { "type": "translateY", "trigger": "loop", "from": 0, "to": -8, "duration": 9000, "easing": "easeInOut" },
-                { "type": "scale", "trigger": "loop", "from": 1, "to": 1.05, "duration": 11000, "easing": "easeInOut" }
+                {
+                  "type": "translateY",
+                  "trigger": "loop",
+                  "from": 0,
+                  "to": -8,
+                  "duration": 6000,
+                  "yoyo": true,
+                  "easing": "easeInOut"
+                }
               ]
             }
           ]
         },
         {
-          "id": "l-shapes-far",
-          "depth": 0.25,
-          "blur": 6,
-          "parallaxMode": ["mouse", "gyroscope"],
+          "id": "layer-mid",
+          "depth": -0.1,
+          "parallaxMode": [
+            "mouse"
+          ],
           "elements": [
             {
-              "id": "shapes-far",
+              "id": "el-mid",
               "type": "png",
-              "src": "images/shapes-far.webp",
-              "position": { "x": 50, "y": 50 },
-              "size": { "width": "118%" },
-              "anchor": "center",
-              "opacity": 0.8,
+              "src": "images/plane-mid.svg",
+              "position": {
+                "x": 50,
+                "y": 50
+              },
+              "size": {
+                "width": "65%"
+              },
               "animations": [
-                { "type": "rotate", "trigger": "loop", "from": 0, "to": 5, "duration": 40000, "easing": "easeInOut" }
+                {
+                  "type": "translateY",
+                  "trigger": "loop",
+                  "from": 0,
+                  "to": 6,
+                  "duration": 5000,
+                  "yoyo": true,
+                  "easing": "easeInOut",
+                  "delay": 400
+                },
+                {
+                  "type": "fadeIn",
+                  "trigger": "enter",
+                  "from": 0,
+                  "to": 1,
+                  "duration": 800,
+                  "easing": "easeOut"
+                }
               ]
             }
           ]
         },
         {
-          "id": "l-orb2",
-          "depth": 0.35,
-          "blur": 10,
-          "parallaxMode": ["mouse", "gyroscope"],
+          "id": "layer-front",
+          "depth": 0.4,
+          "parallaxMode": [
+            "mouse",
+            "tilt"
+          ],
           "elements": [
             {
-              "id": "orb-2",
+              "id": "el-front",
               "type": "png",
-              "src": "images/orb-2.webp",
-              "position": { "x": 70, "y": 60 },
-              "size": { "width": "58%" },
-              "anchor": "center",
+              "src": "images/plane-front.svg",
+              "position": {
+                "x": 40,
+                "y": 70
+              },
+              "size": {
+                "width": "65%"
+              },
               "animations": [
-                { "type": "translateX", "trigger": "loop", "from": -6, "to": 6, "duration": 13000, "easing": "easeInOut" }
+                {
+                  "type": "rotate",
+                  "trigger": "loop",
+                  "from": -2.5,
+                  "to": 2.5,
+                  "duration": 7000,
+                  "yoyo": true,
+                  "easing": "easeInOut"
+                },
+                {
+                  "type": "scale",
+                  "trigger": "enter",
+                  "from": 0.85,
+                  "to": 1,
+                  "duration": 700,
+                  "easing": "easeOut"
+                }
               ]
-            }
-          ]
-        },
-        {
-          "id": "l-network",
-          "depth": 0.5,
-          "blur": 1,
-          "parallaxMode": ["mouse", "gyroscope"],
-          "elements": [
+            },
             {
-              "id": "line-network",
+              "id": "el-spark-1",
               "type": "png",
-              "src": "images/line-network.webp",
-              "position": { "x": 50, "y": 50 },
-              "size": { "width": "116%" },
-              "anchor": "center",
-              "opacity": 0.9,
+              "src": "images/spark.svg",
+              "position": {
+                "x": 18,
+                "y": 22
+              },
+              "size": {
+                "width": "32px"
+              },
               "animations": [
-                { "type": "translateX", "trigger": "loop", "from": 0, "to": 4, "duration": 16000, "easing": "easeInOut" }
+                {
+                  "type": "translateY",
+                  "trigger": "loop",
+                  "from": 0,
+                  "to": -14,
+                  "duration": 4000,
+                  "yoyo": true,
+                  "easing": "easeInOut"
+                }
               ]
-            }
-          ]
-        },
-        {
-          "id": "l-shapes-mid",
-          "depth": 0.62,
-          "parallaxMode": ["mouse", "gyroscope"],
-          "elements": [
+            },
             {
-              "id": "shapes-mid",
+              "id": "el-spark-2",
               "type": "png",
-              "src": "images/shapes-mid.webp",
-              "position": { "x": 50, "y": 50 },
-              "size": { "width": "114%" },
-              "anchor": "center",
+              "src": "images/spark.svg",
+              "position": {
+                "x": 82,
+                "y": 78
+              },
+              "size": {
+                "width": "28px"
+              },
               "animations": [
-                { "type": "rotate", "trigger": "loop", "from": 0, "to": -6, "duration": 30000, "easing": "easeInOut" }
+                {
+                  "type": "translateY",
+                  "trigger": "loop",
+                  "from": 0,
+                  "to": -10,
+                  "duration": 3500,
+                  "yoyo": true,
+                  "delay": 600
+                }
               ]
-            }
-          ]
-        },
-        {
-          "id": "l-glass",
-          "depth": 0.78,
-          "parallaxMode": ["mouse", "gyroscope"],
-          "elements": [
+            },
             {
-              "id": "glass-card",
+              "id": "el-spark-3",
               "type": "png",
-              "src": "images/glass-card.webp",
-              "position": { "x": 52, "y": 54 },
-              "size": { "width": "60%" },
-              "anchor": "center",
+              "src": "images/spark.svg",
+              "position": {
+                "x": 88,
+                "y": 14
+              },
+              "size": {
+                "width": "22px"
+              },
               "animations": [
-                { "type": "scale", "trigger": "loop", "from": 1, "to": 1.03, "duration": 8000, "easing": "easeInOut" }
-              ]
-            }
-          ]
-        },
-        {
-          "id": "l-particles",
-          "depth": 0.9,
-          "parallaxMode": ["mouse"],
-          "elements": [
-            {
-              "id": "particles",
-              "type": "png",
-              "src": "images/particles.webp",
-              "position": { "x": 50, "y": 50 },
-              "size": { "width": "112%" },
-              "anchor": "center",
-              "animations": [
-                { "type": "translateY", "trigger": "loop", "from": 0, "to": -10, "duration": 7000, "easing": "easeInOut" }
+                {
+                  "type": "translateY",
+                  "trigger": "loop",
+                  "from": 0,
+                  "to": -8,
+                  "duration": 3000,
+                  "yoyo": true,
+                  "delay": 1200
+                }
               ]
             }
           ]
