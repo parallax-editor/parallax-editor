@@ -2,7 +2,7 @@
   "schemaVersion": "1.1",
   "meta": {
     "title": "Parallax Engine hero",
-    "description": "Live hero rendered by parallax-engine itself"
+    "description": "Live on-brand geometric depth field, rendered by parallax-engine itself"
   },
   "sections": [
     {
@@ -13,184 +13,324 @@
       },
       "layers": [
         {
-          "id": "layer-back",
-          "depth": -0.6,
+          "id": "l-glow",
+          "depth": -0.85,
           "parallaxMode": [
             "mouse"
           ],
           "elements": [
             {
-              "id": "el-back",
+              "id": "el-glow",
               "type": "png",
-              "src": "images/plane-back.svg",
-              "position": {
-                "x": 60,
-                "y": 30
-              },
-              "size": {
-                "width": "65%"
-              },
-              "opacity": 0.85,
-              "animations": [
-                {
-                  "type": "translateY",
-                  "trigger": "loop",
-                  "from": 0,
-                  "to": -8,
-                  "duration": 6000,
-                  "yoyo": true,
-                  "easing": "easeInOut"
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "id": "layer-mid",
-          "depth": -0.1,
-          "parallaxMode": [
-            "mouse"
-          ],
-          "elements": [
-            {
-              "id": "el-mid",
-              "type": "png",
-              "src": "images/plane-mid.svg",
+              "src": "images/geo-glow.svg",
               "position": {
                 "x": 50,
                 "y": 50
               },
               "size": {
-                "width": "65%"
+                "width": "108%"
               },
+              "anchor": "center",
               "animations": [
-                {
-                  "type": "translateY",
-                  "trigger": "loop",
-                  "from": 0,
-                  "to": 6,
-                  "duration": 5000,
-                  "yoyo": true,
-                  "easing": "easeInOut",
-                  "delay": 400
-                },
                 {
                   "type": "fadeIn",
                   "trigger": "enter",
                   "from": 0,
                   "to": 1,
-                  "duration": 800,
+                  "duration": 1400,
                   "easing": "easeOut"
+                },
+                {
+                  "type": "scale",
+                  "trigger": "loop",
+                  "from": 1,
+                  "to": 1.12,
+                  "duration": 9000,
+                  "yoyo": true,
+                  "easing": "easeInOut"
                 }
               ]
             }
           ]
         },
         {
-          "id": "layer-front",
-          "depth": 0.4,
+          "id": "l-grid",
+          "depth": -0.65,
           "parallaxMode": [
-            "mouse",
-            "tilt"
+            "mouse"
           ],
           "elements": [
             {
-              "id": "el-front",
+              "id": "el-grid",
               "type": "png",
-              "src": "images/plane-front.svg",
+              "src": "images/geo-grid.svg",
               "position": {
-                "x": 40,
-                "y": 70
+                "x": 50,
+                "y": 50
               },
               "size": {
-                "width": "65%"
+                "width": "106%"
               },
+              "anchor": "center",
               "animations": [
+                {
+                  "type": "translateY",
+                  "trigger": "loop",
+                  "from": 0,
+                  "to": 10,
+                  "duration": 9000,
+                  "yoyo": true,
+                  "easing": "easeInOut"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "l-rings",
+          "depth": -0.3,
+          "parallaxMode": [
+            "mouse",
+            "gyroscope"
+          ],
+          "elements": [
+            {
+              "id": "el-rings",
+              "type": "png",
+              "src": "images/geo-rings.svg",
+              "position": {
+                "x": 50,
+                "y": 50
+              },
+              "size": {
+                "width": "104%"
+              },
+              "anchor": "center",
+              "animations": [
+                {
+                  "type": "fadeIn",
+                  "trigger": "enter",
+                  "from": 0,
+                  "to": 1,
+                  "duration": 1000,
+                  "delay": 200,
+                  "easing": "easeOut"
+                },
                 {
                   "type": "rotate",
                   "trigger": "loop",
-                  "from": -2.5,
-                  "to": 2.5,
+                  "from": 0,
+                  "to": 360,
+                  "duration": 46000,
+                  "yoyo": false,
+                  "easing": "linear"
+                },
+                {
+                  "type": "scale",
+                  "trigger": "loop",
+                  "from": 1,
+                  "to": 1.04,
                   "duration": 7000,
+                  "yoyo": true,
+                  "easing": "easeInOut"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "l-network",
+          "depth": 0.0,
+          "parallaxMode": [
+            "mouse",
+            "gyroscope"
+          ],
+          "elements": [
+            {
+              "id": "el-network",
+              "type": "png",
+              "src": "images/geo-network.svg",
+              "position": {
+                "x": 50,
+                "y": 50
+              },
+              "size": {
+                "width": "103%"
+              },
+              "anchor": "center",
+              "animations": [
+                {
+                  "type": "fadeIn",
+                  "trigger": "enter",
+                  "from": 0,
+                  "to": 1,
+                  "duration": 1000,
+                  "delay": 400,
+                  "easing": "easeOut"
+                },
+                {
+                  "type": "translateX",
+                  "trigger": "loop",
+                  "from": -12,
+                  "to": 12,
+                  "duration": 9000,
                   "yoyo": true,
                   "easing": "easeInOut"
                 },
                 {
-                  "type": "scale",
-                  "trigger": "enter",
-                  "from": 0.85,
-                  "to": 1,
-                  "duration": 700,
-                  "easing": "easeOut"
+                  "type": "rotate",
+                  "trigger": "loop",
+                  "from": -2,
+                  "to": 2,
+                  "duration": 12000,
+                  "yoyo": true,
+                  "easing": "easeInOut"
                 }
               ]
-            },
+            }
+          ]
+        },
+        {
+          "id": "l-card",
+          "depth": 0.32,
+          "parallaxMode": [
+            "mouse",
+            "gyroscope"
+          ],
+          "elements": [
             {
-              "id": "el-spark-1",
+              "id": "el-card",
               "type": "png",
-              "src": "images/spark.svg",
+              "src": "images/geo-card.svg",
               "position": {
-                "x": 18,
-                "y": 22
+                "x": 50,
+                "y": 50
               },
               "size": {
-                "width": "32px"
+                "width": "102%"
               },
+              "anchor": "center",
+              "animations": [
+                {
+                  "type": "fadeIn",
+                  "trigger": "enter",
+                  "from": 0,
+                  "to": 1,
+                  "duration": 900,
+                  "delay": 600,
+                  "easing": "easeOut"
+                },
+                {
+                  "type": "translateY",
+                  "trigger": "loop",
+                  "from": 0,
+                  "to": -12,
+                  "duration": 6000,
+                  "yoyo": true,
+                  "easing": "easeInOut"
+                },
+                {
+                  "type": "rotate",
+                  "trigger": "loop",
+                  "from": -1.5,
+                  "to": 1.5,
+                  "duration": 10000,
+                  "yoyo": true,
+                  "easing": "easeInOut"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "l-triangle",
+          "depth": 0.5,
+          "parallaxMode": [
+            "mouse",
+            "gyroscope"
+          ],
+          "elements": [
+            {
+              "id": "el-triangle",
+              "type": "png",
+              "src": "images/geo-triangle.svg",
+              "position": {
+                "x": 50,
+                "y": 50
+              },
+              "size": {
+                "width": "102%"
+              },
+              "anchor": "center",
+              "animations": [
+                {
+                  "type": "fadeIn",
+                  "trigger": "enter",
+                  "from": 0,
+                  "to": 1,
+                  "duration": 900,
+                  "delay": 700,
+                  "easing": "easeOut"
+                },
+                {
+                  "type": "rotate",
+                  "trigger": "loop",
+                  "from": -5,
+                  "to": 5,
+                  "duration": 11000,
+                  "yoyo": true,
+                  "easing": "easeInOut"
+                },
+                {
+                  "type": "translateY",
+                  "trigger": "loop",
+                  "from": 0,
+                  "to": 8,
+                  "duration": 7500,
+                  "yoyo": true,
+                  "easing": "easeInOut"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "l-dots",
+          "depth": 0.65,
+          "parallaxMode": [
+            "mouse"
+          ],
+          "elements": [
+            {
+              "id": "el-dots",
+              "type": "png",
+              "src": "images/geo-dots.svg",
+              "position": {
+                "x": 50,
+                "y": 50
+              },
+              "size": {
+                "width": "104%"
+              },
+              "anchor": "center",
               "animations": [
                 {
                   "type": "translateY",
                   "trigger": "loop",
                   "from": 0,
                   "to": -14,
+                  "duration": 5500,
+                  "yoyo": true,
+                  "easing": "easeInOut"
+                },
+                {
+                  "type": "fadeIn",
+                  "trigger": "loop",
+                  "from": 0.5,
+                  "to": 1,
                   "duration": 4000,
                   "yoyo": true,
                   "easing": "easeInOut"
-                }
-              ]
-            },
-            {
-              "id": "el-spark-2",
-              "type": "png",
-              "src": "images/spark.svg",
-              "position": {
-                "x": 82,
-                "y": 78
-              },
-              "size": {
-                "width": "28px"
-              },
-              "animations": [
-                {
-                  "type": "translateY",
-                  "trigger": "loop",
-                  "from": 0,
-                  "to": -10,
-                  "duration": 3500,
-                  "yoyo": true,
-                  "delay": 600
-                }
-              ]
-            },
-            {
-              "id": "el-spark-3",
-              "type": "png",
-              "src": "images/spark.svg",
-              "position": {
-                "x": 88,
-                "y": 14
-              },
-              "size": {
-                "width": "22px"
-              },
-              "animations": [
-                {
-                  "type": "translateY",
-                  "trigger": "loop",
-                  "from": 0,
-                  "to": -8,
-                  "duration": 3000,
-                  "yoyo": true,
-                  "delay": 1200
                 }
               ]
             }
@@ -198,5 +338,17 @@
         }
       ]
     }
-  ]
+  ],
+  "quality": {
+    "mobile": {
+      "maxLayers": 10,
+      "blurEnabled": true,
+      "loopFps": 30
+    },
+    "desktop": {
+      "maxLayers": 16,
+      "blurEnabled": true,
+      "loopFps": 60
+    }
+  }
 }
