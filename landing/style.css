@@ -164,6 +164,7 @@ header.nav {
   --pad: 16px 30px;
   display: inline-flex;
   align-items: center;
+  white-space: nowrap;
   gap: 12px;
   padding: var(--pad);
   font-family: var(--sans);
