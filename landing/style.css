@@ -11,8 +11,8 @@
   --ink-2:      #0c0c0d;
   --ink-3:      #131315;
   --paper:      #f3efe7;   /* warm off-white */
-  --paper-dim:  #c9c4ba;
-  --paper-mute: #847f76;
+  --paper-dim:  #d4cfc5;   /* ↑ contrast (was #c9c4ba) — secondary text */
+  --paper-mute: #a5a096;   /* ↑ contrast ~7.7:1 on --ink (was #847f76, ~5:1) — eyebrows, captions */
   --line:       rgba(243, 239, 231, 0.12);
   --line-soft:  rgba(243, 239, 231, 0.07);
   --accent:     #f3efe7;
@@ -164,6 +164,7 @@ header.nav {
   --pad: 16px 30px;
   display: inline-flex;
   align-items: center;
+  white-space: nowrap;
   gap: 12px;
   padding: var(--pad);
   font-family: var(--sans);
@@ -418,6 +419,26 @@ section.block { padding: clamp(70px, 11vh, 130px) 0; position: relative; }
   color: var(--paper-mute);
   animation: layerfloat 7s ease-in-out infinite;
 }
+/* real editor screenshot inside the window frame (replaces the fake mock) */
+.split .visual.visual--shot { aspect-ratio: auto; padding: 14px; margin: 0; }
+.split .visual .shot {
+  width: 100%; display: block;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+}
+/* framed editor screenshot in the index editor teaser */
+.editor-shot {
+  margin-top: 40px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--ink-2);
+  padding: 14px;
+  overflow: hidden;
+}
+.editor-shot .bar { display: flex; gap: 7px; margin-bottom: 12px; }
+.editor-shot .bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); display: block; }
+.editor-shot img { width: 100%; display: block; border-radius: 10px; border: 1px solid var(--line); }
+
 .canvas .l1 { inset: 14% 50% 46% 12%; animation-delay: 0s; }
 .canvas .l2 { inset: 30% 16% 26% 40%; animation-delay: 1.4s; background: rgba(243,239,231,0.07); color: var(--paper-dim);}
 .canvas .l3 { inset: 54% 30% 12% 22%; animation-delay: 0.7s; }
