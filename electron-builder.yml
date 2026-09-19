@@ -92,3 +92,5 @@ mac:
 
 dmg:
   title: Parallax Editor
+  # Ícono del propio .dmg (mismo PÆ de la app) — si no, Finder muestra el disco genérico.
+  icon: build/icon.icns
