@@ -614,10 +614,10 @@
   resolved "https://registry.yarnpkg.com/@oxc-project/types/-/types-0.150.0.tgz#e9be0840114655016b16f1c05ddaaa01df5b8853"
   integrity sha512-rDS5/31E9HfPl/CIzGrn0DOlvBbXFseQ5URJ9sYMfstbKLD/c6Gm9vmRzRGDdAXyOIL4zmO37lc9RIwYqVruZw==
 
-"@parallax-editor/parallax-engine@^0.2.8":
-  version "0.2.8"
-  resolved "https://registry.yarnpkg.com/@parallax-editor/parallax-engine/-/parallax-engine-0.2.8.tgz#a19b3a3e8476c9a8ee2a6769d7ed0977439c5379"
-  integrity sha512-4uPmc7c/sPTjfuz/fRZpA0Cj82DcvV2YVo7fjruOTqdKxvdhrN4kxUZOZHdTdrxESkQWyZhxajCEuc48rZql1A==
+"@parallax-editor/parallax-engine@^0.2.9":
+  version "0.2.9"
+  resolved "https://registry.yarnpkg.com/@parallax-editor/parallax-engine/-/parallax-engine-0.2.9.tgz#5bc14e811df85ce08c3caabff2320166d9c73576"
+  integrity sha512-eD8+50UB4yvQ2DsGa70tcXHsY8LU+uzrvsLlS8uREbGrv06fgkVfWW8mzvcKSMkyPG8HvSavPQqhf5M9UJJqww==
   dependencies:
     lenis "^1.1.13"
     zod "^4.4.3"
